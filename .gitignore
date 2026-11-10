@@ -1,0 +1,28 @@
+# Dependencies & build
+node_modules/
+**/dist/
+**/dist-ssr/
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local / ephemeral data (dev JSON stores — use Supabase in production)
+backend/data/
+**/*.local
+
+# Uploads (prefer object storage in production)
+uploads/

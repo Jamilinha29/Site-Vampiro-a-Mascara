@@ -1,0 +1,8 @@
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+    environment:
+      NODE_ENV: test
+    command: npm run test:ci
