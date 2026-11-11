@@ -78,6 +78,20 @@ export const SOCIAL_RANK_BY_SPECIES: Record<string, readonly string[]> = {
   outros: ['Fera de baixo escalão', 'Nobre', 'Servo'],
 }
 
+export function resolveCharacterClass(character: {
+  characterClass?: string | null
+  identity?: { house?: string | null } | null
+}) {
+  if (character.characterClass) return character.characterClass
+  const house = character.identity?.house
+  if (!house) return null
+  const parts = house.split(' · ').map((part) => part.trim()).filter(Boolean)
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    if ((CHARACTER_CLASS_OPTIONS as readonly string[]).includes(parts[i])) return parts[i]
+  }
+  return null
+}
+
 export const CHARACTER_CLASS_OPTIONS = [
   'Guerreiro',
   'Cavaleiro',
@@ -92,6 +106,12 @@ export const CHARACTER_CLASS_OPTIONS = [
   'Mercante',
   'Feiticeiro',
   'Bardo',
+  'Combatente',
+  'Sombra',
+  'Arcanista',
+  'Devoto',
+  'Guardião',
+  'Artífice',
   'Outro',
 ] as const
 

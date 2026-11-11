@@ -222,25 +222,7 @@ export default function LineageStepPage() {
 
       {species === 'mortal' ? (
         <Section number="02" title="Ordem / Clã de Caçadores" hint="Escolha a ordem mortal que vincula o personagem.">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {MORTAL_CLAN_OPTIONS.map((name) => {
-              const selected = clanName === name
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => setClan(name, name)}
-                  className={`rounded-lg border px-4 py-3 text-left transition ${
-                    selected
-                      ? 'border-primary-container bg-primary-container/10'
-                      : 'border-outline-variant/40 bg-surface-container-lowest/50 hover:border-outline-variant'
-                  }`}
-                >
-                  <span className="font-serif text-sm text-on-surface">{name}</span>
-                </button>
-              )
-            })}
-          </div>
+          <MortalOrderPicker clanName={clanName} onPick={(name) => setClan(name, name)} />
         </Section>
       ) : null}
 
@@ -269,6 +251,40 @@ export default function LineageStepPage() {
         </div>
       </Section>
     </CharacterWizardLayout>
+  )
+}
+
+function MortalOrderPicker({ clanName, onPick }: { clanName: string | null; onPick: (name: string) => void }) {
+  const orders = useQuery({
+    queryKey: ['reference-catalog', 'mortal_order'],
+    queryFn: () => api.listReferenceCatalog('mortal_order'),
+  })
+  const cards = orders.data?.length
+    ? orders.data
+    : MORTAL_CLAN_OPTIONS.map((name) => ({ id: name, name, description: '' }))
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {cards.map((order) => {
+        const selected = clanName === order.name
+        return (
+          <button
+            key={order.id}
+            type="button"
+            onClick={() => onPick(order.name)}
+            className={`rounded-lg border px-4 py-3 text-left transition ${
+              selected
+                ? 'border-primary-container bg-primary-container/10'
+                : 'border-outline-variant/40 bg-surface-container-lowest/50 hover:border-outline-variant'
+            }`}
+          >
+            <span className="font-serif text-sm text-on-surface">{order.name}</span>
+            {order.description ? (
+              <span className="mt-1 block text-xs text-on-surface-variant">{order.description}</span>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

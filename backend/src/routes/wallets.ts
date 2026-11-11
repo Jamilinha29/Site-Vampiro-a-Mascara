@@ -3,39 +3,70 @@ import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
 import { getPurchaseCount, purchaseItem, remainingStock } from '../services/shopStore.js'
 import { upsertCharacter, getCharacter, listCharacters } from '../services/profileStore.js'
+import { getSupabaseAdmin } from '../services/supabaseClient.js'
 import { randomUUID } from 'crypto'
 
 export const walletsRouter = Router()
 
-walletsRouter.get('/active', (_req, res) => {
-  res.json({ gold: 2, silver: 12, copper: 40 })
+const emptyWallet = { gold: 0, silver: 0, copper: 0 }
+
+async function profileIdForEmail(email: string) {
+  const sb = getSupabaseAdmin()
+  if (!sb) return null
+  const { data, error } = await sb.from('player_profiles').select('id').eq('email', email).maybeSingle()
+  if (error || !data?.id) return null
+  return data.id as string
+}
+
+walletsRouter.get('/active', requireUser, async (req, res) => {
+  const profileId = await profileIdForEmail(req.user!.email)
+  const sb = getSupabaseAdmin()
+  if (!sb || !profileId) {
+    res.json(emptyWallet)
+    return
+  }
+  const { data, error } = await sb
+    .from('wallets')
+    .select('gold, silver, copper')
+    .eq('profile_id', profileId)
+    .maybeSingle()
+  if (error || !data) {
+    res.json(emptyWallet)
+    return
+  }
+  res.json({
+    gold: data.gold ?? 0,
+    silver: data.silver ?? 0,
+    copper: data.copper ?? 0,
+  })
 })
 
-walletsRouter.get('/ledger', (_req, res) => {
-  const now = Date.now()
-  res.json([
-    {
-      id: 'l1',
-      kind: 'credit',
-      label: 'Pagamento da corte — missão concluída',
-      amount: '+3 ouro',
-      at: new Date(now - 1000 * 60 * 60 * 26).toISOString(),
-    },
-    {
-      id: 'l2',
-      kind: 'debit',
-      label: 'Compra na loja — elixir de vigor',
-      amount: '−2 prata',
-      at: new Date(now - 1000 * 60 * 60 * 8).toISOString(),
-    },
-    {
-      id: 'l3',
-      kind: 'credit',
-      label: 'Recebimento — dividenda do narrador',
-      amount: '+5 bronze',
-      at: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
-    },
-  ])
+walletsRouter.get('/ledger', requireUser, async (req, res) => {
+  const profileId = await profileIdForEmail(req.user!.email)
+  const sb = getSupabaseAdmin()
+  if (!sb || !profileId) {
+    res.json([])
+    return
+  }
+  const { data, error } = await sb
+    .from('wallet_ledger')
+    .select('id, kind, label, amount_label, created_at')
+    .eq('profile_id', profileId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error || !data) {
+    res.json([])
+    return
+  }
+  res.json(
+    data.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      label: row.label,
+      amount: row.amount_label,
+      at: row.created_at,
+    })),
+  )
 })
 
 walletsRouter.get('/shop-stock/:entityId', requireUser, (req, res) => {

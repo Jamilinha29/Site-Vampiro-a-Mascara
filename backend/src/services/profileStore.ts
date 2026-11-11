@@ -77,6 +77,8 @@ export type ProfileCharacter = {
   will?: { current: number; max: number }
   xp: { current: number; toNext: number }
   subclass?: string | null
+  /** Classe escolhida na criação. Filtra as subclasses importadas. */
+  characterClass?: string | null
   identity: CharacterIdentity
   inventory: CharacterInventoryItem[]
   createdSkills: CreatedSkill[]
@@ -293,6 +295,7 @@ export function patchCharacter(
       | 'mana'
       | 'will'
       | 'subclass'
+      | 'characterClass'
       | 'inventory'
       | 'carryCapacityKg'
       | 'isPrimary'
@@ -454,6 +457,7 @@ export function upsertCharacter(
     will: character.will,
     xp: character.xp ?? { current: STARTING_CHARACTER_XP, toNext },
     subclass: character.subclass ?? null,
+    characterClass: character.characterClass ?? null,
     identity: character.identity ?? defaultIdentity(),
     inventory: character.inventory ?? [],
     createdSkills: character.createdSkills ?? [],

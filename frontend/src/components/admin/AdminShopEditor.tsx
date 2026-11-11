@@ -12,6 +12,7 @@ import {
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { AttributeMod, CreateEntityPayload, EntityKind } from '../../types/chronicle'
 import { api } from '../../services/api'
+import { useReferenceNames } from '../../hooks/useReferenceNames'
 
 type ShopTab = 'gear' | 'relic' | 'services' | 'consumables'
 
@@ -22,8 +23,10 @@ export function AdminShopEditor() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [imageUrl, setImageUrl] = useState<string | undefined>()
-  const [equipmentType, setEquipmentType] = useState<(typeof EQUIPMENT_TYPES)[number]>(EQUIPMENT_TYPES[0])
-  const [relicType, setRelicType] = useState<(typeof RELIC_AMULET_TYPES)[number]>(RELIC_AMULET_TYPES[0])
+  const equipmentNames = useReferenceNames('equipment_type', EQUIPMENT_TYPES)
+  const relicNames = useReferenceNames('relic', RELIC_AMULET_TYPES)
+  const [equipmentType, setEquipmentType] = useState<string>(EQUIPMENT_TYPES[0])
+  const [relicType, setRelicType] = useState<string>(RELIC_AMULET_TYPES[0])
   const [serviceType, setServiceType] = useState<(typeof SERVICE_TYPES)[number]>(SERVICE_TYPES[0])
   const [consumableKind, setConsumableKind] = useState<'daily' | 'food'>('food')
   const [mods, setMods] = useState<AttributeMod[]>([])
@@ -158,8 +161,8 @@ export function AdminShopEditor() {
     setName(item.name)
     setDescription(item.description ?? '')
     setImageUrl(item.imageUrl)
-    setEquipmentType((item.equipmentType as (typeof EQUIPMENT_TYPES)[number]) ?? EQUIPMENT_TYPES[0])
-    setRelicType((item.relicAmuletType as (typeof RELIC_AMULET_TYPES)[number]) ?? RELIC_AMULET_TYPES[0])
+    setEquipmentType(item.equipmentType ?? equipmentNames[0] ?? EQUIPMENT_TYPES[0])
+    setRelicType(item.relicAmuletType ?? relicNames[0] ?? RELIC_AMULET_TYPES[0])
     setServiceType((item.serviceType as (typeof SERVICE_TYPES)[number]) ?? SERVICE_TYPES[0])
     setConsumableKind(item.consumableKind ?? 'food')
     setMods(item.attributeMods ?? [])
@@ -217,9 +220,9 @@ export function AdminShopEditor() {
               <select
                 className="input-feudal mt-1 pl-4 normal-case"
                 value={equipmentType}
-                onChange={(e) => setEquipmentType(e.target.value as (typeof EQUIPMENT_TYPES)[number])}
+                onChange={(e) => setEquipmentType(e.target.value)}
               >
-                {EQUIPMENT_TYPES.map((t) => (
+                {equipmentNames.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -233,9 +236,9 @@ export function AdminShopEditor() {
               <select
                 className="input-feudal mt-1 pl-4 normal-case"
                 value={relicType}
-                onChange={(e) => setRelicType(e.target.value as (typeof RELIC_AMULET_TYPES)[number])}
+                onChange={(e) => setRelicType(e.target.value)}
               >
-                {RELIC_AMULET_TYPES.map((t) => (
+                {relicNames.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>

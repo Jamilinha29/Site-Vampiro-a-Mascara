@@ -28,6 +28,7 @@ const AdminCharactersNewPage = lazy(() => import('../pages/admin/AdminCharacters
 const AdminSessionsPage = lazy(() => import('../pages/admin/AdminSessionsPage'))
 const AdminShopPage = lazy(() => import('../pages/admin/AdminShopPage'))
 const AdminCatalogPage = lazy(() => import('../pages/admin/AdminCatalogPage'))
+const AdminReferencePage = lazy(() => import('../pages/admin/AdminReferencePage'))
 const AdminBestiaryPage = lazy(() => import('../pages/admin/AdminBestiaryPage'))
 const AdminMesaPage = lazy(() => import('../pages/admin/AdminMesaPage'))
 const AdminRewardsPage = lazy(() => import('../pages/admin/AdminRewardsPage'))
@@ -134,6 +135,7 @@ export function AppRouter() {
           <Route path="sessions" element={<Lazy><AdminSessionsPage /></Lazy>} />
           <Route path="shop" element={<Lazy><AdminShopPage /></Lazy>} />
           <Route path="catalog" element={<Lazy><AdminCatalogPage /></Lazy>} />
+          <Route path="reference" element={<Lazy><AdminReferencePage /></Lazy>} />
           <Route path="bestiary" element={<Lazy><AdminBestiaryPage /></Lazy>} />
           <Route path="mesa" element={<Lazy><AdminMesaPage /></Lazy>} />
           <Route path="mesa/:sessionId" element={<Lazy><AdminMesaPage /></Lazy>} />

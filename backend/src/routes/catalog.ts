@@ -1,5 +1,9 @@
 import { Router } from 'express'
+import { z } from 'zod'
 import { listEntities } from '../services/chronicleStore.js'
+import { getSupabaseAdmin } from '../services/supabaseClient.js'
+import { listSubclassesForClass } from '../services/subclassCatalog.js'
+import { listReference, REFERENCE_KINDS, refreshReferenceFromDatabase } from '../services/referenceCatalog.js'
 
 const CLANS = [
   'Banu Haqim',
@@ -22,9 +26,42 @@ const CLANS = [
   slug: name.toLowerCase().replace(/\s+/g, '-'),
 }))
 
+const zKind = z.enum(REFERENCE_KINDS)
+
 export const catalogRouter = Router()
 
-catalogRouter.get('/clans', (_req, res) => {
+catalogRouter.get('/reference/:kind', async (req, res) => {
+  const kind = zKind.safeParse(req.params.kind)
+  if (!kind.success) {
+    res.status(400).json({ error: { message: 'Catálogo desconhecido' } })
+    return
+  }
+  await refreshReferenceFromDatabase()
+  res.json(listReference(kind.data))
+})
+
+catalogRouter.get('/subclasses', async (req, res) => {
+  const className = String(req.query.class ?? '').trim()
+  if (!className) {
+    res.json([])
+    return
+  }
+  res.json(await listSubclassesForClass(className))
+})
+
+catalogRouter.get('/clans', async (_req, res) => {
+  const sb = getSupabaseAdmin()
+  if (sb) {
+    const { data, error } = await sb
+      .from('clans')
+      .select('id, name, slug')
+      .eq('active', true)
+      .order('name', { ascending: true })
+    if (!error && data && data.length > 0) {
+      res.json(data)
+      return
+    }
+  }
   res.json(CLANS)
 })
 

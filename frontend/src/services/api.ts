@@ -1,5 +1,15 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
+export type ReferenceEntry = {
+  id: string
+  kind: string
+  name: string
+  description: string
+  className: string
+  faithPath: '' | 'luz' | 'trevas'
+  sortOrder: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && init?.body) {
@@ -52,6 +62,24 @@ export const api = {
       body: JSON.stringify({ code }),
     }),
   getCatalogClans: () => request<{ id: string; name: string; slug: string }[]>('/api/v1/catalog/clans'),
+  listReferenceCatalog: (kind: string) =>
+    request<ReferenceEntry[]>(`/api/v1/catalog/reference/${kind}`),
+  adminListReference: (kind: string) => request<ReferenceEntry[]>(`/api/v1/admin/reference/${kind}`),
+  adminSaveReference: (kind: string, rows: Array<Partial<ReferenceEntry> & { name: string }>) =>
+    request<{ added: number; updated: number; skipped: number; items: ReferenceEntry[] }>(
+      `/api/v1/admin/reference/${kind}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(rows),
+      },
+    ),
+  adminAddReference: (kind: string, row: Partial<ReferenceEntry> & { name: string }) =>
+    request<ReferenceEntry>(`/api/v1/admin/reference/${kind}`, {
+      method: 'POST',
+      body: JSON.stringify(row),
+    }),
+  getCatalogSubclasses: (className: string) =>
+    request<string[]>(`/api/v1/catalog/subclasses?class=${encodeURIComponent(className)}`),
   getCatalogCathedrals: (path?: 'luz' | 'trevas') =>
     request<
       Array<{
@@ -106,6 +134,7 @@ export const api = {
       mana?: { current: number; max: number }
       will?: { current: number; max: number }
       subclass?: string | null
+      characterClass?: string | null
       identityPatch?: Partial<{
         house: string | null
         nature: string | null
@@ -145,6 +174,7 @@ export const api = {
     startingXp?: number
     vitals?: { hpDie?: string; manaDie?: string; locked?: boolean }
     balanceStats?: Record<string, number>
+    characterClass?: string | null
   }) =>
     request<{ id: string; name: string }>('/api/v1/me/characters', {
       method: 'POST',

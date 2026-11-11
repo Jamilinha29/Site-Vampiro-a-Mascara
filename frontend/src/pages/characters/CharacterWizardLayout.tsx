@@ -209,6 +209,7 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
             ? undefined
             : { current: willValue || 0, max: Math.max(5, willValue || 5) },
         startingXp: STARTING_CHARACTER_XP,
+        characterClass: state.characterClass,
         vitals: {
           hpDie: state.hpDie,
           manaDie: resources.showMana ? state.manaDie : undefined,
@@ -243,7 +244,8 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
           residence: state.origin.trim() || null,
         },
         createdSkills: state.createdSkills,
-        subclass: state.sire.trim() || state.characterClass || null,
+        characterClass: state.characterClass,
+        subclass: null,
       })
 
       reset()

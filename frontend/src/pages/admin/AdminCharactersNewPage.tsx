@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
 import { AdminEntityPanel } from '../../components/admin/AdminEntityPanel'
 import { MONSTER_CREATURE_TYPES, NPC_CREATURE_TYPES } from '../../lib/characterOptions'
+import { useReferenceNames } from '../../hooks/useReferenceNames'
 
 export default function AdminCharactersNewPage() {
+  const monsterTypes = useReferenceNames('monster_type', MONSTER_CREATURE_TYPES)
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -35,7 +37,7 @@ export default function AdminCharactersNewPage() {
         description="Vampiros hostis, lobisomens, ghosts e demais ameaças do bestiário."
         showStats
         showCreatureType
-        creatureTypeOptions={[...MONSTER_CREATURE_TYPES]}
+        creatureTypeOptions={monsterTypes}
         showBestiaryTier
         defaultBestiaryTier="classified"
       />

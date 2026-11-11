@@ -15,6 +15,7 @@ import {
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { AttributeMod, ChronicleEntity, CreateEntityPayload } from '../../types/chronicle'
 import { api } from '../../services/api'
+import { useReferenceNames } from '../../hooks/useReferenceNames'
 import { defaultCreatureStats, GlossaryMonsterSheetFields } from './GlossaryMonsterSheetFields'
 
 const emptyMods = (): AttributeMod[] => [{ attr: 'forca', value: 1 }]
@@ -31,10 +32,11 @@ export function AdminGlossaryEditor() {
   const [threatLevel, setThreatLevel] = useState<ThreatLevelId>('comum')
   const [hpMax, setHpMax] = useState(40)
   const [manaMax, setManaMax] = useState(20)
-  const [relicAmuletType, setRelicAmuletType] = useState<(typeof RELIC_AMULET_TYPES)[number]>(
-    RELIC_AMULET_TYPES[0],
-  )
-  const [magicType, setMagicType] = useState<(typeof MAGIC_TYPES)[number]>(MAGIC_TYPES[0])
+  const monsterNames = useReferenceNames('monster_type', MONSTER_TYPES)
+  const magicNames = useReferenceNames('magic', MAGIC_TYPES)
+  const relicNames = useReferenceNames('relic', RELIC_AMULET_TYPES)
+  const [relicAmuletType, setRelicAmuletType] = useState<string>(RELIC_AMULET_TYPES[0])
+  const [magicType, setMagicType] = useState<string>(MAGIC_TYPES[0])
   const [cooldownText, setCooldownText] = useState('1 turno')
   const [mods, setMods] = useState<AttributeMod[]>(emptyMods())
   const [bestiaryTier, setBestiaryTier] = useState<'known' | 'classified' | 'rumors'>('classified')
@@ -83,16 +85,16 @@ export function AdminGlossaryEditor() {
   )
 
   const savedCustomTypes = useMemo(() => {
-    const preset = new Set(MONSTER_TYPES.map((t) => t.toLowerCase()))
+    const preset = new Set(monsterNames.map((t) => t.toLowerCase()))
     const extras = new Set<string>()
     for (const m of monsters) {
       const t = m.creatureType?.trim()
       if (t && !preset.has(t.toLowerCase()) && t.toLowerCase() !== 'outro') extras.add(t)
     }
     return [...extras].sort((a, b) => a.localeCompare(b))
-  }, [monsters])
+  }, [monsters, monsterNames])
 
-  const typeOptions = useMemo(() => [...MONSTER_TYPES.slice(0, -1), ...savedCustomTypes, 'Outro'], [savedCustomTypes])
+  const typeOptions = useMemo(() => [...monsterNames, ...savedCustomTypes.filter((name) => !monsterNames.includes(name))], [monsterNames, savedCustomTypes])
 
   function resetForm() {
     setEditingId(null)
@@ -101,12 +103,12 @@ export function AdminGlossaryEditor() {
     setDescription('')
     setImageUrl(undefined)
     setCustomCreatureType('')
-    setCreatureType(MONSTER_TYPES[0])
+    setCreatureType(monsterNames[0] ?? MONSTER_TYPES[0])
     setThreatLevel('comum')
     setHpMax(40)
     setManaMax(20)
-    setRelicAmuletType(RELIC_AMULET_TYPES[0])
-    setMagicType(MAGIC_TYPES[0])
+    setRelicAmuletType(relicNames[0] ?? RELIC_AMULET_TYPES[0])
+    setMagicType(magicNames[0] ?? MAGIC_TYPES[0])
     setCooldownText('1 turno')
     setMods(emptyMods())
     setBestiaryTier('classified')
@@ -135,7 +137,7 @@ export function AdminGlossaryEditor() {
     setDescription(item.description ?? '')
     setImageUrl(item.imageUrl)
     if (item.relicAmuletType) {
-      setRelicAmuletType(item.relicAmuletType as (typeof RELIC_AMULET_TYPES)[number])
+      setRelicAmuletType(item.relicAmuletType ?? relicNames[0] ?? RELIC_AMULET_TYPES[0])
     }
     if (item.attributeMods?.length) {
       setMods(item.attributeMods)
@@ -157,12 +159,12 @@ export function AdminGlossaryEditor() {
     setHpMax(item.hpMax ?? 40)
     setManaMax(item.manaMax ?? 20)
     setBestiaryTier(item.bestiaryTier ?? 'classified')
-    setMagicType((item.magicType as (typeof MAGIC_TYPES)[number]) ?? MAGIC_TYPES[0])
+    setMagicType(item.magicType ?? magicNames[0] ?? MAGIC_TYPES[0])
     setCooldownText(item.cooldownText ?? '1 turno')
-    setRelicAmuletType((item.relicAmuletType as (typeof RELIC_AMULET_TYPES)[number]) ?? RELIC_AMULET_TYPES[0])
+    setRelicAmuletType(item.relicAmuletType ?? relicNames[0] ?? RELIC_AMULET_TYPES[0])
     setMods(item.attributeMods?.length ? item.attributeMods : emptyMods())
-    const ct = item.creatureType?.trim() ?? MONSTER_TYPES[0]
-    if (MONSTER_TYPES.includes(ct as (typeof MONSTER_TYPES)[number]) || savedCustomTypes.includes(ct)) {
+    const ct = item.creatureType?.trim() ?? monsterNames[0] ?? MONSTER_TYPES[0]
+    if (monsterNames.includes(ct) || savedCustomTypes.includes(ct)) {
       setCreatureType(ct)
       setCustomCreatureType('')
     } else {
@@ -629,9 +631,9 @@ export function AdminGlossaryEditor() {
               <select
                 className="input-feudal mt-1 pl-4 normal-case"
                 value={magicType}
-                onChange={(e) => setMagicType(e.target.value as (typeof MAGIC_TYPES)[number])}
+                onChange={(e) => setMagicType(e.target.value)}
               >
-                {MAGIC_TYPES.map((t) => (
+                {magicNames.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -657,9 +659,9 @@ export function AdminGlossaryEditor() {
               <select
                 className="input-feudal mt-1 pl-4 normal-case"
                 value={relicAmuletType}
-                onChange={(e) => setRelicAmuletType(e.target.value as (typeof RELIC_AMULET_TYPES)[number])}
+                onChange={(e) => setRelicAmuletType(e.target.value)}
               >
-                {RELIC_AMULET_TYPES.map((t) => (
+                {relicNames.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>

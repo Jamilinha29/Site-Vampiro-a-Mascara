@@ -1,10 +1,13 @@
+import { randomUUID } from 'crypto'
 import { Router } from 'express'
 import { z } from 'zod'
+import { catalogImageFolder, storeCatalogImage } from '../../services/mediaStorage.js'
 import { requireUser } from '../../middlewares/optionalUser.js'
 import { requireNarrator } from '../../middlewares/requireNarrator.js'
 import {
   createEntity,
   hydrateEntitiesFromDatabase,
+  refreshEntitiesFromDatabase,
   createHandout,
   deleteEntity,
   getEntity,
@@ -101,16 +104,19 @@ const entitySchema = z.object({
   passiveTraits: z.array(z.string().max(200)).max(12).optional(),
 })
 
-adminChronicleRouter.get('/entities', (req, res) => {
+adminChronicleRouter.get('/entities', async (req, res) => {
+  await refreshEntitiesFromDatabase()
   const kind = req.query.kind as string | undefined
   const parsed = z.enum(['npc', 'monster', 'equipment', 'consumable', 'archive', 'download']).optional().safeParse(kind)
   res.json(listEntities(parsed.success ? { kind: parsed.data } : undefined))
 })
 
-adminChronicleRouter.post('/entities', (req, res, next) => {
+adminChronicleRouter.post('/entities', async (req, res, next) => {
   try {
     const body = entitySchema.parse(req.body)
-    res.status(201).json(createEntity(body))
+    const id = randomUUID()
+    const imageUrl = await storeCatalogImage(catalogImageFolder(body), id, body.imageUrl)
+    res.status(201).json(createEntity({ ...body, id, imageUrl, visibility: 'draft' }))
   } catch (e) {
     next(e)
   }
@@ -136,10 +142,23 @@ adminChronicleRouter.post('/entities/sync-from-database', async (_req, res, next
   }
 })
 
-adminChronicleRouter.patch('/entities/:id', (req, res, next) => {
+adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
   try {
     const body = entitySchema.partial().parse(req.body)
-    const updated = updateEntity(req.params.id, body)
+    const current = getEntity(req.params.id)
+    if (!current) {
+      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+      return
+    }
+    const patch = { ...body }
+    if (body.imageUrl !== undefined) {
+      patch.imageUrl = await storeCatalogImage(
+        catalogImageFolder({ ...current, ...body }),
+        current.id,
+        body.imageUrl,
+      )
+    }
+    const updated = updateEntity(req.params.id, patch)
     if (!updated) {
       res.status(404).json({ error: { message: 'Registro não encontrado' } })
       return

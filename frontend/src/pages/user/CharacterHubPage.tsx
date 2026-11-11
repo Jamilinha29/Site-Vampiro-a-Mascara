@@ -13,6 +13,7 @@ import { resolveResourceProfile } from '../../lib/characterSheetKind'
 import {
   FAITH_OPTIONS,
   MORTAL_FAITH_PATHS,
+  resolveCharacterClass,
   formatMortalFaithValue,
   parseMortalFaith,
   type MortalFaithPathId,
@@ -21,6 +22,7 @@ import { resolveSheetKind } from '../../lib/characterSheetKind'
 import { computeArmorClass, sumEquippedBonuses } from '../../lib/equipmentMods'
 import type { CharacterInventoryItem, CreatedSkill, ProfileCharacterSummary } from '../../types/profile'
 import { useAuthStore } from '../../stores/authStore'
+import { useReferenceNames } from '../../hooks/useReferenceNames'
 
 const TABS = [
   { id: 'inventario', label: 'Inventário' },
@@ -70,6 +72,13 @@ export default function CharacterHubPage() {
     queryFn: () =>
       api.getCatalogCathedrals(draft.faithPath === 'luz' || draft.faithPath === 'trevas' ? draft.faithPath : undefined),
     enabled: editOpen && isMortal,
+  })
+  const faithNames = useReferenceNames('faith', FAITH_OPTIONS)
+  const characterClass = character ? resolveCharacterClass(character) : null
+  const { data: subclassOptions = [] } = useQuery({
+    queryKey: ['catalog-subclasses', characterClass],
+    queryFn: () => api.getCatalogSubclasses(characterClass!),
+    enabled: editOpen && (character?.level ?? 1) >= SUBCLASS_CHOICE_LEVEL && Boolean(characterClass),
   })
 
   function openEdit() {
@@ -363,7 +372,7 @@ export default function CharacterHubPage() {
                   onChange={(e) => setDraft((d) => ({ ...d, faith: e.target.value }))}
                 >
                   <option value="">Selecionar…</option>
-                  {FAITH_OPTIONS.map((f) => (
+                  {faithNames.map((f) => (
                     <option key={f} value={f}>
                       {f}
                     </option>
@@ -379,13 +388,27 @@ export default function CharacterHubPage() {
             </div>
             {progression.level >= SUBCLASS_CHOICE_LEVEL ? (
               <label className="block text-xs uppercase text-on-surface-variant">
-                Subclasse
-                <input
-                  className="input-feudal mt-1 pl-4 normal-case"
-                  value={draft.subclass}
-                  onChange={(e) => setDraft((d) => ({ ...d, subclass: e.target.value }))}
-                  placeholder="Escolha liberada a partir do nível 7"
-                />
+                Subclasse{characterClass ? ` · ${characterClass}` : ''}
+                {characterClass && subclassOptions.length > 0 ? (
+                  <select
+                    className="input-feudal mt-1 pl-4 normal-case"
+                    value={draft.subclass}
+                    onChange={(e) => setDraft((d) => ({ ...d, subclass: e.target.value }))}
+                  >
+                    <option value="">Selecionar…</option>
+                    {subclassOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="mt-1 text-sm normal-case text-on-surface">
+                    {characterClass
+                      ? `Nenhuma subclasse importada para ${characterClass}.`
+                      : 'Este personagem não tem classe definida.'}
+                  </p>
+                )}
               </label>
             ) : null}
             <div className="flex justify-end gap-2">

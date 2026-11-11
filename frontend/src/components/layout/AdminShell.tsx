@@ -12,6 +12,7 @@ const adminNavBase = [
   { to: '/admin/sessions', label: 'Sessões' },
   { to: '/admin/shop', label: 'Loja' },
   { to: '/admin/catalog', label: 'Glossário' },
+  { to: '/admin/reference', label: 'Catálogos' },
   { to: '/admin/downloads', label: 'Downloads' },
 ] as const
 

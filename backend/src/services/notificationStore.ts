@@ -14,17 +14,6 @@ export type AppNotification = {
 
 const readByUser = new Map<string, Set<string>>()
 
-const PLATFORM_NOTICES: Omit<AppNotification, 'unread'>[] = [
-  {
-    id: 'system-welcome',
-    kind: 'system',
-    title: 'Bem-vindo à corte',
-    message: 'Confirme presença nas sessões e acompanhe crônicas publicadas pelo narrador.',
-    createdAt: '2026-01-01T12:00:00.000Z',
-    href: '/user/sessions',
-  },
-]
-
 function formatSessionWhen(iso: string) {
   return new Date(iso).toLocaleString('pt-BR', {
     weekday: 'short',
@@ -43,10 +32,6 @@ export function listNotificationsForUser(email: string): AppNotification[] {
   const read = readByUser.get(email) ?? new Set<string>()
   const now = Date.now()
   const items: AppNotification[] = []
-
-  for (const notice of PLATFORM_NOTICES) {
-    items.push({ ...notice, unread: !read.has(notice.id) })
-  }
 
   const sessions = listScheduledSessions()
     .filter((s) => new Date(s.scheduledAt).getTime() >= now - 86_400_000)

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { dbDeleteEntity, dbLoadEntities, dbUpsertEntity } from './entityDb.js'
+import { dbDeleteEntity, dbLoadEntities, dbLoadGrimoireSpells, dbUpsertEntity } from './entityDb.js'
+import { readJsonFile, writeJsonFile } from './localJson.js'
 
 export type EntityKind = 'npc' | 'monster' | 'equipment' | 'consumable' | 'archive' | 'download'
 
@@ -178,18 +179,61 @@ export function replaceAllEntities(rows: ChronicleEntity[]) {
   }
 }
 
+const ENTITY_FILE = 'chronicle-entities.json'
+
+function writeEntityFile() {
+  writeJsonFile(ENTITY_FILE, [...entities.values()])
+}
+
+function sameEntityText(left: string, right: string) {
+  return left.trim().toLowerCase() === right.trim().toLowerCase()
+}
+
+/** Junta o que veio do banco sem apagar nem duplicar o que já está na memória. */
+export async function refreshEntitiesFromDatabase() {
+  const loaded = await dbLoadEntities()
+  const spells = await dbLoadGrimoireSpells()
+  const rows = [...(loaded ?? []), ...spells]
+  if (!rows.length) return
+  let added = 0
+  for (const row of rows) {
+    if (!row.name) continue
+    const same = [...entities.values()].find(
+      (item) => item.kind === row.kind && sameEntityText(item.name, row.name),
+    )
+    if (!same) {
+      entities.set(row.id, row)
+      added += 1
+      continue
+    }
+    if (!sameEntityText(same.description, row.description) && row.description && !same.description) {
+      entities.set(same.id, { ...same, description: row.description, updatedAt: row.updatedAt })
+    }
+  }
+  if (added) writeEntityFile()
+}
+
 export async function hydrateEntitiesFromDatabase() {
   const rows = await dbLoadEntities()
   if (rows && rows.length > 0) {
-    replaceAllEntities(rows)
-    console.log(`[persistência] ${rows.length} entidade(s) carregadas do Supabase`)
-  } else if (rows && rows.length === 0) {
+    await refreshEntitiesFromDatabase()
+    console.log(`[persistência] ${entities.size} entidade(s) após juntar o Supabase`)
+    return
+  }
+  const local = readJsonFile<ChronicleEntity[]>(ENTITY_FILE)
+  if (local?.length) {
+    replaceAllEntities(local)
+    console.log(`[persistência] ${local.length} entidade(s) da cópia local`)
+    return
+  }
+  if (rows && rows.length === 0) {
     console.log('[persistência] Supabase conectado — tabela vazia, usando cadastros novos na API')
   }
 }
 
 function persistEntity(row: ChronicleEntity) {
   void dbUpsertEntity(row)
+  writeEntityFile()
 }
 const handouts = new Map<string, SessionHandout>()
 const scheduledSessions = new Map<string, ScheduledSession>()
@@ -210,11 +254,15 @@ export function getEntity(id: string) {
 }
 
 export function createEntity(
-  input: Omit<ChronicleEntity, 'id' | 'createdAt' | 'updatedAt'> & { visibility?: ChronicleEntity['visibility'] },
+  input: Omit<ChronicleEntity, 'id' | 'createdAt' | 'updatedAt'> & {
+    visibility?: ChronicleEntity['visibility']
+    id?: string
+  },
 ) {
-  const id = randomUUID()
+  const { id: givenId, ...rest } = input
+  const id = givenId ?? randomUUID()
   const row: ChronicleEntity = {
-    ...input,
+    ...rest,
     id,
     visibility: input.visibility ?? 'draft',
     createdAt: now(),
@@ -236,12 +284,15 @@ export function updateEntity(id: string, patch: Partial<Omit<ChronicleEntity, 'i
 
 export function deleteEntity(id: string) {
   const ok = entities.delete(id)
-  if (ok) void dbDeleteEntity(id)
+  if (ok) {
+    void dbDeleteEntity(id)
+    writeEntityFile()
+  }
   return ok
 }
 
 export function listPublishedForArchive(category: ArchiveCategory) {
-  return listEntities({ visibility: 'published' }).filter(
+  return listEntities().filter(
     (e) =>
       e.kind === 'archive' ||
       e.kind === 'equipment' ||
@@ -255,14 +306,14 @@ export function listPublishedForArchive(category: ArchiveCategory) {
 }
 
 export function listPublishedForShop(category: ShopCategory) {
-  return listEntities({ visibility: 'published' }).filter(
+  return listEntities().filter(
     (e) => (e.kind === 'equipment' || e.kind === 'consumable') && e.shopCategory === category,
   )
 }
 
 export function listPublishedForBestiary(tier: BestiaryTier) {
-  return listEntities({ visibility: 'published' }).filter(
-    (e) => e.kind === 'monster' && e.bestiaryTier === tier,
+  return listEntities().filter(
+    (e) => e.kind === 'monster' && (e.bestiaryTier ?? 'known') === tier,
   )
 }
 
@@ -288,14 +339,22 @@ export function getHandout(id: string) {
 }
 
 export function createHandout(
-  input: Omit<SessionHandout, 'id' | 'status' | 'publishedToPlayers' | 'createdAt' | 'closedAt'>,
+  input: Omit<
+    SessionHandout,
+    'id' | 'status' | 'publishedToPlayers' | 'createdAt' | 'closedAt' | 'sceneThreats' | 'sceneNpcs' | 'chronicleAmbience' | 'restMode'
+  > &
+    Partial<Pick<SessionHandout, 'sceneThreats' | 'sceneNpcs' | 'chronicleAmbience' | 'restMode'>>,
 ) {
   const id = randomUUID()
   const row: SessionHandout = {
+    sceneThreats: [],
+    sceneNpcs: [],
+    chronicleAmbience: { ...DEFAULT_CHRONICLE_AMBIENCE },
+    restMode: false,
+    ...input,
     id,
     status: 'pending_close',
     publishedToPlayers: false,
-    ...input,
     createdAt: now(),
   }
   handouts.set(id, row)
@@ -485,6 +544,12 @@ export function listScheduledSessions() {
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
 }
 
+export function findScheduledSessionByAccessCode(code: string) {
+  const key = code.trim().toUpperCase()
+  if (!key) return null
+  return listScheduledSessions().find((s) => s.accessCode.toUpperCase() === key) ?? null
+}
+
 function generateAccessCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = ''
@@ -566,7 +631,6 @@ export function deleteScheduledSession(sessionId: string, narratorEmail: string)
   if (session.narratorEmail && session.narratorEmail !== narratorEmail) {
     return { ok: false as const, reason: 'forbidden' as const }
   }
-  if (!access.ok) return access
   if (session.status === 'open') return { ok: false as const, reason: 'open' as const }
   const handout = findHandoutByScheduledSession(sessionId)
   if (handout) handouts.delete(handout.id)

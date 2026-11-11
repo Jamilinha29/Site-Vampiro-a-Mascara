@@ -9,7 +9,10 @@ import {
   replaceSessionCharacter,
   getScheduledSession,
 } from '../services/chronicleStore.js'
+import { storeProfileImage } from '../services/mediaStorage.js'
+import { classFromHouse, listSubclassesForClass } from '../services/subclassCatalog.js'
 import {
+  SUBCLASS_CHOICE_LEVEL,
   ensureProfile,
   getCharacterBalanceStats,
   updateProfileMedia,
@@ -17,6 +20,7 @@ import {
   updateProfileDisplayName,
   upsertCharacter,
   patchCharacter,
+  getCharacter,
   STARTING_CHARACTER_XP,
   xpRequiredToAdvance,
 } from '../services/profileStore.js'
@@ -36,10 +40,13 @@ const mediaSchema = z.object({
   bannerUrl: z.string().url().or(z.string().startsWith('data:image/')).nullable().optional(),
 })
 
-meRouter.patch('/profile', (req, res, next) => {
+meRouter.patch('/profile', async (req, res, next) => {
   try {
     const body = mediaSchema.parse(req.body)
-    const updated = updateProfileMedia(req.user!.email, body)
+    const email = req.user!.email
+    const avatarUrl = await storeProfileImage(email, 'avatar', body.avatarUrl)
+    const bannerUrl = await storeProfileImage(email, 'banner', body.bannerUrl)
+    const updated = updateProfileMedia(email, { ...body, avatarUrl, bannerUrl })
     if (!updated) {
       res.status(404).json({ error: { message: 'Perfil não encontrado' } })
       return
@@ -116,6 +123,7 @@ const createCharacterSchema = z.object({
     })
     .optional(),
   balanceStats: z.record(z.string(), z.number()).optional(),
+  characterClass: z.string().min(1).max(80).nullable().optional(),
 })
 
 meRouter.post('/characters', (req, res, next) => {
@@ -134,6 +142,7 @@ meRouter.post('/characters', (req, res, next) => {
       will: body.will,
       xp: { current: startingXp, toNext: xpRequiredToAdvance(body.level) },
       subclass: null,
+      characterClass: body.characterClass ?? null,
       balanceStats: body.balanceStats ?? null,
       vitals: {
         hpDie: body.vitals?.hpDie ?? null,
@@ -168,6 +177,7 @@ const patchCharacterSchema = z.object({
   mana: poolSchema.optional(),
   will: poolSchema.optional(),
   subclass: z.string().min(1).max(120).nullable().optional(),
+  characterClass: z.string().min(1).max(80).nullable().optional(),
   identityPatch: z
     .object({
       house: z.string().max(120).nullable().optional(),
@@ -210,9 +220,32 @@ const patchCharacterSchema = z.object({
   balanceStats: z.record(z.string(), z.number()).nullable().optional(),
 })
 
-meRouter.patch('/characters/:characterId', (req, res, next) => {
+meRouter.patch('/characters/:characterId', async (req, res, next) => {
   try {
     const body = patchCharacterSchema.parse(req.body)
+    if (body.subclass) {
+      const current = getCharacter(req.user!.email, req.params.characterId)
+      if (!current) {
+        res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+        return
+      }
+      if (current.level < SUBCLASS_CHOICE_LEVEL) {
+        res.status(403).json({ error: { message: 'A subclasse só pode ser escolhida a partir do nível 7.' } })
+        return
+      }
+      const className = body.characterClass ?? current.characterClass ?? classFromHouse(current.identity?.house)
+      if (!className) {
+        res.status(400).json({ error: { message: 'Este personagem não tem classe para filtrar as subclasses.' } })
+        return
+      }
+      const options = await listSubclassesForClass(className)
+      if (!options.includes(body.subclass)) {
+        res.status(400).json({
+          error: { message: `Subclasse indisponível para a classe ${className}.` },
+        })
+        return
+      }
+    }
     const updated = patchCharacter(req.user!.email, req.params.characterId, body)
     if (!updated) {
       res.status(body.showOnHome ? 409 : 404).json({
@@ -275,8 +308,8 @@ meRouter.get('/dashboard', (req, res) => {
       showOnHome: c.showOnHome,
       hp: c.hp,
       blood: c.blood,
-      will: { current: 0, max: 8 },
-      xp: { current: 0, max: 1000 },
+      will: c.will ?? { current: 0, max: 0 },
+      xp: { current: c.xp?.current ?? 0, max: c.xp?.toNext ?? 0 },
     })),
   })
 })

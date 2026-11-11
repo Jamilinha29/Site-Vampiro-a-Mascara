@@ -103,6 +103,7 @@ export type ProfileCharacterSummary = {
   will?: { current: number; max: number }
   xp?: { current: number; toNext: number }
   subclass?: string | null
+  characterClass?: string | null
   identity?: CharacterIdentity
   inventory?: CharacterInventoryItem[]
   createdSkills?: CreatedSkill[]

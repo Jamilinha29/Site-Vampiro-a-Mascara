@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
 import {
+  refreshEntitiesFromDatabase,
   listPublishedDownloads,
   listPublishedForArchive,
   listPublishedForBestiary,
@@ -17,6 +18,9 @@ import {
 
 export const contentRouter = Router()
 contentRouter.use(requireUser)
+contentRouter.use((req, res, next) => {
+  void refreshEntitiesFromDatabase().then(() => next()).catch(() => next())
+})
 
 contentRouter.get('/archive', (req, res, next) => {
   try {
