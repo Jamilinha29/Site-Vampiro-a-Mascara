@@ -6,6 +6,17 @@ import { ensureProfile, getProfile } from './profileStore.js'
 export function isSupabaseAuthConfigured() {
   const url = process.env.SUPABASE_URL?.trim()
   const anon = process.env.SUPABASE_ANON_KEY?.trim()
+  if (url && !anon) {
+    console.warn(
+      '[auth] SUPABASE_URL definido mas falta SUPABASE_ANON_KEY (chave pública). Login usa modo dev até corrigir o .env.',
+    )
+    return false
+  }
+  if (anon?.startsWith('sb_secret_')) {
+    console.warn(
+      '[auth] SUPABASE_ANON_KEY parece ser secret/service (sb_secret_). Use a chave pública (anon/publishable) no painel Supabase → API Keys.',
+    )
+  }
   return Boolean(url && anon)
 }
 

@@ -1,4 +1,14 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+/** Em produção na Vercel, API no mesmo host (`/api/...`). Localhost no bundle = Failed to fetch. */
+function resolveApiBase(): string {
+  const raw = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/$/, '')
+  if (!raw) return ''
+  if (import.meta.env.PROD && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(raw)) {
+    return ''
+  }
+  return raw
+}
+
+const API_BASE = resolveApiBase()
 
 export type ReferenceEntry = {
   id: string

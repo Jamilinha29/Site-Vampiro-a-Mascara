@@ -1,3 +1,4 @@
+import './services/supabaseClient.js'
 import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'

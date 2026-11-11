@@ -95,7 +95,8 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
       <Ambient />
       <AuthHeader />
       <main className="auth-portal-main">
-        <div className="relative w-full max-w-5xl shrink-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
+        <div className="auth-portal-fit">
+        <div className="auth-portal-card relative shrink-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
           <div className="grid w-full grid-cols-1 lg:grid-cols-2 lg:items-stretch">
             <LoginColumn
               mode={mode}
@@ -114,11 +115,12 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
           </div>
 
           <div
-            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-between overflow-hidden border-outline-variant/40 bg-surface-container p-4 shadow-2xl md:p-5 lg:flex"
+            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-center gap-3 overflow-hidden border-outline-variant/40 bg-surface-container p-4 shadow-2xl md:gap-4 md:p-5 lg:flex"
             style={{ transform: sliderTransform, borderRight: mode === 'register' ? '1px solid rgba(89,65,65,0.4)' : undefined, borderLeft: mode === 'login' ? '1px solid rgba(89,65,65,0.4)' : undefined }}
           >
             <SliderPanel mode={mode} />
           </div>
+        </div>
         </div>
       </main>
       <AuthFooter />
@@ -196,7 +198,7 @@ function AuthFooter() {
 
 function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
-    <div className="mb-2 flex justify-center">
+    <div className="auth-portal-tabs mb-2 flex justify-center">
       <div className="inline-flex w-full items-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container-lowest/90 p-1 shadow-inner">
         <button
           type="button"
@@ -252,7 +254,7 @@ function LoginColumn({
   if (mode !== 'login') return null
 
   return (
-    <div className="flex flex-col p-3 sm:p-4 lg:col-start-1">
+    <div className="auth-portal-column flex flex-col p-4 sm:p-5 lg:col-start-1">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
         <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
@@ -269,7 +271,7 @@ function LoginColumn({
           </div>
         </div>
         <form
-          className="space-y-2.5 [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
+          className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
           onSubmit={(e) => {
             e.preventDefault()
             onSubmit(email, password)
@@ -553,7 +555,7 @@ function RegisterColumn({
   if (mode !== 'register') return null
 
   return (
-    <div className="flex flex-col p-3 sm:p-4 lg:col-start-2">
+    <div className="auth-portal-column flex flex-col p-4 sm:p-5 lg:col-start-2">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
         <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
@@ -570,7 +572,7 @@ function RegisterColumn({
           </div>
         </div>
         <form
-          className="space-y-2.5 [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
+          className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
           onSubmit={(e) => {
             e.preventDefault()
             onSubmit({
@@ -668,7 +670,7 @@ function SliderPanel({ mode }: { mode: Mode }) {
         </span>
         <span className="text-outline">Beladona</span>
       </div>
-      <div className="relative z-10 my-auto flex w-full flex-col items-center py-1">
+      <div className="relative z-10 flex w-full flex-col items-center py-1">
         <Link
           to="/"
           className="relative flex aspect-square w-full max-w-[9rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary sm:max-w-[10rem] md:max-w-[11rem]"
