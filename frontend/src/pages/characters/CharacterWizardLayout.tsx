@@ -68,7 +68,7 @@ export function CharacterWizardLayout({ children }: { title?: string; children: 
   const { push } = useToast()
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <header className="flex flex-col gap-3 border-b border-outline-variant/30 pb-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="flex items-center gap-2 font-label-sm text-[10px] tracking-[0.18em] text-secondary uppercase">

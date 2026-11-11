@@ -7,16 +7,16 @@ export default function HomePage() {
   const newsQuery = useQuery({ queryKey: ['news'], queryFn: () => api.getNews() })
 
   return (
-    <div className="min-h-screen bg-surface-container-lowest text-on-surface">
-      <header className="sticky top-0 z-50 border-b border-outline-variant/40 bg-surface-container-lowest/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-8">
-          <Link to="/" className="flex items-center gap-3">
-            <BrandLogo size="sm" withGlow />
-            <div>
-              <p className="font-serif text-sm font-bold tracking-wider text-secondary uppercase">
+    <div className="min-h-svh min-h-dvh w-full min-w-0 bg-surface-container-lowest text-on-surface">
+      <header className="safe-pt sticky top-0 z-50 border-b border-outline-variant/40 bg-surface-container-lowest/95 backdrop-blur-md">
+        <div className="safe-px mx-auto flex max-w-7xl min-w-0 items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-8 sm:py-3.5">
+          <Link to="/" className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <BrandLogo size="sm" withGlow className="shrink-0" />
+            <div className="min-w-0">
+              <p className="truncate font-serif text-xs font-bold tracking-wider text-secondary uppercase sm:text-sm">
                 Vampiro: A Idade das Trevas
               </p>
-              <p className="text-[10px] font-semibold tracking-[0.14em] text-on-surface-variant uppercase">
+              <p className="truncate text-[9px] font-semibold tracking-[0.14em] text-on-surface-variant uppercase sm:text-[10px]">
                 As Crônicas de Beladona
               </p>
             </div>
@@ -39,7 +39,7 @@ export default function HomePage() {
       <section className="relative overflow-hidden border-b border-outline-variant/30 px-4 py-12 text-center md:py-16">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(158,27,45,0.28),rgba(14,14,19,0.95)_75%,#0e0e13_100%)]" />
         <div className="relative mx-auto max-w-3xl">
-          <h1 className="font-serif text-4xl font-bold tracking-tight md:text-6xl">
+          <h1 className="font-serif text-3xl font-bold tracking-tight sm:text-4xl md:text-6xl">
             <span className="block text-on-surface">Entre nas Trevas.</span>
             <span className="mt-1 block font-normal text-primary italic">Escreva sua Lenda.</span>
           </h1>
@@ -106,7 +106,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-outline-variant/40 px-4 py-6 text-center text-xs text-on-surface-variant">
+      <footer className="safe-px safe-pb border-t border-outline-variant/40 px-4 py-6 text-center text-xs text-on-surface-variant">
         <p>As Crônicas de Beladona — Sanguis &amp; Shadow Engine</p>
         <div className="mt-3 flex flex-wrap justify-center gap-4">
           <Link to="/auth/login" className="hover:text-secondary">

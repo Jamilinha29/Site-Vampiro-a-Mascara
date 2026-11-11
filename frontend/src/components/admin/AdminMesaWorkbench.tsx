@@ -167,7 +167,7 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
   }
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="min-w-0 space-y-4 pb-8">
       <header className="mesa-panel overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4 sm:px-6">
           <div>
@@ -251,7 +251,7 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
         </div>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <MetricCard label="Participantes" value={String(handout.participants.length || '—')} hint="Na mesa" />
         <MetricCard label="Personagens" value={String(handout.participants.length || '—')} hint="Registro do ato" />
         <MetricCard label="Sessão" value={`Sala ${String(actNumber).padStart(2, '0')}`} hint={live ? 'Em andamento' : 'Encerrada'} />

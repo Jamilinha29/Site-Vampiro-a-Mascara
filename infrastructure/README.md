@@ -1,26 +1,55 @@
-# Infraestrutura como código (IaC) — o que é neste projeto
+# Infraestrutura — Beladona VTT
 
-**IaC** significa descrever servidores, banco e rede em arquivos versionados no Git, em vez de clicar manualmente no painel.
+Recursos versionados no Git que descrevem **como** o app sobe em produção ou em Docker local. Não substituem criar o projeto Supabase no painel.
 
-Neste repositório isso aparece assim:
+## Mapa rápido
 
-| Recurso | Arquivo | Como aplicar |
-|---------|---------|----------------|
-| Banco Supabase | `supabase/migrations/*.sql` e `database/migrations/*.sql` | SQL Editor do Supabase ou CLI `supabase db push` |
-| Site (SPA) | `frontend/vercel.json`, `vercel.json` | Deploy automático na Vercel ao enviar o `main` |
-| API Node | `api/index.ts` + `vercel.json` **ou** `infrastructure/render.yaml` | Vercel (mesmo projeto do site) ou Render/Docker |
-| Containers locais / produção | `compose.yaml`, `compose.prod.yaml`, `docker/*` | `npm run docker:dev` ou `npm run docker:prod` |
+| Recurso | Arquivo(s) | Quem provisiona |
+|---------|------------|-----------------|
+| Schema Postgres + RLS | `supabase/migrations/*.sql` | Supabase (`db push` / workflow CI) |
+| SPA + API serverless (opção A) | `vercel.json`, `api/index.ts` | Vercel (root = **raiz do monorepo**) |
+| API Docker 24/7 (opção B) | `infrastructure/render.yaml`, `docker/Dockerfile.backend.prod` | Render Web Service `beladona-api` |
+| Stack local | `compose.yaml`, `compose.prod.yaml`, `docker/*` | `npm run docker:dev` / `docker:prod` |
+| CI testes + imagem API | `.github/workflows/ci.yml`, `cd.yml` | GitHub Actions (não publica na internet) |
+| Migrações automáticas | `.github/workflows/supabase-migrate.yml` | Secrets `SUPABASE_*` no GitHub |
+| Monitor uptime | `.github/workflows/monitor.yml` | Secrets `HEALTH_URL`, `SITE_URL` |
 
-Migrações automáticas: workflow `.github/workflows/supabase-migrate.yml` (secrets no GitHub).
+Guia operacional completo: [`docs/DEPLOY.md`](../docs/DEPLOY.md).
 
-Onde a API roda (Vercel vs Render vs Docker): seção **“Onde roda cada peça”** em [`docs/DEPLOY.md`](../docs/DEPLOY.md).
+## Opção A — Vercel (recomendada)
 
-O Supabase **não** é criado por estes arquivos: você cria o projeto no painel e liga o CLI/CI. O **schema** (tabelas, RLS, buckets) está versionado.
+1. Conectar repo na Vercel com **Root Directory = raiz** (onde estão `vercel.json` e `api/`).
+2. Build: `npm run build` · Output: `frontend/dist`.
+3. Environment: `SUPABASE_*`, `CORS_ORIGIN`, `ALLOW_DEV_AUTH=false`, `RESEND_*` (opcional).
+4. `VITE_API_URL` **vazio** em Production.
 
-## Ordem sugerida para um ambiente novo
+## Opção B — Vercel (SPA) + Render (API)
 
-1. Criar projeto Supabase e preencher `.env` (sem commitar).
-2. Executar migrações na ordem `002` → `003` → `004` → `005`.
-3. Conectar o repositório na Vercel (Root Directory: `frontend`, ou raiz com `outputDirectory` em `frontend/dist`).
-4. Publicar a API com `infrastructure/render.yaml` ou `docker/Dockerfile.backend.prod`.
-5. Definir `VITE_API_URL` na Vercel apontando para a URL pública da API.
+1. **Render:** Blueprint → `infrastructure/render.yaml` → serviço `beladona-api`.
+2. **Environment no Render:** `SUPABASE_*`, `CORS_ORIGIN=https://seu-app.vercel.app`, `RUN_STANDALONE=true`, `ALLOW_DEV_AUTH=false`, `RESEND_*` (opcional).
+3. **Vercel:** só `VITE_API_URL=https://sua-api.onrender.com` (tipo **Config**, sem Sensitive).
+4. **GitHub monitor:** `HEALTH_URL=https://sua-api.onrender.com/health`, `SITE_URL=https://seu-app.vercel.app/`.
+
+Render **não** publica o site nem o Postgres — só o processo Node.
+
+## Supabase
+
+- Criar projeto em [supabase.com/dashboard](https://supabase.com/dashboard).
+- Fonte oficial de migrações: **`supabase/migrations/`** (workflow `supabase db push`).
+## Docker local
+
+```bash
+npm run docker:dev    # compose.yaml — API :4000, Vite :5173
+npm run docker:prod   # compose.prod.yaml — nginx :8080, API :4000
+npm run docker:test   # compose.test.yaml — suíte Vitest
+```
+
+Variáveis: `.env` na raiz ou `env_file` nos compose.
+
+## Ordem sugerida (ambiente novo)
+
+1. Supabase + migrações + URLs de Auth.
+2. GitHub Secrets (migrate, keepalive, monitor).
+3. Vercel (opção A ou B).
+4. Render somente se opção B.
+5. Resend quando precisar de e-mail transacional da API.

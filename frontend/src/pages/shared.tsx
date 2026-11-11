@@ -11,7 +11,7 @@ export function AppSectionPage({
   children?: ReactNode
 }) {
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">{description}</p>
@@ -27,7 +27,7 @@ export function AppSectionPage({
 
 export function ErrorPage({ code, title, message }: { code: string; title: string; message: string }) {
   return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center px-4 py-6 text-center">
+    <div className="safe-px flex min-h-[50dvh] w-full min-w-0 flex-col items-center justify-center px-4 py-6 text-center">
       <p className="font-numeric-stat text-5xl text-primary-container">{code}</p>
       <h1 className="mt-2 font-headline-md text-xl">{title}</h1>
       <p className="mt-2 max-w-md text-sm text-on-surface-variant">{message}</p>

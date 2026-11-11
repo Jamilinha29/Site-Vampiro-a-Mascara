@@ -43,9 +43,9 @@ export function AdminShell() {
     : [...adminNavBase]
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="app-shell bg-background">
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl min-w-0 items-center justify-between gap-2 px-4 py-2.5 sm:gap-4 sm:px-6 lg:gap-5">
+        <div className="app-shell-header-bar">
           <div className="flex min-w-0 flex-1 items-center gap-5 lg:gap-6">
             <Link to="/admin" className="shrink-0 focus:outline-none">
               <BrandLogo size="xs" className="h-9 w-9" />
@@ -65,10 +65,7 @@ export function AdminShell() {
           </div>
         </div>
 
-        <nav
-          className="flex items-center gap-4 overflow-x-auto border-t border-outline-variant/30 px-4 py-2 lg:hidden"
-          aria-label="Navegação do mestre"
-        >
+        <nav className="app-shell-nav-mobile" aria-label="Navegação do mestre">
           {adminNav.map((item) => (
             <NavLink key={item.to} to={item.to} end={'end' in item ? item.end : false} className={adminNavClass}>
               {item.label}
@@ -77,9 +74,7 @@ export function AdminShell() {
         </nav>
       </header>
 
-      <main
-        className={`mx-auto w-full min-h-0 flex-1 px-4 py-4 lg:px-6 lg:py-5 ${isMesaRoute ? 'max-w-[1600px]' : 'max-w-7xl'}`}
-      >
+      <main className={`app-shell-main ${isMesaRoute ? 'app-shell-main--wide' : 'max-w-7xl'}`}>
         <Outlet />
       </main>
     </div>

@@ -190,14 +190,7 @@ npm run dev:all
 
 ## 2) Migrações — aplicar schema no Supabase
 
-Há **duas pastas** no repo:
-
-| Pasta | Quem usa |
-|-------|----------|
-| `supabase/migrations/` | CLI `supabase db push` e workflow **Supabase migrate** (fonte oficial) |
-| `database/migrations/` | Legado / referência (`000`–`005`); **não** é aplicada automaticamente pelo CLI |
-
-O workflow só executa `supabase db push` — ou seja, apenas arquivos em `supabase/migrations/`. Se você só rodou SQL de `database/migrations/` no passado, confira que o schema remoto bate com o de `supabase/migrations/` antes de confiar no CI.
+Fonte oficial de schema: **`supabase/migrations/`** — aplicada com `supabase db push` e pelo workflow **Supabase migrate** no push ao `main`.
 
 ### 2.A) Manual no painel (primeira vez ou emergência)
 
@@ -273,7 +266,7 @@ Revise o SQL novo em `supabase/migrations/`, commite e volte ao fluxo **db push*
 1. **Add New…** → **Project** → importe o repo do GitHub.
 2. **Root Directory:** deixe a **raiz do monorepo** (onde estão `vercel.json`, `api/` e `frontend/`).
 
-   > **Armadilha:** se você apontar Root só para `frontend/`, a Vercel usa `frontend/vercel.json` (sem `api/`). Resultado: site sobe, **API e `/health` não existem**. Para API serverless, a raiz **precisa** ser o monorepo.
+   > **Armadilha:** se você apontar Root só para `frontend/`, a Vercel **não** enxerga `vercel.json` nem `api/` na raiz. Resultado: site sobe, **API e `/health` não existem**. Para API serverless, a raiz **precisa** ser o monorepo.
 
 3. Framework deve detectar **Vite**; confira:
    - Build: `npm run build`
@@ -575,8 +568,6 @@ Variáveis vêm do `.env` na raiz ou do `compose` — mesmas chaves `SUPABASE_*`
 - **JWT:** o front guarda o `accessToken` no `localStorage` (`beladona-auth`); não há refresh automático — sessão expira conforme Supabase (religar conta).
 - **Mesa / personagens / sessões:** grande parte ainda é **memória** na instância da API; restart (deploy, cold start) pode zerar estado até persistir tudo no Postgres.
 - **Dev auth:** tokens `dev-*` só com `ALLOW_DEV_AUTH=true` ou sem chaves Supabase — **proibido em produção**.
-- **`database/migrations/`:** documentação legada; deploy oficial = `supabase/migrations/`.
-
 ---
 
 ## 13) Checklist final (ordem sugerida)
@@ -601,7 +592,6 @@ Variáveis vêm do `.env` na raiz ou do `compose` — mesmas chaves `SUPABASE_*`
 | `vercel.json` | Build SPA + rewrites `/api` e `/health` → `api/` |
 | `frontend/src/services/api.ts` | `VITE_API_URL` + chamadas `/api/v1/...` |
 | `frontend/vite.config.ts` | Proxy `/api` → `:4000` só em **dev** |
-| `frontend/vercel.json` | Config antiga só-front; ignorar se Root = raiz |
 | `infrastructure/render.yaml` | Blueprint API Docker (`RUN_STANDALONE=true`) |
 | `docker/Dockerfile.backend.prod` | API produção Render/Docker (`npm run start -w backend`) |
 | `compose.yaml` / `compose.prod.yaml` | API + front em Docker local |
@@ -611,6 +601,6 @@ Variáveis vêm do `.env` na raiz ou do `compose` — mesmas chaves `SUPABASE_*`
 | `.github/workflows/monitor.yml` | Health + site |
 | `.github/workflows/ci.yml` | Lint, build, testes, Docker test |
 | `.github/workflows/cd.yml` | Build + imagem API (sanity) |
-| `database/migrations/` | SQL legado (não usado pelo `db push`) |
+| `supabase/migrations/` | SQL versionado (Postgres) |
 | `compose.prod.yaml`, `docker/*` | Docker produção |
 | `.env.example` | Modelo local |

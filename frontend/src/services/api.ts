@@ -94,11 +94,39 @@ export const api = {
       '/api/v1/auth/login',
       { method: 'POST', body: JSON.stringify({ email, password }) },
     ),
-  register: (payload: Record<string, unknown>) =>
-    request<{ accessToken: string; userId: string; email: string; displayName: string; role: string }>(
-      '/api/v1/auth/register',
-      { method: 'POST', body: JSON.stringify(payload) },
-    ),
+  register: async (payload: Record<string, unknown>) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    const token = localStorage.getItem('beladona-auth')
+    if (token) {
+      try {
+        const parsed = JSON.parse(token) as { state?: { session?: { accessToken?: string } } }
+        const access = parsed.state?.session?.accessToken
+        if (access) headers.set('Authorization', `Bearer ${access}`)
+      } catch {
+        /* ignore */
+      }
+    }
+    const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    })
+    const body = (await res.json().catch(() => ({}))) as {
+      accessToken?: string
+      userId?: string
+      email?: string
+      displayName?: string
+      role?: string
+      error?: { message?: string }
+    }
+    if (res.status === 202 || (body.error && !body.accessToken)) {
+      throw new Error(body.error?.message ?? 'Não foi possível concluir o cadastro.')
+    }
+    if (!res.ok) {
+      throw new Error(body.error?.message ?? res.statusText)
+    }
+    return body as { accessToken: string; userId: string; email: string; displayName: string; role: string }
+  },
   getMeDashboard: () => request<DashboardPayload>('/api/v1/me/dashboard'),
   getMeProfile: () => request<import('../types/profile').UserProfile>('/api/v1/me/profile'),
   patchMeProfile: (body: { avatarUrl?: string | null; bannerUrl?: string | null }) =>

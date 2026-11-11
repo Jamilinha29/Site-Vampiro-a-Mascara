@@ -1,32 +1,52 @@
-# React + TypeScript + Vite
+# Frontend — As Crônicas de Beladona
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+SPA **React 19 + Vite 8 + TypeScript + Tailwind CSS v4** do monorepo Beladona VTT.
 
-Currently, two official plugins are available:
+## Scripts (na raiz ou neste workspace)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Comando | Onde | Efeito |
+|---------|------|--------|
+| `npm run dev` | raiz | Vite em http://localhost:5173 |
+| `npm run build` | raiz | `tsc -b` + `vite build` → `frontend/dist` |
+| `npm run lint` | raiz | Oxlint |
+| `npm run dev` | `frontend/` | Mesmo dev server |
 
-## React Compiler
+Em dev, `/api` é proxied para `http://localhost:4000` (`vite.config.ts`). Em produção, `VITE_API_URL` define a origem da API (vazio = mesma origem na Vercel).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Estrutura de `src/`
 
-## Expanding the Oxlint configuration
+| Pasta | Conteúdo |
+|-------|----------|
+| `app/` | `router.tsx`, guards jogador/mestre |
+| `components/layout/` | `PlayerShell`, `AdminShell`, `ViewportPageShell` (`app-shell-*`) |
+| `features/auth/` | Portal login/cadastro (`AuthPortalPage`) |
+| `pages/` | `public/`, `user/`, `admin/`, wizard de personagem |
+| `services/api.ts` | Cliente HTTP (`VITE_API_URL` + JWT no `localStorage`) |
+| `stores/` | Zustand (auth, wizard) |
+| `index.css` | Tokens `@theme`, utilitários (`safe-*`, `app-shell-*`, `auth-portal-*`) |
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Layout responsivo
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+- **Shells** (`PlayerShell`, `AdminShell`): classe `app-shell`; navegação desktop em `lg+`; nav mobile com scroll horizontal.
+- **Auth**: `auth-portal-shell` / `auth-portal-main`; modal de login ADM abaixo de `lg`.
+- **Home**: header sticky com safe-area; grids `sm:` / `md:`.
+- **Viewport**: `index.html` usa `viewport-fit=cover` para safe-area em iOS.
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Breakpoints seguem o padrão Tailwind (base &lt; 640px, `sm` 640, `md` 768, `lg` 1024, `xl` 1280).
+
+## Variáveis de build
+
+Definidas na raiz do monorepo (`.env` local ou Vercel):
+
+| Variável | Uso |
+|----------|-----|
+| `VITE_API_URL` | Base das chamadas `fetch` (vazio = `/api/v1/...` no mesmo host) |
+| `VITE_SUPABASE_*` | Opcional hoje; front fala com a API |
+
+`VITE_*` são **públicas** (entram no bundle). Não coloque segredos com prefixo `VITE_`.
+
+## Deploy
+
+Build de produção é acionado pelo projeto Vercel na **raiz do monorepo** (`vercel.json`: `outputDirectory: frontend/dist`). Não use Root Directory só `frontend/` — a API serverless fica em `api/` na raiz.
+
+Ver [`docs/DEPLOY.md`](../docs/DEPLOY.md) e [`../README.md`](../README.md).

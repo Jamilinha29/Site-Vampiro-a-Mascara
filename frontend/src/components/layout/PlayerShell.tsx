@@ -13,9 +13,9 @@ const playerNavClass = ({ isActive }: { isActive: boolean }) =>
 
 export function PlayerShell() {
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="app-shell bg-background">
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl min-w-0 items-center justify-between gap-2 px-4 py-2.5 sm:gap-4 sm:px-6 lg:gap-5">
+        <div className="app-shell-header-bar">
           <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
             <Link to="/user" className="shrink-0 focus:outline-none">
               <BrandLogo size="xs" className="h-9 w-9" />
@@ -49,7 +49,7 @@ export function PlayerShell() {
           </div>
         </div>
 
-        <nav className="flex items-center gap-4 overflow-x-auto border-t border-outline-variant/30 px-4 py-2 lg:hidden">
+        <nav className="app-shell-nav-mobile" aria-label="Navegação do jogador">
           <NavLink to="/user" end className={playerNavClass}>
             Início
           </NavLink>
@@ -71,7 +71,7 @@ export function PlayerShell() {
         </nav>
       </header>
 
-      <main className="mx-auto w-full min-h-0 max-w-7xl flex-1 px-4 py-4 lg:px-6 lg:py-5">
+      <main className="app-shell-main max-w-7xl">
         <Outlet />
       </main>
     </div>

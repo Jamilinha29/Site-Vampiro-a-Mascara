@@ -37,7 +37,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
       const dest = data.role === 'narrator' || data.role === 'admin' ? '/admin' : '/user'
       navigate(dest)
     },
-    onError: () => push('Selo ou correio feudal recusados.', 'error'),
+    onError: (err: Error) => push(err.message || 'Selo ou correio feudal recusados.', 'error'),
   })
 
   const adminLoginMutation = useMutation({
@@ -73,20 +73,28 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
         role: data.role as AuthSession['role'],
       }
       setSession(session)
-      push('Linhagem registrada. Verifique o corvo mensageiro.', 'success')
+      push('Linhagem registrada. Boa caçada.', 'success')
       const dest = data.role === 'narrator' || data.role === 'admin' ? '/admin' : '/user'
       navigate(dest)
     },
-    onError: () => push('Não foi possível forjar a linhagem.', 'error'),
+    onError: (err: Error) => {
+      const msg = err.message || 'Não foi possível forjar a linhagem.'
+      if (/confirme o e-mail/i.test(msg)) {
+        push(msg, 'info')
+        setMode('login')
+        return
+      }
+      push(msg, 'error')
+    },
   })
 
   const sliderTransform = mode === 'login' ? 'translateX(0%)' : 'translateX(-100%)'
 
   return (
-    <div className="relative flex h-svh max-h-svh flex-col overflow-hidden bg-surface-container-lowest text-on-surface selection:bg-primary-container selection:text-white">
+    <div className="auth-portal auth-portal-shell auth-portal-compact relative flex w-full min-w-0 flex-col overflow-hidden bg-surface-container-lowest text-on-surface selection:bg-primary-container selection:text-white">
       <Ambient />
       <AuthHeader />
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-3 md:py-4">
+      <main className="auth-portal-main">
         <div className="relative w-full max-w-5xl shrink-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
           <div className="grid w-full grid-cols-1 lg:grid-cols-2 lg:items-stretch">
             <LoginColumn
@@ -134,21 +142,28 @@ function Ambient() {
 function AuthHeader() {
   return (
     <>
-      <header className="relative z-20 flex w-full shrink-0 items-center justify-between border-b border-outline-variant/40 bg-surface-container-lowest/85 px-4 py-2 shadow-md backdrop-blur-md sm:px-6">
-        <Link to="/" className="flex items-center gap-3.5 rounded-sm transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary">
-          <BrandLogo size="xs" withGlow />
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-2.5">
-            <span className="font-label-md text-xs font-bold tracking-widest uppercase">Vampiro: A Idade das Trevas</span>
+      <header className="safe-px safe-pt relative z-20 flex w-full min-w-0 shrink-0 items-center justify-between gap-2 border-b border-outline-variant/40 bg-surface-container-lowest/85 py-1.5 shadow-md backdrop-blur-md sm:py-2">
+        <Link
+          to="/"
+          className="flex min-w-0 items-center gap-2.5 rounded-sm transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary sm:gap-3.5"
+        >
+          <BrandLogo size="xs" withGlow className="shrink-0" />
+          <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2.5">
+            <span className="truncate font-label-md text-[10px] font-bold tracking-widest uppercase sm:text-xs">
+              Vampiro: A Idade das Trevas
+            </span>
             <span className="hidden text-xs text-outline-variant sm:inline">•</span>
-            <span className="font-serif text-xs tracking-wider text-secondary italic">As Crônicas de Beladona</span>
+            <span className="truncate font-serif text-[10px] tracking-wider text-secondary italic sm:text-xs">
+              As Crônicas de Beladona
+            </span>
           </div>
         </Link>
         <Link
           to="/ajuda/codice"
-          className="group flex items-center gap-1.5 rounded border border-outline-variant/40 bg-surface-container-low px-3 py-1.5 text-xs text-secondary shadow-sm transition hover:border-secondary/50 hover:text-white"
+          className="group flex shrink-0 items-center gap-1 rounded border border-outline-variant/40 bg-surface-container-low px-2 py-1.5 text-xs text-secondary shadow-sm transition hover:border-secondary/50 hover:text-white sm:gap-1.5 sm:px-3"
         >
           <span className="material-symbols-outlined text-sm text-secondary group-hover:text-primary">help_outline</span>
-          <span className="font-medium">Códice de Acesso</span>
+          <span className="hidden font-medium sm:inline">Códice de Acesso</span>
         </Link>
       </header>
       <div className="relative z-10 h-px w-full bg-gradient-to-r from-transparent via-outline-variant/60 to-transparent" />
@@ -158,13 +173,13 @@ function AuthHeader() {
 
 function AuthFooter() {
   return (
-    <footer className="relative z-10 shrink-0 border-t border-outline-variant/40 bg-surface-container-lowest/90 px-4 py-2.5 backdrop-blur sm:px-6">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 text-center md:flex-row md:text-left">
-        <p className="flex items-center gap-2 text-xs text-on-surface-variant">
+    <footer className="safe-px safe-pb relative z-10 shrink-0 border-t border-outline-variant/40 bg-surface-container-lowest/90 py-1.5 backdrop-blur sm:py-2">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-1 text-center md:flex-row md:gap-2 md:text-left">
+        <p className="flex items-center gap-2 text-[10px] text-on-surface-variant sm:text-xs">
           <span className="material-symbols-outlined text-sm text-primary">military_tech</span>
           © Vampiro: A Idade das Trevas — As Crônicas de Beladona
         </p>
-        <nav className="flex flex-wrap items-center justify-center gap-5 text-xs text-on-surface-variant">
+        <nav className="hidden flex-wrap items-center justify-center gap-5 text-xs text-on-surface-variant sm:flex">
           <Link to="/ajuda/codice" className="flex items-center gap-1 hover:text-primary">
             <span className="material-symbols-outlined text-xs">menu_book</span>
             Códice da Máscara
@@ -181,7 +196,7 @@ function AuthFooter() {
 
 function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
-    <div className="mb-3 flex justify-center">
+    <div className="mb-2 flex justify-center">
       <div className="inline-flex w-full items-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container-lowest/90 p-1 shadow-inner">
         <button
           type="button"
@@ -237,17 +252,17 @@ function LoginColumn({
   if (mode !== 'login') return null
 
   return (
-    <div className="flex flex-col p-4 md:p-5 lg:col-start-1">
+    <div className="flex flex-col p-3 sm:p-4 lg:col-start-1">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
-        <div className="mb-3 flex items-center border-b border-outline-variant/40 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-xl text-primary">vpn_key</span>
-            <div>
+        <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="material-symbols-outlined shrink-0 text-xl text-primary">vpn_key</span>
+            <div className="min-w-0">
               <h2 className="font-headline-sm text-sm font-bold tracking-wider text-primary uppercase md:text-base">
                 Entrar nas Trevas
               </h2>
-              <p className="text-[10px] font-medium tracking-wide text-on-surface-variant">
+              <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
                 Identificação nobiliárquica sob a Máscara
               </p>
             </div>
@@ -298,8 +313,15 @@ function LoginColumn({
 
         <AuthSocialExtras
           googleContext="login"
+          compact
           showAdminLogin={showAdminLogin}
           onToggleAdmin={() => setShowAdminLogin((v) => !v)}
+          onAdminSubmit={onAdminSubmit}
+          adminLoading={adminLoading}
+        />
+        <AuthAdminModal
+          open={showAdminLogin}
+          onClose={() => setShowAdminLogin(false)}
           onAdminSubmit={onAdminSubmit}
           adminLoading={adminLoading}
         />
@@ -311,6 +333,7 @@ function LoginColumn({
 function AuthSocialExtras({
   googleContext,
   allowAdmin = true,
+  compact = false,
   showAdminLogin,
   onToggleAdmin,
   onAdminSubmit,
@@ -318,18 +341,19 @@ function AuthSocialExtras({
 }: {
   googleContext: 'login' | 'register'
   allowAdmin?: boolean
+  compact?: boolean
   showAdminLogin?: boolean
   onToggleAdmin?: () => void
   onAdminSubmit?: (email: string, password: string) => void
   adminLoading?: boolean
 }) {
   return (
-    <div className="mt-2.5 space-y-2.5">
-      <AuthOuDivider />
+    <div className={`${compact ? 'mt-2 space-y-2' : 'mt-2.5 space-y-2.5'}`}>
+      {!compact ? <AuthOuDivider /> : null}
       {allowAdmin ? (
         <>
-          <div className="grid grid-cols-2 gap-2">
-            <GoogleAuthButton context={googleContext} />
+          <div className={`grid gap-2 ${compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
+            <GoogleAuthButton context={googleContext} className={compact ? 'hidden sm:inline-flex' : ''} />
             <button
               type="button"
               className={`inline-flex w-full items-center justify-center gap-1.5 rounded border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider transition ${
@@ -345,7 +369,9 @@ function AuthSocialExtras({
             </button>
           </div>
           {showAdminLogin && onAdminSubmit ? (
-            <AdminMasterPanel onAdminSubmit={onAdminSubmit} adminLoading={adminLoading ?? false} />
+            <div className="hidden lg:block">
+              <AdminMasterPanel onAdminSubmit={onAdminSubmit} adminLoading={adminLoading ?? false} />
+            </div>
           ) : null}
         </>
       ) : (
@@ -355,12 +381,70 @@ function AuthSocialExtras({
   )
 }
 
-function AdminMasterPanel({
+function AuthAdminModal({
+  open,
+  onClose,
   onAdminSubmit,
   adminLoading,
 }: {
+  open: boolean
+  onClose: () => void
   onAdminSubmit: (email: string, password: string) => void
   adminLoading: boolean
+}) {
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center p-3 sm:items-center lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-admin-modal-title"
+    >
+      <button type="button" className="absolute inset-0 bg-black/65" aria-label="Fechar" onClick={onClose} />
+      <div className="safe-pb relative z-10 w-full max-w-md max-h-[min(85dvh,32rem)] overflow-y-auto overscroll-y-contain rounded-xl border border-secondary/40 bg-surface-container-high p-1 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-outline-variant/30 px-3 py-2">
+          <p id="auth-admin-modal-title" className="text-xs font-bold tracking-wider text-secondary uppercase">
+            Login do mestre
+          </p>
+          <button
+            type="button"
+            className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+            onClick={onClose}
+            aria-label="Fechar painel"
+          >
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        </div>
+        <AdminMasterPanel
+          onAdminSubmit={(email, password) => {
+            onAdminSubmit(email, password)
+          }}
+          adminLoading={adminLoading}
+          className="border-0 bg-transparent shadow-none"
+        />
+      </div>
+    </div>
+  )
+}
+
+function AdminMasterPanel({
+  onAdminSubmit,
+  adminLoading,
+  className = '',
+}: {
+  onAdminSubmit: (email: string, password: string) => void
+  adminLoading: boolean
+  className?: string
 }) {
   const adminEmailId = useId()
   const adminPassId = useId()
@@ -368,7 +452,7 @@ function AdminMasterPanel({
   const [adminPassword, setAdminPassword] = useState('')
 
   return (
-    <div className="space-y-2 rounded-lg border border-secondary/35 bg-secondary/5 p-3">
+    <div className={`space-y-2 rounded-lg border border-secondary/35 bg-secondary/5 p-2.5 sm:p-3 ${className}`}>
       <div className="flex items-center gap-2 border-b border-secondary/20 pb-2">
         <span className="material-symbols-outlined text-secondary">military_tech</span>
         <div>
@@ -469,17 +553,17 @@ function RegisterColumn({
   if (mode !== 'register') return null
 
   return (
-    <div className="flex flex-col p-4 md:p-5 lg:col-start-2">
+    <div className="flex flex-col p-3 sm:p-4 lg:col-start-2">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
-        <div className="mb-3 flex items-center border-b border-outline-variant/40 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-xl text-secondary">history_edu</span>
-            <div>
+        <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="material-symbols-outlined shrink-0 text-xl text-secondary">history_edu</span>
+            <div className="min-w-0">
               <h2 className="font-headline-sm text-sm font-bold tracking-wider text-secondary uppercase md:text-base">
                 Forjar Linhagem
               </h2>
-              <p className="text-[10px] font-medium tracking-wide text-on-surface-variant">
+              <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
                 Pacto eterno nas Crônicas de Beladona
               </p>
             </div>
@@ -523,8 +607,6 @@ function RegisterColumn({
             {loading ? 'Forjando…' : 'Forjar Linhagem'}
           </button>
         </form>
-
-        <AuthSocialExtras googleContext="register" allowAdmin={false} />
       </div>
     </div>
   )
