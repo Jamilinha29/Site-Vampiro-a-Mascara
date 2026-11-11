@@ -1,0 +1,30 @@
+# Blueprint Render — API Beladona (não inclui o frontend; use Vercel para a SPA).
+services:
+  - type: web
+    name: beladona-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./docker/Dockerfile.backend.prod
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGIN
+        sync: false
+      - key: RUN_STANDALONE
+        value: "true"
+      - key: ALLOW_DEV_AUTH
+        value: "false"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false

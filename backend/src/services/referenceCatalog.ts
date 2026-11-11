@@ -218,3 +218,9 @@ function textName(value: unknown) {
 export async function refreshReferenceFromDatabase() {
   await hydrateReferenceCatalog()
 }
+
+/** Só para testes automatizados. */
+export function resetReferenceCatalogForTests() {
+  entries.clear()
+  writeJsonFile(FILE, [])
+}

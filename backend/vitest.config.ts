@@ -1,8 +1,6 @@
-import { defineConfig } from 'vitest/config'
-
-export default defineConfig({
-  test: {
-    environment: 'node',
-    env: { NODE_ENV: 'test' },
-  },
-})
+/**
+ * @deprecated Testes ficam em `test/backend/`. Use:
+ *   npm run test:ci
+ *   npm test --workspace=backend
+ */
+export { default } from '../test/vitest.config.ts'

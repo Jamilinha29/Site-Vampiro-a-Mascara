@@ -70,7 +70,12 @@ walletsRouter.get('/ledger', requireUser, async (req, res) => {
 })
 
 walletsRouter.get('/shop-stock/:entityId', requireUser, (req, res) => {
-  const entityId = req.params.entityId
+  const raw = req.params.entityId
+  const entityId = typeof raw === 'string' ? raw : (raw[0] ?? '')
+  if (!entityId) {
+    res.status(400).json({ error: { message: 'entityId inválido' } })
+    return
+  }
   res.json({
     remaining: remainingStock(entityId),
     ownedByYou: getPurchaseCount(req.user!.email, entityId),

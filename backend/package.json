@@ -7,8 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config ../test/vitest.config.ts --project backend",
+    "test:watch": "vitest --config ../test/vitest.config.ts --project backend",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
@@ -18,6 +18,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "resend": "^4.1.2",
+    "serverless-http": "^3.2.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

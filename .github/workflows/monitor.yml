@@ -1,0 +1,31 @@
+name: Monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: beladona-monitor
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: API health
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then echo "HEALTH_URL não configurado — passo ignorado."; exit 0; fi
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 25 "$HEALTH_URL")
+          test "$code" = "200" || (cat /tmp/health.json; exit 1)
+          grep -q '"ok":true' /tmp/health.json
+
+      - name: Site (SPA)
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          if [ -z "$SITE_URL" ]; then echo "SITE_URL não configurado — passo ignorado."; exit 0; fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$SITE_URL")
+          test "$code" = "200"

@@ -1,9 +1,10 @@
 export type DevRole = 'player' | 'narrator' | 'admin'
 
-/** Dev-only: e-mails com prefixo narrador@, mestre@ ou admin@ recebem papel de mesa. */
+/** Papel inicial / dev: convenções de e-mail da mesa Beladona (produção usa `user_metadata.role`). */
 export function devRoleForEmail(email: string): DevRole {
   const local = email.split('@')[0]?.toLowerCase() ?? ''
-  if (local === 'admin' || local.startsWith('admin.')) return 'admin'
+  if (local === 'admin' || local === 'adm' || local.startsWith('admin.')) return 'admin'
+  if (local === 'testeuseradm' || local.startsWith('testeuseradm.')) return 'admin'
   if (local === 'narrador' || local === 'mestre' || local.startsWith('narrador.') || local.startsWith('mestre.')) {
     return 'narrator'
   }

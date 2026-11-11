@@ -6,5 +6,5 @@ COPY frontend/package.json frontend/
 RUN npm ci
 COPY backend backend
 COPY frontend frontend
-RUN npm run test -w backend
+COPY test test
 CMD ["npm", "run", "test:ci"]

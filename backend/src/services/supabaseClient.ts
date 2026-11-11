@@ -26,7 +26,9 @@ let client: SupabaseClient | null | undefined
 export function getSupabaseAdmin(): SupabaseClient | null {
   if (client !== undefined) return client
   const url = process.env.SUPABASE_URL?.trim()
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    (process.env.NODE_ENV !== 'production' ? process.env.SUPABASE_ANON_KEY?.trim() : undefined)
   if (!url || !key) {
     client = null
     return client

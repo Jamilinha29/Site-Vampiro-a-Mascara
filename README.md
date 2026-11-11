@@ -34,7 +34,7 @@ A interface usa **React 19 + Vite + Tailwind v4**, paleta escura (carmim, ouro r
 
 ### API (`/api/v1`)
 
-- Auth de desenvolvimento (tokens `dev-*`) e perfil (`/me`)
+- Auth: **Supabase** (JWT) em produção; tokens `dev-*` só local/`ALLOW_DEV_AUTH` — ver [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - Crônica: entidades, handouts, sessões agendadas, cena ao vivo, catálogos
 - Em **dev**, persistência em memória; em **produção**, planejado Supabase (PostgreSQL, Auth, Storage)
 
@@ -46,7 +46,7 @@ A interface usa **React 19 + Vite + Tailwind v4**, paleta escura (carmim, ouro r
 | Backend | Node.js, Express, TypeScript, Zod, Vitest |
 | Dados (prod.) | Supabase |
 | E-mail (opc.) | Resend |
-| Deploy típico | Vercel (SPA, `vercel.json`) + Render ou similar (API, `PORT` + `0.0.0.0`) |
+| Deploy típico | Vercel (SPA + API serverless em `api/index.ts`) **ou** Vercel (SPA) + Render/Docker (API) — [`docs/DEPLOY.md`](docs/DEPLOY.md) |
 
 ```text
 Browser :5173  ──proxy /api──►  Express :4000  ──►  memória (dev) / Supabase (prod.)
@@ -148,8 +148,11 @@ npm run dev
 | `npm run dev` | Frontend (Vite) |
 | `npm run dev:api` | Backend (tsx watch) |
 | `npm run build` | Build do frontend |
-| `npm run test:ci` | Testes do backend |
+| `npm run test:ci` | Testes em `test/` (API + unidade) |
 | `npm run lint` | Lint do frontend |
+| `npm run docker:dev` | API + web em modo desenvolvimento (Docker) |
+| `npm run docker:prod` | API + nginx com build de produção |
+| `npm run docker:test` | Suíte de testes em container |
 
 ### Docker
 
@@ -207,10 +210,14 @@ Redirect legado: `/app/*` → `/user/*`.
 
 ## Deploy (resumo)
 
-1. **Frontend:** build Vite (`npm run build -w frontend`), publicar `frontend/dist`; configurar `VITE_API_URL` para a URL pública da API.
-2. **API:** `npm run build -w backend` + `npm start -w backend`; bind em `0.0.0.0` e `PORT`; `CORS_ORIGIN` apontando para o domínio da SPA.
-3. **Render:** filesystem efêmero — usar Postgres/Storage, não depender de arquivos locais no servidor.
-4. Não commitar `.env` nem chaves de serviço.
+Guia completo passo a passo: **[`docs/DEPLOY.md`](docs/DEPLOY.md)** (Supabase, Vercel **raiz do monorepo**, GitHub Actions, keepalive, monitor, Resend, troubleshooting).
+
+1. **Site + API (recomendado):** Vercel na **raiz** do repo (`vercel.json` + `api/`); `VITE_API_URL` vazio na produção.
+2. **API alternativa (só hospedagem):** [Render](https://render.com) — `infrastructure/render.yaml`; não é para e-mail nem front.
+3. **Banco / login:** Supabase (`supabase/migrations/` + workflow **Supabase migrate**).
+4. **E-mail da app (opcional):** [Resend](https://resend.com) — `RESEND_*` nas env vars da API (Vercel ou Render); confirmação de conta continua no Supabase Auth.
+5. **CI/CD:** `.github/workflows/ci.yml` e `cd.yml`; deploy contínuo na Vercel.
+6. Não commitar `.env`.
 
 ## Qualidade e contribuição
 

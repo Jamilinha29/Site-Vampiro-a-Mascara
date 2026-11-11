@@ -8,8 +8,11 @@
     "dev:api": "npm run dev -w backend",
     "dev:all": "npx concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev\"",
     "build": "npm run build -w frontend",
-    "test:ci": "npm run test -w backend",
-    "lint": "npm run lint -w frontend"
+    "test:ci": "vitest run --config test/vitest.config.ts",
+    "lint": "npm run lint -w frontend",
+    "docker:dev": "docker compose up --build",
+    "docker:prod": "docker compose -f compose.prod.yaml up --build",
+    "docker:test": "docker compose -f compose.test.yaml up --build --abort-on-container-exit --exit-code-from tests"
   },
   "keywords": [],
   "author": "",

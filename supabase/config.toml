@@ -1,0 +1,11 @@
+# CLI Supabase — liga o repositório ao projeto remoto para db push / db pull.
+# Project ID: Dashboard → Project Settings → General → Reference ID
+
+project_id = "env(SUPABASE_PROJECT_REF)"
+
+[db]
+major_version = 15
+
+[db.migrations]
+enabled = true
+# Migrações versionadas em supabase/migrations/
