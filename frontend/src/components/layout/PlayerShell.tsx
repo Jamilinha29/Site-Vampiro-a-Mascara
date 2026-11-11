@@ -13,7 +13,7 @@ const playerNavClass = ({ isActive }: { isActive: boolean }) =>
 
 export function PlayerShell() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-svh flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl min-w-0 items-center justify-between gap-2 px-4 py-2.5 sm:gap-4 sm:px-6 lg:gap-5">
           <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
@@ -71,7 +71,7 @@ export function PlayerShell() {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 lg:px-6">
+      <main className="mx-auto w-full min-h-0 max-w-7xl flex-1 px-4 py-4 lg:px-6 lg:py-5">
         <Outlet />
       </main>
     </div>

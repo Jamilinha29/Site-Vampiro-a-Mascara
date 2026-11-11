@@ -68,15 +68,15 @@ export function CharacterWizardLayout({ children }: { title?: string; children: 
   const { push } = useToast()
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 border-b border-outline-variant/30 pb-5 lg:flex-row lg:items-start lg:justify-between">
+    <div className="space-y-4">
+      <header className="flex flex-col gap-3 border-b border-outline-variant/30 pb-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="flex items-center gap-2 font-label-sm text-[11px] tracking-[0.18em] text-secondary uppercase">
-            <span className="material-symbols-outlined text-base text-secondary">menu_book</span>
+          <p className="flex items-center gap-2 font-label-sm text-[10px] tracking-[0.18em] text-secondary uppercase">
+            <span className="material-symbols-outlined text-sm text-secondary">menu_book</span>
             Grimório de criação de personagem
           </p>
-          <h1 className="mt-2 font-headline-lg text-3xl text-on-surface md:text-4xl">Forjar Novo Personagem</h1>
-          <p className="mt-2 max-w-xl text-sm italic text-primary/90">{current.subtitle}</p>
+          <h1 className="mt-1 font-headline-lg text-2xl text-on-surface md:text-3xl">Forjar Novo Personagem</h1>
+          <p className="mt-1 max-w-xl text-sm italic text-primary/90">{current.subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <Link to="/user/characters" className="btn-secondary px-4 py-2 text-xs">
@@ -93,7 +93,7 @@ export function CharacterWizardLayout({ children }: { title?: string; children: 
         </div>
       </header>
 
-      <ol className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <ol className="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
         {steps.map((step, i) => {
           const active = i === idx
           const done = i < idx
@@ -101,7 +101,7 @@ export function CharacterWizardLayout({ children }: { title?: string; children: 
             <li key={step.path}>
               <Link
                 to={step.path}
-                className={`block rounded border px-2.5 py-3 transition ${
+                className={`block rounded border px-2 py-2 transition ${
                   active
                     ? 'border-primary-container bg-primary-container/15 shadow-[inset_0_0_0_1px_rgba(158,27,45,0.35)]'
                     : done
@@ -126,7 +126,7 @@ export function CharacterWizardLayout({ children }: { title?: string; children: 
         })}
       </ol>
 
-      <div className="card-surface p-5 md:p-7">{children}</div>
+      <div className="card-surface p-4 md:p-5">{children}</div>
       <WizardNav stepIndex={idx} />
     </div>
   )

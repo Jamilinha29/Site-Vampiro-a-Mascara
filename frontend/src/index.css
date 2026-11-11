@@ -46,11 +46,11 @@
   }
 
   body {
-    @apply m-0 min-h-screen bg-surface-container-lowest text-on-surface font-sans;
+    @apply m-0 min-h-svh overflow-x-hidden bg-surface-container-lowest text-on-surface font-sans;
   }
 
   #root {
-    @apply min-h-screen w-full;
+    @apply min-h-svh w-full;
   }
 
   .material-symbols-outlined {

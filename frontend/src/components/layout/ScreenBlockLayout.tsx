@@ -34,11 +34,11 @@ export function ScreenBlockLayout({
   const selected = blocks.find((b) => b.id === selectedId)
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-headline-lg text-2xl text-on-surface">{title}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">{description}</p>
+          <h1 className="font-headline-lg text-xl text-on-surface md:text-2xl">{title}</h1>
+          <p className="mt-1.5 max-w-3xl text-sm text-on-surface-variant">{description}</p>
         </div>
         {headerExtra}
       </header>

@@ -83,11 +83,11 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
   const sliderTransform = mode === 'login' ? 'translateX(0%)' : 'translateX(-100%)'
 
   return (
-    <div className="relative flex min-h-screen flex-col justify-between overflow-x-hidden bg-surface-container-lowest text-on-surface selection:bg-primary-container selection:text-white">
+    <div className="relative flex h-svh max-h-svh flex-col overflow-hidden bg-surface-container-lowest text-on-surface selection:bg-primary-container selection:text-white">
       <Ambient />
       <AuthHeader />
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center px-4 py-8 md:py-10">
-        <div className="relative w-full max-w-5xl overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-3 md:py-4">
+        <div className="relative w-full max-w-5xl shrink-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
           <div className="grid w-full grid-cols-1 lg:grid-cols-2 lg:items-stretch">
             <LoginColumn
               mode={mode}
@@ -106,7 +106,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
           </div>
 
           <div
-            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-between overflow-hidden border-outline-variant/40 bg-surface-container p-6 shadow-2xl md:p-8 lg:flex"
+            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-between overflow-hidden border-outline-variant/40 bg-surface-container p-4 shadow-2xl md:p-5 lg:flex"
             style={{ transform: sliderTransform, borderRight: mode === 'register' ? '1px solid rgba(89,65,65,0.4)' : undefined, borderLeft: mode === 'login' ? '1px solid rgba(89,65,65,0.4)' : undefined }}
           >
             <SliderPanel mode={mode} />
@@ -134,7 +134,7 @@ function Ambient() {
 function AuthHeader() {
   return (
     <>
-      <header className="relative z-20 flex w-full items-center justify-between border-b border-outline-variant/40 bg-surface-container-lowest/85 px-6 py-3.5 shadow-md backdrop-blur-md">
+      <header className="relative z-20 flex w-full shrink-0 items-center justify-between border-b border-outline-variant/40 bg-surface-container-lowest/85 px-4 py-2 shadow-md backdrop-blur-md sm:px-6">
         <Link to="/" className="flex items-center gap-3.5 rounded-sm transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary">
           <BrandLogo size="xs" withGlow />
           <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-2.5">
@@ -158,8 +158,8 @@ function AuthHeader() {
 
 function AuthFooter() {
   return (
-    <footer className="relative z-10 border-t border-outline-variant/40 bg-surface-container-lowest/90 px-6 py-5 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-center md:flex-row md:text-left">
+    <footer className="relative z-10 shrink-0 border-t border-outline-variant/40 bg-surface-container-lowest/90 px-4 py-2.5 backdrop-blur sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 text-center md:flex-row md:text-left">
         <p className="flex items-center gap-2 text-xs text-on-surface-variant">
           <span className="material-symbols-outlined text-sm text-primary">military_tech</span>
           © Vampiro: A Idade das Trevas — As Crônicas de Beladona
@@ -181,7 +181,7 @@ function AuthFooter() {
 
 function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
-    <div className="mb-6 flex justify-center">
+    <div className="mb-3 flex justify-center">
       <div className="inline-flex w-full items-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container-lowest/90 p-1 shadow-inner">
         <button
           type="button"
@@ -237,24 +237,24 @@ function LoginColumn({
   if (mode !== 'login') return null
 
   return (
-    <div className="flex flex-col p-6 md:p-10 lg:col-start-1">
+    <div className="flex flex-col p-4 md:p-5 lg:col-start-1">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
-        <div className="mb-6 flex items-center border-b border-outline-variant/40 pb-3">
-          <div className="flex items-center gap-2.5">
-            <span className="material-symbols-outlined text-2xl text-primary">vpn_key</span>
+        <div className="mb-3 flex items-center border-b border-outline-variant/40 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-xl text-primary">vpn_key</span>
             <div>
-              <h2 className="font-headline-sm text-base font-bold tracking-wider text-primary uppercase md:text-lg">
+              <h2 className="font-headline-sm text-sm font-bold tracking-wider text-primary uppercase md:text-base">
                 Entrar nas Trevas
               </h2>
-              <p className="text-[11px] font-medium tracking-wide text-on-surface-variant">
+              <p className="text-[10px] font-medium tracking-wide text-on-surface-variant">
                 Identificação nobiliárquica sob a Máscara
               </p>
             </div>
           </div>
         </div>
         <form
-          className="space-y-4"
+          className="space-y-2.5 [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
           onSubmit={(e) => {
             e.preventDefault()
             onSubmit(email, password)
@@ -290,8 +290,8 @@ function LoginColumn({
             <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-outline-variant text-primary-container focus:ring-primary-container" />
             Manter Vigília Ativa (Lembrar sessão)
           </label>
-          <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
-            <span className="material-symbols-outlined text-xl">meeting_room</span>
+          <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
+            <span className="material-symbols-outlined text-lg">meeting_room</span>
             {loading ? 'Abrindo…' : 'Adentrar o Santuário'}
           </button>
         </form>
@@ -324,15 +324,15 @@ function AuthSocialExtras({
   adminLoading?: boolean
 }) {
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-2.5 space-y-2.5">
       <AuthOuDivider />
       {allowAdmin ? (
         <>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             <GoogleAuthButton context={googleContext} />
             <button
               type="button"
-              className={`inline-flex w-full items-center justify-center gap-2 rounded border px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+              className={`inline-flex w-full items-center justify-center gap-1.5 rounded border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider transition ${
                 showAdminLogin
                   ? 'border-secondary bg-secondary/15 text-secondary'
                   : 'border-outline-variant/60 bg-surface-container text-on-surface-variant hover:border-secondary/50 hover:text-secondary'
@@ -368,7 +368,7 @@ function AdminMasterPanel({
   const [adminPassword, setAdminPassword] = useState('')
 
   return (
-    <div className="space-y-3 rounded-lg border border-secondary/35 bg-secondary/5 p-4">
+    <div className="space-y-2 rounded-lg border border-secondary/35 bg-secondary/5 p-3">
       <div className="flex items-center gap-2 border-b border-secondary/20 pb-2">
         <span className="material-symbols-outlined text-secondary">military_tech</span>
         <div>
@@ -421,7 +421,7 @@ function AdminMasterPanel({
 
 function AuthOuDivider() {
   return (
-    <div className="relative flex items-center gap-3 pt-2">
+    <div className="relative flex items-center gap-3 pt-0.5">
       <span className="h-px flex-1 bg-outline-variant/50" aria-hidden />
       <span className="text-[10px] font-semibold tracking-widest text-on-surface-variant uppercase">ou</span>
       <span className="h-px flex-1 bg-outline-variant/50" aria-hidden />
@@ -440,7 +440,7 @@ function GoogleAuthButton({ context, className = '' }: { context: 'login' | 'reg
   return (
     <button
       type="button"
-      className={`btn-secondary inline-flex items-center justify-center gap-2 py-2.5 text-xs ${className}`}
+      className={`btn-secondary inline-flex items-center justify-center gap-2 py-2 text-xs ${className}`}
       onClick={() => push(googleStubMessage(context), 'info')}
     >
       <GoogleIcon />
@@ -469,24 +469,24 @@ function RegisterColumn({
   if (mode !== 'register') return null
 
   return (
-    <div className="flex flex-col p-6 md:p-10 lg:col-start-2">
+    <div className="flex flex-col p-4 md:p-5 lg:col-start-2">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
-        <div className="mb-5 flex items-center border-b border-outline-variant/40 pb-3">
-          <div className="flex items-center gap-2.5">
-            <span className="material-symbols-outlined text-2xl text-secondary">history_edu</span>
+        <div className="mb-3 flex items-center border-b border-outline-variant/40 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-xl text-secondary">history_edu</span>
             <div>
-              <h2 className="font-headline-sm text-base font-bold tracking-wider text-secondary uppercase md:text-lg">
+              <h2 className="font-headline-sm text-sm font-bold tracking-wider text-secondary uppercase md:text-base">
                 Forjar Linhagem
               </h2>
-              <p className="text-[11px] font-medium tracking-wide text-on-surface-variant">
+              <p className="text-[10px] font-medium tracking-wide text-on-surface-variant">
                 Pacto eterno nas Crônicas de Beladona
               </p>
             </div>
           </div>
         </div>
         <form
-          className="space-y-3.5"
+          className="space-y-2.5 [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
           onSubmit={(e) => {
             e.preventDefault()
             onSubmit({
@@ -510,15 +510,15 @@ function RegisterColumn({
             <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
             <input type="password" className="input-feudal" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Mínimo 8 runas" />
           </Field>
-          <label className="flex cursor-pointer items-start gap-2.5 text-xs text-on-surface-variant">
-            <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} required className="mt-0.5 h-4 w-4 rounded border-outline-variant text-primary-container" />
+          <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-on-surface-variant">
+            <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} required className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary-container" />
             Aceito as Tradições de Caim e os Estatutos de Beladona.
           </label>
-          <label className="flex cursor-pointer items-start gap-2.5 text-xs text-on-surface-variant">
-            <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-outline-variant text-primary-container" />
+          <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-on-surface-variant">
+            <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary-container" />
             Desejo receber avisos da crônica por corvo mensageiro.
           </label>
-          <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
+          <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
             <span className="material-symbols-outlined text-lg">history_edu</span>
             {loading ? 'Forjando…' : 'Forjar Linhagem'}
           </button>
@@ -586,17 +586,17 @@ function SliderPanel({ mode }: { mode: Mode }) {
         </span>
         <span className="text-outline">Beladona</span>
       </div>
-      <div className="relative z-10 my-auto flex w-full flex-col items-center py-4">
+      <div className="relative z-10 my-auto flex w-full flex-col items-center py-1">
         <Link
           to="/"
-          className="relative flex aspect-square w-full max-w-[14rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary sm:max-w-[16rem] md:max-w-[18rem]"
+          className="relative flex aspect-square w-full max-w-[9rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary sm:max-w-[10rem] md:max-w-[11rem]"
           aria-label="Voltar à página inicial"
         >
           <div className="pointer-events-none absolute inset-0 animate-pulse rounded-full border border-dashed border-outline-variant/40" />
-          <div className="pointer-events-none absolute inset-4 rounded-full border border-secondary/25" />
-          <BrandLogo size="hero" withGlow className="relative z-10" />
+          <div className="pointer-events-none absolute inset-3 rounded-full border border-secondary/25" />
+          <BrandLogo size="lg" withGlow className="relative z-10" />
         </Link>
-        <p className="mt-2 max-w-sm px-4 text-center font-serif text-sm leading-relaxed text-on-surface-variant italic">{quote}</p>
+        <p className="mt-1.5 line-clamp-3 max-w-xs px-2 text-center font-serif text-xs leading-snug text-on-surface-variant italic">{quote}</p>
       </div>
       <div className="relative z-10 flex w-full items-center justify-between border-t border-outline-variant/30 pt-2 text-[11px] text-outline">
         <span className="flex items-center gap-1 text-on-surface-variant">

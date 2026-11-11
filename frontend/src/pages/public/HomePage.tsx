@@ -36,7 +36,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden border-b border-outline-variant/30 px-4 py-20 text-center md:py-28">
+      <section className="relative overflow-hidden border-b border-outline-variant/30 px-4 py-12 text-center md:py-16">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(158,27,45,0.28),rgba(14,14,19,0.95)_75%,#0e0e13_100%)]" />
         <div className="relative mx-auto max-w-3xl">
           <h1 className="font-serif text-4xl font-bold tracking-tight md:text-6xl">
@@ -60,7 +60,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="sobre" className="mx-auto max-w-5xl px-4 py-16">
+      <section id="sobre" className="mx-auto max-w-5xl px-4 py-10 md:py-12">
         <h2 className="font-headline-md mb-6 text-2xl text-secondary">Sobre a Plataforma</h2>
         <div className="grid gap-6 md:grid-cols-3">
           {[
@@ -85,7 +85,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="noticias" className="border-t border-outline-variant/30 bg-surface-container-low px-4 py-16">
+      <section id="noticias" className="border-t border-outline-variant/30 bg-surface-container-low px-4 py-10 md:py-12">
         <div className="mx-auto max-w-5xl">
           <h2 className="font-headline-md mb-8 text-2xl text-secondary">Notícias &amp; Éditos</h2>
           {newsQuery.isLoading ? (
@@ -106,7 +106,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-outline-variant/40 px-4 py-10 text-center text-xs text-on-surface-variant">
+      <footer className="border-t border-outline-variant/40 px-4 py-6 text-center text-xs text-on-surface-variant">
         <p>As Crônicas de Beladona — Sanguis &amp; Shadow Engine</p>
         <div className="mt-3 flex flex-wrap justify-center gap-4">
           <Link to="/auth/login" className="hover:text-secondary">

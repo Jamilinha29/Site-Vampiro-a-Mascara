@@ -43,7 +43,7 @@ export function AdminShell() {
     : [...adminNavBase]
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-svh flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl min-w-0 items-center justify-between gap-2 px-4 py-2.5 sm:gap-4 sm:px-6 lg:gap-5">
           <div className="flex min-w-0 flex-1 items-center gap-5 lg:gap-6">
@@ -78,7 +78,7 @@ export function AdminShell() {
       </header>
 
       <main
-        className={`mx-auto w-full flex-1 px-4 py-6 lg:px-6 ${isMesaRoute ? 'max-w-[1600px]' : 'max-w-7xl'}`}
+        className={`mx-auto w-full min-h-0 flex-1 px-4 py-4 lg:px-6 lg:py-5 ${isMesaRoute ? 'max-w-[1600px]' : 'max-w-7xl'}`}
       >
         <Outlet />
       </main>
