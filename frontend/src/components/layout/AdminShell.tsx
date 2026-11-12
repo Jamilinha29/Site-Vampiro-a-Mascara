@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { BrandLogo } from '../brand/BrandLogo'
 import { UserProfileMenu } from '../domain/UserProfileMenu'
 import { api } from '../../services/api'
@@ -25,8 +25,6 @@ const adminNavClass = ({ isActive }: { isActive: boolean }) =>
   ].join(' ')
 
 export function AdminShell() {
-  const location = useLocation()
-  const isMesaRoute = location.pathname.startsWith('/admin/mesa')
   const { data: scheduled = [] } = useQuery({
     queryKey: adminQueryKeys.scheduledSessions,
     queryFn: () => api.adminListScheduledSessions(),
@@ -74,7 +72,7 @@ export function AdminShell() {
         </nav>
       </header>
 
-      <main className={`app-shell-main ${isMesaRoute ? 'app-shell-main--wide' : 'max-w-7xl'}`}>
+      <main className="app-shell-main">
         <Outlet />
       </main>
     </div>

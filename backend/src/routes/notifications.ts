@@ -1,8 +1,11 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
+import { requireNarrator } from '../middlewares/requireNarrator.js'
 import {
+  createSentNotice,
   listNotificationsForUser,
+  listSentNotices,
   markAllNotificationsRead,
   markNotificationsRead,
   unreadNotificationCount,
@@ -23,6 +26,24 @@ notificationsRouter.get('/unread-count', (req, res) => {
 const markSchema = z.object({
   ids: z.array(z.string()).optional(),
   all: z.boolean().optional(),
+})
+
+notificationsRouter.get('/sent', requireNarrator, (_req, res) => {
+  res.json(listSentNotices())
+})
+
+const sendSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  message: z.string().trim().min(1).max(500),
+})
+
+notificationsRouter.post('/send', requireNarrator, (req, res, next) => {
+  try {
+    const body = sendSchema.parse(req.body)
+    res.status(201).json(createSentNotice(body))
+  } catch (e) {
+    next(e)
+  }
 })
 
 notificationsRouter.post('/mark-read', (req, res, next) => {

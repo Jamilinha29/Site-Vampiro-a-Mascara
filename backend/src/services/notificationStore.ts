@@ -1,4 +1,6 @@
+import { randomUUID } from 'crypto'
 import { listHandouts, listScheduledSessions } from './chronicleStore.js'
+import { readJsonFile, writeJsonFile } from './localJson.js'
 
 export type NotificationKind = 'session' | 'chronicle' | 'system' | 'news'
 
@@ -13,6 +15,34 @@ export type AppNotification = {
 }
 
 const readByUser = new Map<string, Set<string>>()
+
+export type SentNotice = {
+  id: string
+  title: string
+  message: string
+  createdAt: string
+  href: string | null
+}
+
+const NOTICE_FILE = 'sent-notices.json'
+const sentNotices: SentNotice[] = readJsonFile<SentNotice[]>(NOTICE_FILE) ?? []
+
+export function listSentNotices() {
+  return [...sentNotices].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+export function createSentNotice(input: { title: string; message: string; href?: string | null }) {
+  const row: SentNotice = {
+    id: randomUUID(),
+    title: input.title.trim(),
+    message: input.message.trim(),
+    createdAt: new Date().toISOString(),
+    href: input.href?.trim() || '/user',
+  }
+  sentNotices.unshift(row)
+  writeJsonFile(NOTICE_FILE, sentNotices)
+  return row
+}
 
 function formatSessionWhen(iso: string) {
   return new Date(iso).toLocaleString('pt-BR', {
@@ -66,6 +96,18 @@ export function listNotificationsForUser(email: string): AppNotification[] {
       createdAt: h.closedAt ?? h.createdAt,
       href: h.scheduledSessionId ? `/user/sessions#${h.scheduledSessionId}` : '/user/sessions',
       unread: !read.has(id),
+    })
+  }
+
+  for (const notice of listSentNotices()) {
+    items.push({
+      id: `notice-${notice.id}`,
+      kind: 'news',
+      title: notice.title,
+      message: notice.message,
+      createdAt: notice.createdAt,
+      href: notice.href,
+      unread: !read.has(`notice-${notice.id}`),
     })
   }
 

@@ -16,6 +16,8 @@ import type { SessionTableMeta } from '../../types/chronicle'
 
 export default function AdminSessionsPage() {
   const [expandedHandoutId, setExpandedHandoutId] = useState<string | null>(null)
+  const [noticeTitle, setNoticeTitle] = useState('')
+  const [noticeMessage, setNoticeMessage] = useState('')
   const [tableMeta, setTableMeta] = useState<SessionTableMeta>(() => newSessionTableMetaDefaults())
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -36,6 +38,21 @@ export default function AdminSessionsPage() {
       /* ignore */
     }
   }, [])
+
+  const { data: notices = [] } = useQuery({
+    queryKey: ['admin-notices'],
+    queryFn: () => api.adminListNotices(),
+  })
+
+  const sendNotice = useMutation({
+    mutationFn: () => api.adminSendNotice({ title: noticeTitle.trim(), message: noticeMessage.trim() }),
+    onSuccess: () => {
+      setNoticeTitle('')
+      setNoticeMessage('')
+      void qc.invalidateQueries({ queryKey: ['admin-notices'] })
+      invalidatePlayerPublishedContent(qc)
+    },
+  })
 
   const { data: scheduled = [] } = useQuery({
     queryKey: adminQueryKeys.scheduledSessions,
@@ -136,6 +153,51 @@ export default function AdminSessionsPage() {
           Crie mesas, acompanhe a agenda e publique resumos narrativos para os jogadores.
         </p>
       </header>
+
+      <section id="avisos" className="admin-form-panel">
+        <p className="font-label-sm text-xs text-secondary uppercase">Avisos aos jogadores</p>
+        <p className="text-sm text-on-surface-variant">
+          A mensagem aparece no sino de todos os jogadores. O mesmo atalho fica no perfil do mestre.
+        </p>
+        <label className="mt-3 block text-xs uppercase text-on-surface-variant">
+          Título
+          <input
+            className="input-feudal mt-1 pl-4"
+            value={noticeTitle}
+            maxLength={120}
+            onChange={(event) => setNoticeTitle(event.target.value)}
+          />
+        </label>
+        <label className="mt-3 block text-xs uppercase text-on-surface-variant">
+          Mensagem
+          <textarea
+            className="input-feudal textarea-compact mt-1 pl-4"
+            value={noticeMessage}
+            maxLength={500}
+            onChange={(event) => setNoticeMessage(event.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-primary mt-3 text-xs"
+          disabled={sendNotice.isPending || !noticeTitle.trim() || !noticeMessage.trim()}
+          onClick={() => sendNotice.mutate()}
+        >
+          {sendNotice.isPending ? 'Enviando…' : 'Enviar aviso'}
+        </button>
+        {sendNotice.isError ? <p className="mt-2 text-xs text-primary">{(sendNotice.error as Error).message}</p> : null}
+        {notices.length > 0 ? (
+          <ul className="mt-4 space-y-2">
+            {notices.map((notice) => (
+              <li key={notice.id} className="rounded border border-outline-variant/40 px-3 py-2">
+                <p className="font-serif text-sm text-on-surface">{notice.title}</p>
+                <p className="mt-1 text-xs text-on-surface-variant">{notice.message}</p>
+                <p className="mt-1 text-[10px] text-outline">{new Date(notice.createdAt).toLocaleString('pt-BR')}</p>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
 
       <section className="admin-form-panel">
         <p className="font-label-sm text-xs text-secondary uppercase">Criar outra mesa</p>

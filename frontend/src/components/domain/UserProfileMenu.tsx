@@ -73,6 +73,17 @@ export function UserProfileMenu({ context = 'player' }: { context?: 'player' | '
             <span className="material-symbols-outlined text-base text-secondary">person</span>
             Meu perfil
           </Link>
+          {context === 'admin' ? (
+            <Link
+              to="/admin/sessions#avisos"
+              role="menuitem"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-on-surface hover:bg-surface-container"
+              onClick={() => setOpen(false)}
+            >
+              <span className="material-symbols-outlined text-base text-secondary">notifications</span>
+              Avisos aos jogadores
+            </Link>
+          ) : null}
           <Link
             to={context === 'admin' ? '/admin/settings' : '/user/settings'}
             role="menuitem"

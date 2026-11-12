@@ -76,6 +76,13 @@ export const api = {
   getNotifications: () => request<import('../types/notifications').AppNotification[]>('/api/v1/notifications'),
   markNotificationsRead: (body: { ids?: string[]; all?: boolean }) =>
     request<{ count: number }>('/api/v1/notifications/mark-read', { method: 'POST', body: JSON.stringify(body) }),
+  adminListNotices: () =>
+    request<Array<{ id: string; title: string; message: string; createdAt: string }>>('/api/v1/notifications/sent'),
+  adminSendNotice: (body: { title: string; message: string }) =>
+    request<{ id: string; title: string; message: string; createdAt: string }>('/api/v1/notifications/send', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   joinSessionByCode: (code: string) =>
     request<{ sessionId: string }>('/api/v1/sessions/join-by-code', {
       method: 'POST',

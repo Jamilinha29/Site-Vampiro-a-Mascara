@@ -71,7 +71,7 @@ export function PlayerShell() {
         </nav>
       </header>
 
-      <main className="app-shell-main max-w-7xl">
+      <main className="app-shell-main">
         <Outlet />
       </main>
     </div>
