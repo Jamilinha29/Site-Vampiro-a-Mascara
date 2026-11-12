@@ -11,9 +11,8 @@ const TIERS = [
   { id: 'rumors' as const, label: 'Rumores' },
 ]
 
-export function PlayerBestiaryExplorer() {
+export function PlayerBestiaryExplorer({ query = '' }: { query?: string }) {
   const [tier, setTier] = useState<(typeof TIERS)[number]['id']>('known')
-  const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const { data = [], isLoading } = useQuery({
@@ -37,26 +36,6 @@ export function PlayerBestiaryExplorer() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="font-headline-sm text-lg text-on-surface">Glossário geral de ameaças</h2>
-          <p className="text-sm text-on-surface-variant">
-            Antagonistas e bestas revelados pelo mestre — fichas táticas distintas das fichas de jogador.
-          </p>
-        </div>
-        <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
-          <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
-            search
-          </span>
-          <input
-            className="input-feudal w-full pl-10"
-            placeholder="Buscar por criatura, tipo, clã…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
       <div className="flex flex-wrap gap-2">
         {TIERS.map((t) => (
           <button
@@ -119,58 +98,61 @@ function BestiaryCard({
   active: boolean
   onOpen: () => void
 }) {
-  const hp = entity.hpMax ?? 40
-  const pe = entity.manaMax ?? 20
-  const meta = cardMeta(entity, tier)
+  const hp = entity.hpMax ?? 0
+  const pe = entity.manaMax ?? 0
+  const rarity = capitalize(entity.rarity ?? 'comum')
+  const size = entity.creatureSize ?? sizeLabel(entity)
+  const place = entity.sceneTrigger?.trim() || 'Sem local registrado'
 
   return (
     <article
-      className={`mesa-panel flex flex-col overflow-hidden p-0 ${
-        active ? 'border-primary/60 ring-1 ring-primary/35' : ''
+      className={`flex flex-col overflow-hidden rounded-2xl border bg-[#141414] ${
+        active ? 'border-primary/70' : 'border-white/10'
       }`}
     >
-      <div className="relative h-36 overflow-hidden bg-surface-container-high">
+      <div className="relative h-40 overflow-hidden bg-black">
         {entity.imageUrl ? (
           <img src={entity.imageUrl} alt="" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <span className="material-symbols-outlined text-4xl text-outline-variant">pest_control</span>
+          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,#1a2420,#090909)]">
+            <span className="material-symbols-outlined text-4xl text-white/25">pest_control</span>
           </div>
         )}
-        {entity.rarity === 'ancestral' || entity.rarity === 'proibido' ? (
-          <span className="absolute top-2 left-2 rounded border border-secondary/50 bg-surface-container-lowest/90 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-secondary uppercase">
-            {entity.rarity === 'proibido' ? 'Boss' : 'Elite'}
-          </span>
-        ) : null}
+        <span className="absolute top-2 right-2 rounded-full border border-white/20 bg-black/60 px-2 py-0.5 text-[10px] text-white/85">
+          {rarity}
+        </span>
       </div>
 
       <div className="flex flex-1 flex-col space-y-3 p-4">
         <div>
-          <h4 className="font-serif text-lg leading-tight text-on-surface">{entity.name}</h4>
-          <p className="mt-1 text-[10px] tracking-wide text-on-surface-variant uppercase">
+          <h4 className="font-serif text-lg leading-tight text-white">{entity.name}</h4>
+          <p className="mt-1 text-[10px] tracking-wide text-white/50 uppercase">
             {entity.creatureType ?? 'Criatura'} · {tierLabel(tier)}
           </p>
         </div>
 
         <div className="space-y-2">
-          <StatBar label="Vitalidade" current={hp} max={hp} />
-          <StatBar label="Energia / mana" current={pe} max={pe} variant="mana" />
+          <StatBar label="HP" current={hp} max={Math.max(hp, 1)} />
+          <StatBar label="Mana" current={pe} max={Math.max(pe, 1)} variant="mana" />
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
-          {meta.map((row) => (
-            <div key={row.label} className="min-w-0">
-              <dt className="text-on-surface-variant uppercase">{row.label}</dt>
-              <dd className="truncate font-medium text-on-surface">{row.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="grid grid-cols-2 gap-2 text-[10px]">
+          <div>
+            <p className="tracking-wider text-white/40 uppercase">Nível de ameaça</p>
+            <p className="font-serif text-base text-white">
+              {threatLevel(entity, tier)}
+              <span className="text-xs text-white/40">/10</span>
+            </p>
+          </div>
+          <div>
+            <p className="tracking-wider text-white/40 uppercase">Defesa</p>
+            <p className="text-sm text-white">{entity.defenseNote?.trim() || defenseLabel(entity)}</p>
+          </div>
+        </div>
 
-        <div className="rounded border border-outline-variant/30 bg-surface-container-lowest/50 p-2.5">
-          <p className="flex gap-1.5 text-[11px] leading-snug text-on-surface-variant">
-            <span className="material-symbols-outlined mt-0.5 shrink-0 text-sm text-secondary">visibility</span>
-            <span className="line-clamp-3">{entity.description || 'Sem descrição pública.'}</span>
-          </p>
+        <div className="flex items-center justify-between gap-2 text-[10px] tracking-wide text-white/45 uppercase">
+          <span className="truncate">{place}</span>
+          <span className="shrink-0 rounded border border-white/15 px-2 py-0.5 text-white/80">{size}</span>
         </div>
 
         <button type="button" className="btn-primary w-full text-[10px]" onClick={onOpen}>
@@ -192,8 +174,8 @@ export function BestiaryDetail({
   onClose?: () => void
   audience?: 'player' | 'narrator'
 }) {
-  const hp = entity.hpMax ?? 140
-  const pe = entity.manaMax ?? 24
+  const hp = entity.hpMax ?? 0
+  const pe = entity.manaMax ?? 0
   const threat = threatLevel(entity, tier)
   const attrs = attributeGrid(entity)
   const passives = passiveTraits(entity)
@@ -239,33 +221,38 @@ export function BestiaryDetail({
               )}
             </div>
           </div>
+        </div>
 
+        <div className="space-y-4 lg:col-span-8">
           <div className="space-y-2">
-            <StatBar label="Pontos de vida (HP)" current={hp} max={hp} />
-            <StatBar label="Pontos de energia" current={pe} max={pe} variant="mana" />
+            <p className="text-[10px] font-semibold tracking-wider text-secondary uppercase">Status de combate</p>
+            <div className="grid grid-cols-2 gap-3">
+              <StatBar label="HP" current={hp} max={Math.max(hp, 1)} />
+              <StatBar label="Mana" current={pe} max={Math.max(pe, 1)} variant="mana" />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded border border-outline-variant/30 bg-surface-container-lowest/40 p-2.5">
-              <p className="text-[9px] tracking-wider text-on-surface-variant uppercase">Nível de ameaça</p>
+              <p className="text-[9px] tracking-wider text-on-surface-variant uppercase">Ameaça</p>
               <p className="mt-1 font-serif text-lg text-secondary">
                 {threat}
                 <span className="text-sm text-on-surface-variant">/10</span>
               </p>
             </div>
             <div className="rounded border border-outline-variant/30 bg-surface-container-lowest/40 p-2.5">
-              <p className="text-[9px] tracking-wider text-on-surface-variant uppercase">Defesa / armadura</p>
+              <p className="text-[9px] tracking-wider text-on-surface-variant uppercase">Defesa</p>
               <p className="mt-1 text-xs text-on-surface">{entity.defenseNote?.trim() || defenseLabel(entity)}</p>
             </div>
           </div>
 
           <div>
             <p className="mb-2 text-[10px] font-semibold tracking-wider text-secondary uppercase">Atributos</p>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
               {attrs.map((a) => (
                 <div
                   key={a.key}
-                  className="rounded border border-outline-variant/30 bg-surface-container-lowest/40 px-2 py-1.5 text-center"
+                  className="rounded border border-outline-variant/30 bg-surface-container-lowest/40 px-1 py-1.5 text-center"
                 >
                   <p className="text-[9px] tracking-wider text-on-surface-variant uppercase">{a.key}</p>
                   <p className="font-numeric-stat text-sm text-on-surface">{a.value}</p>
@@ -274,37 +261,42 @@ export function BestiaryDetail({
             </div>
           </div>
 
-          <dl className="grid grid-cols-3 gap-2 text-[10px]">
-            <div>
-              <dt className="text-on-surface-variant uppercase">Tamanho</dt>
-              <dd className="text-on-surface">{entity.creatureSize ?? sizeLabel(entity)}</dd>
-            </div>
-            <div>
-              <dt className="text-on-surface-variant uppercase">Velocidade</dt>
-              <dd className="text-on-surface">{entity.creatureSpeed ?? speedLabel(entity)}</dd>
-            </div>
-            <div>
-              <dt className="text-on-surface-variant uppercase">Sentidos</dt>
-              <dd className="text-on-surface">{entity.creatureSenses ?? 'Visão noturna'}</dd>
-            </div>
+          <dl className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-5">
+            <SheetFact label="Classificação" value={capitalize(entity.rarity ?? 'comum')} />
+            <SheetFact label="Tamanho" value={entity.creatureSize ?? sizeLabel(entity)} />
+            <SheetFact label="Velocidade" value={entity.creatureSpeed ?? speedLabel(entity)} />
+            <SheetFact label="Peso" value={entity.weightKg != null ? `${entity.weightKg} kg` : '—'} />
+            <SheetFact label="Sentidos" value={entity.creatureSenses ?? '—'} />
           </dl>
 
-          <div>
-            <p className="mb-2 text-[10px] font-semibold tracking-wider text-secondary uppercase">Traços passivos</p>
-            <ul className="space-y-1.5">
-              {passives.map((p) => (
-                <li
-                  key={p}
-                  className="rounded border border-outline-variant/25 bg-surface-container-lowest/30 px-2.5 py-1.5 text-[11px] text-on-surface-variant"
-                >
-                  {p}
-                </li>
-              ))}
-            </ul>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <p className="mb-2 text-[10px] font-semibold tracking-wider text-secondary uppercase">Traços passivos</p>
+              <ul className="space-y-1.5">
+                {passives.map((p) => (
+                  <li
+                    key={p}
+                    className="rounded border border-outline-variant/25 bg-surface-container-lowest/30 px-2.5 py-1.5 text-[11px] text-on-surface-variant"
+                  >
+                    {p}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded border border-outline-variant/35 bg-surface-container-lowest/40 p-4">
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-secondary uppercase">
+                <span className="material-symbols-outlined text-sm">menu_book</span>
+                Informações públicas
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+                {entity.description || 'Lore ainda não revelado pelo narrador nesta camada do bestiário.'}
+              </p>
+              {entity.statsText ? (
+                <pre className="mt-3 whitespace-pre-wrap text-xs text-on-surface-variant">{entity.statsText}</pre>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-4 lg:col-span-8">
           <div className="rounded border border-secondary/35 bg-secondary/5 p-4">
             <p className="text-[10px] font-semibold tracking-wider text-secondary uppercase">
               Combate & comportamento tático
@@ -315,11 +307,9 @@ export function BestiaryDetail({
                   <span className="material-symbols-outlined text-sm">swords</span>
                   Ataque principal
                 </p>
-                <p className="mt-2 text-sm text-on-surface">{entity.primaryAttackName ?? 'Golpe devastador'}</p>
+                <p className="mt-2 text-sm text-on-surface">{entity.primaryAttackName?.trim() || '—'}</p>
                 <p className="mt-1 text-xs text-on-surface-variant">
-                  {entity.primaryAttackDesc?.trim() ||
-                    entity.statsText?.split(/[·\n]/)[0]?.trim() ||
-                    'Dano físico bruto em corpo a corpo.'}
+                  {entity.primaryAttackDesc?.trim() || '—'}
                 </p>
               </div>
               <div className="rounded border border-secondary/30 bg-surface-container-lowest/40 p-3">
@@ -327,30 +317,14 @@ export function BestiaryDetail({
                   <span className="material-symbols-outlined text-sm">bolt</span>
                   Ataque secundário
                 </p>
-                <p className="mt-2 text-sm text-on-surface">{entity.secondaryAttackName ?? 'Investida / pressão'}</p>
+                <p className="mt-2 text-sm text-on-surface">{entity.secondaryAttackName?.trim() || '—'}</p>
                 <p className="mt-1 text-xs text-on-surface-variant">
-                  {entity.secondaryAttackDesc?.trim() ||
-                    'Avanço tático para romper formação e forçar teste de resistência.'}
+                  {entity.secondaryAttackDesc?.trim() || '—'}
                 </p>
               </div>
             </div>
             {entity.sceneTrigger ? (
               <p className="mt-3 text-[11px] text-on-surface-variant">Gatilho de cena: {entity.sceneTrigger}</p>
-            ) : null}
-          </div>
-
-          <div className="rounded border border-outline-variant/35 bg-surface-container-lowest/40 p-4">
-            <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-secondary uppercase">
-              <span className="material-symbols-outlined text-sm">menu_book</span>
-              Informações públicas para jogadores
-            </p>
-            <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
-              {entity.description || 'Lore ainda não revelado pelo narrador nesta camada do bestiário.'}
-            </p>
-            {entity.statsText ? (
-              <pre className="mt-3 whitespace-pre-wrap rounded border border-outline-variant/25 bg-surface-container-high/40 p-3 text-xs text-on-surface-variant">
-                {entity.statsText}
-              </pre>
             ) : null}
           </div>
 
@@ -376,6 +350,15 @@ export function BestiaryDetail({
   )
 }
 
+function SheetFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-outline-variant/30 bg-surface-container-lowest/40 px-2 py-2">
+      <dt className="text-[9px] tracking-wider text-on-surface-variant uppercase">{label}</dt>
+      <dd className="mt-1 text-xs text-on-surface">{value}</dd>
+    </div>
+  )
+}
+
 function tierLabel(tier: string) {
   if (tier === 'classified') return 'Classificado'
   if (tier === 'rumors') return 'Rumor'
@@ -384,18 +367,6 @@ function tierLabel(tier: string) {
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
-}
-
-function cardMeta(entity: ChronicleEntity, tier: string) {
-  return [
-    { label: 'Classificação', value: capitalize(entity.rarity ?? 'comum') },
-    { label: 'Tipo', value: entity.creatureType ?? '—' },
-    { label: 'Camada', value: tierLabel(tier) },
-    {
-      label: 'Carga',
-      value: entity.weightKg != null ? `${entity.weightKg} kg` : '—',
-    },
-  ]
 }
 
 function threatLevel(entity: ChronicleEntity, tier: string) {

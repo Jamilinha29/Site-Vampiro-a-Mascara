@@ -30,6 +30,7 @@ export type ChronicleEntity = {
   imageUrl?: string
   hpMax?: number
   manaMax?: number
+  location?: string
   attributeMods?: AttributeMod[]
   relicAmuletType?: string
   magicType?: string
@@ -279,6 +280,9 @@ export function updateEntity(id: string, patch: Partial<Omit<ChronicleEntity, 'i
   const next = { ...row, ...patch, updatedAt: now() }
   entities.set(id, next)
   persistEntity(next)
+  if ((next.kind === 'npc' || next.kind === 'monster') && next.visibility === 'published') {
+    glossaryMirrorForNpcOrMonster(next)
+  }
   return next
 }
 
@@ -483,6 +487,7 @@ function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
     threatLevel: row.threatLevel,
     hpMax: row.hpMax,
     manaMax: row.manaMax,
+    location: row.location,
     classification,
     rarity: row.rarity,
     bestiaryTier: row.bestiaryTier,

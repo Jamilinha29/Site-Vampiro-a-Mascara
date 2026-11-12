@@ -55,10 +55,12 @@ export function sumEquippedBonuses(inventory?: CharacterInventoryItem[] | null):
   return total
 }
 
-/** CA base (nível) + bônus de equipamento. */
+/** CA rolada na criação (dado da classe) + bônus de equipamento. Sem rolagem, usa 10 + nível. */
 export function computeArmorClass(character: ProfileCharacterSummary, bonuses?: EquipmentBonuses) {
   const b = bonuses ?? sumEquippedBonuses(character.inventory)
-  const base = 10 + Math.max(0, (character.level ?? 1) - 1)
+  const rolled = character.vitals?.caValue
+  const base =
+    typeof rolled === 'number' && rolled > 0 ? rolled : 10 + Math.max(0, (character.level ?? 1) - 1)
   return { base, bonus: b.defense, total: base + b.defense }
 }
 

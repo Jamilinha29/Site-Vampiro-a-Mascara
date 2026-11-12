@@ -84,6 +84,8 @@ export type CharacterIdentity = {
 export type CharacterVitalsMeta = {
   hpDie?: string | null
   manaDie?: string | null
+  caDie?: string | null
+  caValue?: number | null
   /** Após o jogador informar HP/Mana na criação, não pode alterar (só +5/nível). */
   locked?: boolean
 }

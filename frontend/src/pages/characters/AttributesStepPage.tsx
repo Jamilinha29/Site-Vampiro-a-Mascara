@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { DotRating } from '../../components/domain/DotRating'
 import { dieMax, VITAL_DICE } from '../../lib/characterAbilityRules'
+import { classArmorDie } from '../../lib/characterOptions'
 import { resolveResourceProfile } from '../../lib/characterSheetKind'
 import { ATTRIBUTE_GROUPS, useCharacterWizardStore } from '../../stores/characterWizardStore'
 import { CharacterWizardLayout } from './CharacterWizardLayout'
@@ -13,6 +14,8 @@ export default function AttributesStepPage() {
   const hpValue = useCharacterWizardStore((s) => s.hpValue)
   const manaDie = useCharacterWizardStore((s) => s.manaDie)
   const manaValue = useCharacterWizardStore((s) => s.manaValue)
+  const caValue = useCharacterWizardStore((s) => s.caValue)
+  const characterClass = useCharacterWizardStore((s) => s.characterClass)
   const setAttribute = useCharacterWizardStore((s) => s.setAttribute)
   const setVirtue = useCharacterWizardStore((s) => s.setVirtue)
   const setVitals = useCharacterWizardStore((s) => s.setVitals)
@@ -24,6 +27,8 @@ export default function AttributesStepPage() {
   const willpower = virtues.courage
   const hpMaxAllowed = dieMax(hpDie)
   const manaMaxAllowed = dieMax(manaDie)
+  const caDie = classArmorDie(characterClass)
+  const caMaxAllowed = caDie ? dieMax(caDie) : 0
 
   return (
     <CharacterWizardLayout>
@@ -85,9 +90,9 @@ export default function AttributesStepPage() {
       <Section
         number="03"
         title="Vitalidade & Energia"
-        hint="Escolha o dado, role fora da tela e informe o resultado. Após concluir o personagem, HP e Mana ficam travados (+5 por nível)."
+        hint="Escolha o dado de HP e Mana, role fora da tela e informe o resultado. A CA usa o dado da classe, sem escolha. Depois de criar, HP, Mana e CA ficam travados."
       >
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className={`grid gap-4 ${resources.showMana ? 'lg:grid-cols-3' : 'md:grid-cols-2'}`}>
           <VitalField
             label="Dado de HP / Vida"
             die={hpDie}
@@ -110,6 +115,21 @@ export default function AttributesStepPage() {
               Esta espécie usa sangue / vontade em vez de mana — só o HP é definido aqui.
             </div>
           )}
+          {caDie ? (
+            <VitalField
+              label={`Dado de CA · ${characterClass}`}
+              die={caDie}
+              value={caValue}
+              max={caMaxAllowed}
+              dieLocked
+              onDieChange={() => undefined}
+              onValueChange={(v) => setVitals({ caValue: v })}
+            />
+          ) : (
+            <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest/40 p-4 text-sm text-on-surface-variant">
+              Escolha a classe na etapa de identidade para liberar o dado de CA.
+            </div>
+          )}
         </div>
       </Section>
     </CharacterWizardLayout>
@@ -121,6 +141,7 @@ function VitalField({
   die,
   value,
   max,
+  dieLocked = false,
   onDieChange,
   onValueChange,
 }: {
@@ -128,6 +149,7 @@ function VitalField({
   die: string
   value: number | null
   max: number
+  dieLocked?: boolean
   onDieChange: (die: string) => void
   onValueChange: (value: number | null) => void
 }) {
@@ -137,17 +159,23 @@ function VitalField({
       <div className="mt-3 grid grid-cols-2 gap-3">
         <label className="block text-[10px] uppercase text-on-surface-variant">
           Dado
-          <select
-            className="input-feudal mt-1 pl-3 normal-case"
-            value={die}
-            onChange={(e) => onDieChange(e.target.value)}
-          >
-            {VITAL_DICE.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+          {dieLocked ? (
+            <p className="mt-1 rounded border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-serif text-lg text-on-surface">
+              {die}
+            </p>
+          ) : (
+            <select
+              className="input-feudal mt-1 pl-3 normal-case"
+              value={die}
+              onChange={(e) => onDieChange(e.target.value)}
+            >
+              {VITAL_DICE.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         <label className="block text-[10px] uppercase text-on-surface-variant">
           Valor rolado (1–{max})

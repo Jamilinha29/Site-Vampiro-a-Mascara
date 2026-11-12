@@ -11,15 +11,15 @@ import { CharacterWizardLayout } from './CharacterWizardLayout'
 const SPECIES = [
   {
     id: 'vampiro',
-    label: 'Vampiro / Cainita',
+    label: 'Vampiros',
     badge: 'Opção padrão',
-    desc: 'Predador da noite marcado pelo sangue de Caim. Fraquezas do clã e sede eternas.',
+    desc: 'Predadores da noite. Fraquezas do clã e sede eternas.',
     icon: 'nightlight',
   },
   {
     id: 'mortal',
-    label: 'Mortal / Ghoul / Caçador',
-    desc: 'Humanos, servos do sangue ou caçadores da fé que andam entre as trevas.',
+    label: 'Caçadores',
+    desc: 'Mortais que caçam a noite. A ordem define o juramento e a fé.',
     icon: 'person',
   },
   {
@@ -39,14 +39,14 @@ const FAITH_ORIENTATIONS: { id: FaithOrientation; label: string; desc: string; a
   },
   {
     id: 'verdadeira',
-    label: 'Fé Verdadeira',
-    desc: 'Rara. Devotos cuja fé fere a própria Noite — abre o caminho da Luz.',
+    label: 'Luz',
+    desc: 'Rara. Devotos cuja fé fere a própria Noite — abre o Caminho Iluminado.',
     accent: 'red',
   },
   {
     id: 'paganismo',
-    label: 'Paganismo',
-    desc: 'Crenças antigas e cultos esquecidos — abre o caminho das Trevas.',
+    label: 'Trevas',
+    desc: 'Crenças antigas e cultos esquecidos — abre o Caminho Negro.',
     accent: 'muted',
   },
 ]

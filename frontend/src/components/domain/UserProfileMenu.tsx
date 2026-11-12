@@ -47,8 +47,8 @@ export function UserProfileMenu({ context = 'player' }: { context?: 'player' | '
           </div>
           <span className="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-surface" title="Online" />
         </div>
-        <div className="hidden flex-col leading-tight sm:flex">
-          <span className="text-sm font-semibold text-on-surface">{session?.displayName ?? 'Perfil'}</span>
+        <div className="hidden min-w-0 flex-col leading-tight sm:flex">
+          <span className="max-w-[9rem] truncate text-sm font-semibold text-on-surface">{session?.displayName ?? 'Perfil'}</span>
           <span className="font-label-sm text-[11px] tracking-wide text-secondary uppercase">
             {roleSubtitle(session?.role)}
           </span>

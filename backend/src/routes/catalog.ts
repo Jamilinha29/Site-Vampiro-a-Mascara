@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { listEntities } from '../services/chronicleStore.js'
 import { getSupabaseAdmin } from '../services/supabaseClient.js'
 import { listSubclassesForClass } from '../services/subclassCatalog.js'
 import { listReference, REFERENCE_KINDS, refreshReferenceFromDatabase } from '../services/referenceCatalog.js'
@@ -65,31 +64,22 @@ catalogRouter.get('/clans', async (_req, res) => {
   res.json(CLANS)
 })
 
-/** Catedrais publicadas pelo ADM (archive + faithPath em creatureType ou statsText). */
-catalogRouter.get('/cathedrals', (req, res) => {
+/** Catedrais do catálogo de fé (ADM), filtradas por Luz ou Trevas. */
+catalogRouter.get('/cathedrals', async (req, res) => {
+  await refreshReferenceFromDatabase()
   const path = String(req.query.path ?? '').toLowerCase()
-  const published = listEntities({ kind: 'archive', visibility: 'published' }).filter((e) => {
-    const faith = (e.creatureType ?? e.magicType ?? '').toLowerCase()
-    const isCathedral =
-      e.archiveCategory === 'rituals' ||
-      faith === 'luz' ||
-      faith === 'trevas' ||
-      /catedral|fé|fe\b|ordem sagrada|culto/i.test(`${e.name} ${e.description}`)
-    if (!isCathedral) return false
-    if (path === 'luz' || path === 'trevas') {
-      return faith === path || (!faith && path === 'luz')
-    }
-    return true
+  const faiths = listReference('faith').filter((row) => {
+    if (row.faithPath !== 'luz' && row.faithPath !== 'trevas') return false
+    if (path !== 'luz' && path !== 'trevas') return true
+    return row.faithPath === path
   })
 
   res.json(
-    published.map((e) => ({
-      id: e.id,
-      name: e.name,
-      faithPath: ((e.creatureType ?? e.magicType ?? 'luz').toLowerCase() === 'trevas' ? 'trevas' : 'luz') as
-        | 'luz'
-        | 'trevas',
-      precepts: (e.statsText ?? e.description ?? '')
+    faiths.map((row) => ({
+      id: row.id,
+      name: row.name,
+      faithPath: row.faithPath,
+      precepts: (row.description ?? '')
         .split(/[·|;]/)
         .map((s) => s.trim())
         .filter(Boolean)

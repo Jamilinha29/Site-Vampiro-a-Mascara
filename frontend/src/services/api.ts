@@ -37,7 +37,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers })
+  } catch {
+    const local = !API_BASE || /localhost|127\.0\.0\.1/.test(API_BASE)
+    throw new Error(
+      local
+        ? 'A API local não respondeu. Confira se o servidor em localhost:4000 está no ar.'
+        : 'Não foi possível falar com o servidor.',
+    )
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
     throw new Error(body.error?.message ?? res.statusText)
@@ -210,7 +220,7 @@ export const api = {
     mana?: { current: number; max: number }
     will?: { current: number; max: number }
     startingXp?: number
-    vitals?: { hpDie?: string; manaDie?: string; locked?: boolean }
+    vitals?: { hpDie?: string; manaDie?: string; caDie?: string; caValue?: number; locked?: boolean }
     balanceStats?: Record<string, number>
     characterClass?: string | null
   }) =>

@@ -14,12 +14,12 @@ import { CharacterWizardLayout } from './CharacterWizardLayout'
 
 const FAITH_CARDS: Record<FaithPathChoice, { label: string; desc: string }> = {
   luz: {
-    label: 'Luz (Caminho da Cruz)',
-    desc: 'Fé cristã / romana. Catedrais e preceitos publicados pelo narrador.',
+    label: 'Caminho Iluminado',
+    desc: 'Fé da Luz. Escolha uma catedral publicada pelo narrador.',
   },
   trevas: {
-    label: 'Trevas (Heresia & Pecado)',
-    desc: 'Caminhos ocultos e dogmas da Noite — catedrais do catálogo ADM.',
+    label: 'Caminho Negro',
+    desc: 'Fé das Trevas. Escolha uma catedral publicada pelo narrador.',
   },
 }
 
@@ -45,7 +45,7 @@ export default function IdentityStepPage() {
     }
   }, [lockedPath, faithPath, setFaithPath])
 
-  const { data: cathedrals = [] } = useQuery({
+  const { data: cathedrals = [], isLoading: cathedralsLoading } = useQuery({
     queryKey: ['catalog-cathedrals', lockedPath ?? 'none'],
     queryFn: () => api.getCatalogCathedrals(lockedPath ?? undefined),
     enabled: showFaithSection && !!lockedPath,
@@ -66,11 +66,13 @@ export default function IdentityStepPage() {
 
           <div className="mt-4 rounded border border-secondary/30 bg-secondary/5 p-4">
             <p className="text-[10px] font-bold tracking-wider text-secondary uppercase">
-              Catedrais do catálogo (ADM)
+              Catedrais
             </p>
-            {cathedrals.length === 0 ? (
+            {cathedralsLoading ? (
+              <p className="mt-2 text-sm text-on-surface-variant">Carregando catedrais…</p>
+            ) : cathedrals.length === 0 ? (
               <p className="mt-2 text-sm text-on-surface-variant">
-                Nenhuma catedral publicada ainda. O narrador cria e publica no Glossário / Acervo.
+                Nenhuma catedral neste caminho. O narrador cadastra em Referências → Fé, com o caminho Luz ou Trevas.
               </p>
             ) : (
               <ul className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

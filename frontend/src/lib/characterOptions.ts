@@ -115,6 +115,35 @@ export const CHARACTER_CLASS_OPTIONS = [
   'Outro',
 ] as const
 
+/** Dado de CA fixo da classe. O jogador rola; não escolhe o dado. */
+const CLASS_ARMOR_DIE: Record<(typeof CHARACTER_CLASS_OPTIONS)[number], string> = {
+  Guerreiro: 'D10',
+  Cavaleiro: 'D12',
+  Clérigo: 'D8',
+  Monge: 'D8',
+  Ladino: 'D8',
+  Caçador: 'D8',
+  Erudito: 'D6',
+  Diplomata: 'D6',
+  Artesão: 'D6',
+  Camponês: 'D4',
+  Mercante: 'D6',
+  Feiticeiro: 'D6',
+  Bardo: 'D8',
+  Combatente: 'D10',
+  Sombra: 'D6',
+  Arcanista: 'D6',
+  Devoto: 'D8',
+  Guardião: 'D12',
+  Artífice: 'D8',
+  Outro: 'D8',
+}
+
+export function classArmorDie(characterClass: string | null | undefined) {
+  if (!characterClass) return null
+  return CLASS_ARMOR_DIE[characterClass as keyof typeof CLASS_ARMOR_DIE] ?? 'D8'
+}
+
 export const NPC_CREATURE_TYPES = [
   'Mortal',
   'Vampiro',

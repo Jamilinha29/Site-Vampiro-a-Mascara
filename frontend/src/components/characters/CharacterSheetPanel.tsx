@@ -326,16 +326,14 @@ function PathAndVirtues(props: Props & { title?: string; virtueLabels?: readonly
   )
 }
 
-function BackgroundsAndResources(
-  props: Props & { reserveLabel: string; reserveValue: string },
-) {
+function BackgroundsAndResources(props: Props) {
   const { stats, editable, setStat, saving } = useSheetStats(props)
 
   return (
     <SectionCard title="Antecedentes & recursos">
-      <p className="mb-3 text-sm text-on-surface-variant">
-        Reserva ({props.reserveLabel}):{' '}
-        <span className="font-numeric-stat text-on-surface">{props.reserveValue}</span>
+      <p className="mb-3 text-xs text-on-surface-variant">
+        Vantagens da vida do personagem: dinheiro e posses (Recursos), pessoas que ajudam (Aliados) e
+        rede de informações (Contatos). Não é reserva de mana.
       </p>
       <ul className="space-y-2">
         {SHEET_BACKGROUNDS.map((b) => (
@@ -388,7 +386,6 @@ function CreatedSkillsSection({ character }: Props) {
 }
 
 function MortalSheet(props: Props) {
-  const mana = props.character.mana
   return (
     <div className="space-y-4">
       <SectionCard title="Identidade & vínculos">
@@ -398,18 +395,13 @@ function MortalSheet(props: Props) {
       <CreatedSkillsSection {...props} />
       <div className="grid gap-4 lg:grid-cols-2">
         <PathAndVirtues {...props} title="Virtudes & caminho" />
-        <BackgroundsAndResources
-          {...props}
-          reserveLabel="Mana"
-          reserveValue={mana ? `${mana.current}/${mana.max}` : '—'}
-        />
+        <BackgroundsAndResources {...props} />
       </div>
     </div>
   )
 }
 
 function VampireSheet(props: Props) {
-  const blood = props.character.blood
   return (
     <div className="space-y-4">
       <SectionCard title="Identidade & linhagem">
@@ -419,11 +411,7 @@ function VampireSheet(props: Props) {
       <CreatedSkillsSection {...props} />
       <div className="grid gap-4 lg:grid-cols-2">
         <PathAndVirtues {...props} />
-        <BackgroundsAndResources
-          {...props}
-          reserveLabel="Sangue"
-          reserveValue={blood ? `${blood.current}/${blood.max}` : '—'}
-        />
+        <BackgroundsAndResources {...props} />
       </div>
     </div>
   )
@@ -439,7 +427,6 @@ function OtherSpeciesSheet(props: Props) {
     s.includes('glamour') ||
     s.includes('changeling')
   const pathTitle = isFae ? 'Trilha do Juramento Feérico' : 'Trilha & virtudes'
-  const mana = character.mana
 
   return (
     <div className="space-y-4">
@@ -462,11 +449,7 @@ function OtherSpeciesSheet(props: Props) {
               : SHEET_VIRTUES
           }
         />
-        <BackgroundsAndResources
-          {...props}
-          reserveLabel={isFae ? 'Glamour' : 'Mana'}
-          reserveValue={mana ? `${mana.current}/${mana.max}` : '—'}
-        />
+        <BackgroundsAndResources {...props} />
       </div>
     </div>
   )

@@ -10,19 +10,11 @@ import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
 import { normalizeProgression, SUBCLASS_CHOICE_LEVEL } from '../../lib/characterProgression'
 import { resolveResourceProfile } from '../../lib/characterSheetKind'
-import {
-  FAITH_OPTIONS,
-  MORTAL_FAITH_PATHS,
-  resolveCharacterClass,
-  formatMortalFaithValue,
-  parseMortalFaith,
-  type MortalFaithPathId,
-} from '../../lib/characterOptions'
+import { resolveCharacterClass } from '../../lib/characterOptions'
 import { resolveSheetKind } from '../../lib/characterSheetKind'
 import { computeArmorClass, sumEquippedBonuses } from '../../lib/equipmentMods'
 import type { CharacterInventoryItem, CreatedSkill, ProfileCharacterSummary } from '../../types/profile'
 import { useAuthStore } from '../../stores/authStore'
-import { useReferenceNames } from '../../hooks/useReferenceNames'
 
 const TABS = [
   { id: 'inventario', label: 'Inventário' },
@@ -46,7 +38,6 @@ export default function CharacterHubPage() {
     }
   }, [location.pathname, searchParams, setSearchParams])
   const [editOpen, setEditOpen] = useState(false)
-  const [faithBaseline, setFaithBaseline] = useState<'' | MortalFaithPathId>('')
 
   const { data: profile, isLoading } = useQuery({
     queryKey: playerQueryKeys.profile,
@@ -59,21 +50,10 @@ export default function CharacterHubPage() {
 
   const [draft, setDraft] = useState({
     name: '',
-    faith: '',
     clan: '',
     subclass: '',
-    faithPath: '' as '' | MortalFaithPathId,
-    cathedralId: '',
-    precept: '',
   })
 
-  const { data: hubCathedrals = [] } = useQuery({
-    queryKey: ['catalog-cathedrals', draft.faithPath || 'all'],
-    queryFn: () =>
-      api.getCatalogCathedrals(draft.faithPath === 'luz' || draft.faithPath === 'trevas' ? draft.faithPath : undefined),
-    enabled: editOpen && isMortal,
-  })
-  const faithNames = useReferenceNames('faith', FAITH_OPTIONS)
   const characterClass = character ? resolveCharacterClass(character) : null
   const { data: subclassOptions = [] } = useQuery({
     queryKey: ['catalog-subclasses', characterClass],
@@ -83,40 +63,18 @@ export default function CharacterHubPage() {
 
   function openEdit() {
     if (!character) return
-    const parsed = parseMortalFaith(character.identity?.faith)
     setDraft({
       name: character.name,
-      faith: character.identity?.faith ?? '',
       clan: character.clan ?? '',
       subclass: character.subclass ?? '',
-      faithPath: parsed.pathId,
-      cathedralId: parsed.cathedralId,
-      precept: parsed.precept,
     })
-    setFaithBaseline(parsed.pathId)
     setEditOpen(true)
   }
 
-  const mortalFaithChanged = isMortal && draft.faithPath !== faithBaseline && draft.faithPath !== ''
-
   async function saveEdit() {
     const canSetSubclass = (character?.level ?? 1) >= SUBCLASS_CHOICE_LEVEL
-    let faith: string | null = draft.faith.trim() || null
-    if (isMortal) {
-      if (mortalFaithChanged) {
-        const path = MORTAL_FAITH_PATHS.find((p) => p.id === draft.faithPath)
-        const cathedral = hubCathedrals.find(
-          (c) => c.name === draft.cathedralId || c.id === draft.cathedralId,
-        )
-        if (!path || !cathedral || !draft.precept) return
-        faith = formatMortalFaithValue(path.label, cathedral.name, draft.precept)
-      } else {
-        faith = character!.identity?.faith ?? null
-      }
-    }
     await portrait.patchCharacter({
       name: draft.name.trim() || character!.name,
-      faith,
       subclass: canSetSubclass ? draft.subclass.trim() || null : undefined,
     })
     setEditOpen(false)
@@ -153,9 +111,9 @@ export default function CharacterHubPage() {
 
   const tabClass = ({ isActive }: { isActive: boolean }) =>
     [
-      'block w-full border-l-2 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider transition',
+      'inline-flex items-center border-b-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition',
       isActive
-        ? 'border-primary bg-primary/10 text-primary'
+        ? 'border-primary text-primary'
         : 'border-transparent text-on-surface-variant hover:border-outline-variant hover:text-on-surface',
     ].join(' ')
 
@@ -227,8 +185,8 @@ export default function CharacterHubPage() {
 
       {portrait.error ? <p className="text-sm text-primary">{portrait.error}</p> : null}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <nav className="mesa-panel shrink-0 p-2 lg:w-44">
+      <div className="space-y-4">
+        <nav className="flex flex-wrap items-center justify-end gap-1" aria-label="Seções do personagem">
           {TABS.map((tab) => (
             <NavLink
               key={tab.id}
@@ -241,7 +199,7 @@ export default function CharacterHubPage() {
           ))}
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           {view === 'inventario' ? (
             <CharacterInventoryPanel character={character} onChangeInventory={saveInventory} busy={portrait.saving} />
           ) : null}
@@ -292,94 +250,13 @@ export default function CharacterHubPage() {
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
               />
             </label>
-            {isMortal ? (
-              <>
-                <label className="block text-xs uppercase text-on-surface-variant">
-                  Fé (Luz ou Trevas)
-                  <select
-                    className="input-feudal mt-1 pl-4 normal-case"
-                    value={draft.faithPath}
-                    onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        faithPath: e.target.value as '' | MortalFaithPathId,
-                        cathedralId: '',
-                        precept: '',
-                      }))
-                    }
-                  >
-                    <option value="">Selecionar…</option>
-                    {MORTAL_FAITH_PATHS.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {mortalFaithChanged && draft.faithPath ? (
-                  <>
-                    <label className="block text-xs uppercase text-on-surface-variant">
-                      Catedral / ordem
-                      <select
-                        className="input-feudal mt-1 pl-4 normal-case"
-                        value={draft.cathedralId}
-                        onChange={(e) => setDraft((d) => ({ ...d, cathedralId: e.target.value, precept: '' }))}
-                      >
-                        <option value="">Selecionar…</option>
-                        {hubCathedrals.map((c) => (
-                          <option key={c.id} value={c.name}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {draft.cathedralId ? (
-                      <label className="block text-xs uppercase text-on-surface-variant">
-                        Preceito
-                        <select
-                          className="input-feudal mt-1 pl-4 normal-case"
-                          value={draft.precept}
-                          onChange={(e) => setDraft((d) => ({ ...d, precept: e.target.value }))}
-                        >
-                          <option value="">Selecionar…</option>
-                          {hubCathedrals
-                            .find((c) => c.name === draft.cathedralId || c.id === draft.cathedralId)
-                            ?.precepts.map((p) => (
-                              <option key={p} value={p}>
-                                {p}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 px-3 py-2">
-                    <p className="text-[10px] uppercase text-on-surface-variant">Catedral / ordem</p>
-                    <p className="mt-1 text-sm text-on-surface">{draft.cathedralId || character.identity?.faith || '—'}</p>
-                    <p className="mt-1 text-[10px] text-on-surface-variant">
-                      Altere o tipo de fé para escolher outra catedral.
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <label className="block text-xs uppercase text-on-surface-variant">
-                Fé
-                <select
-                  className="input-feudal mt-1 pl-4 normal-case"
-                  value={draft.faith}
-                  onChange={(e) => setDraft((d) => ({ ...d, faith: e.target.value }))}
-                >
-                  <option value="">Selecionar…</option>
-                  {faithNames.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <div className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 px-3 py-2">
+              <p className="text-[10px] uppercase text-on-surface-variant">Fé</p>
+              <p className="mt-1 text-sm text-on-surface">{character.identity?.faith || '—'}</p>
+              <p className="mt-1 text-[10px] text-on-surface-variant">
+                A fé só muda quando o narrador altera na sessão.
+              </p>
+            </div>
             <div className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 px-3 py-2">
               <p className="text-[10px] uppercase text-on-surface-variant">
                 {isMortal ? 'Clã / ordem mortal' : 'Clã'}
@@ -446,7 +323,7 @@ function CharacterResourceBars({ character }: { character: ProfileCharacterSumma
     <div className="mt-4 grid max-w-xl gap-3 sm:grid-cols-2">
       {resources.showHp ? (
         <StatBar
-          label={`Vitalidade${hpDie ? ` · ${hpDie}` : ''}`}
+          label={`HP${hpDie ? ` · ${hpDie}` : ''}`}
           current={character.hp.current}
           max={character.hp.max}
           bonus={bonuses.hp}
@@ -469,7 +346,7 @@ function CharacterResourceBars({ character }: { character: ProfileCharacterSumma
         <StatBar label={resources.secondaryEssenceLabel} current={8} max={10} variant="faith" />
       ) : null}
       <StatBar
-        label="Classe de armadura (CA)"
+        label={`CA${character.vitals?.caDie ? ` · ${character.vitals.caDie}` : ''}`}
         current={ca.total}
         max={Math.max(ca.total, ca.base + Math.abs(ca.bonus), 20)}
         bonus={ca.bonus}

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { DotRating } from '../../components/domain/DotRating'
-import { OTHER_SPECIES_OPTIONS } from '../../lib/characterOptions'
+import { classArmorDie, OTHER_SPECIES_OPTIONS } from '../../lib/characterOptions'
 import {
   ABILITY_GROUPS,
   ATTRIBUTE_GROUPS,
@@ -10,8 +10,8 @@ import {
 import { CharacterWizardLayout } from './CharacterWizardLayout'
 
 const SPECIES_LABELS: Record<string, string> = {
-  vampiro: 'Vampiro / Cainita',
-  mortal: 'Mortal / Caçador',
+  vampiro: 'Vampiros',
+  mortal: 'Caçadores',
   outros: 'Outras espécies',
 }
 
@@ -170,6 +170,14 @@ export default function ReviewStepPage() {
                 label="Mana"
                 value={store.manaValue != null ? `${store.manaValue} (${store.manaDie})` : '—'}
               />
+              <Row
+                label="CA"
+                value={
+                  store.caValue != null
+                    ? `${store.caValue} (${classArmorDie(store.characterClass) ?? '—'})`
+                    : '—'
+                }
+              />
             </dl>
             <p className="mt-2 text-[11px] text-on-surface-variant">
               Após concluir, HP/Mana não podem ser editados; sobem +5 a cada nível.
@@ -251,13 +259,13 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 
 function faithOrientationLabel(v: string | null) {
   if (v === 'depois') return 'Decidir depois'
-  if (v === 'verdadeira') return 'Fé Verdadeira'
-  if (v === 'paganismo') return 'Paganismo'
+  if (v === 'verdadeira') return 'Luz'
+  if (v === 'paganismo') return 'Trevas'
   return '—'
 }
 
 function faithPathLabel(v: string | null) {
-  if (v === 'luz') return 'Luz (Caminho da Cruz)'
-  if (v === 'trevas') return 'Trevas (Heresia & Pecado)'
+  if (v === 'luz') return 'Caminho Iluminado'
+  if (v === 'trevas') return 'Caminho Negro'
   return '—'
 }

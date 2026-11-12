@@ -5,10 +5,10 @@ import { UserProfileMenu } from '../domain/UserProfileMenu'
 
 const playerNavClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'inline-flex items-center py-1 text-sm whitespace-nowrap transition-colors duration-200',
+    'inline-flex items-center self-stretch border-b-2 text-sm whitespace-nowrap transition-colors duration-200',
     isActive
-      ? 'border-b-2 border-primary font-bold text-primary'
-      : 'text-on-surface-variant hover:text-primary',
+      ? 'border-primary font-bold text-primary'
+      : 'border-transparent text-on-surface-variant hover:text-primary',
   ].join(' ')
 
 export function PlayerShell() {
@@ -16,12 +16,12 @@ export function PlayerShell() {
     <div className="app-shell bg-background">
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
         <div className="app-shell-header-bar">
-          <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
-            <Link to="/user" className="shrink-0 focus:outline-none">
+          <div className="flex min-w-0 flex-1 flex-wrap items-stretch gap-x-4 gap-y-1 lg:gap-x-6">
+            <Link to="/user" className="flex shrink-0 items-center self-center focus:outline-none">
               <BrandLogo size="xs" className="h-9 w-9" />
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 items-center gap-4 overflow-x-auto lg:flex xl:gap-5">
+            <nav className="hidden min-w-0 flex-1 flex-wrap items-stretch gap-x-5 gap-y-1 lg:flex xl:gap-x-6">
               <NavLink to="/user" end className={playerNavClass}>
                 Início
               </NavLink>
@@ -43,7 +43,7 @@ export function PlayerShell() {
             </nav>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2 self-center sm:gap-3">
             <NotificationBell />
             <UserProfileMenu context="player" />
           </div>

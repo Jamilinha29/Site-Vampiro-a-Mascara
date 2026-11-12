@@ -119,6 +119,8 @@ const createCharacterSchema = z.object({
     .object({
       hpDie: z.string().max(10).optional(),
       manaDie: z.string().max(10).optional(),
+      caDie: z.string().max(10).optional(),
+      caValue: z.number().int().min(1).max(20).optional(),
       locked: z.boolean().optional(),
     })
     .optional(),
@@ -147,6 +149,8 @@ meRouter.post('/characters', (req, res, next) => {
       vitals: {
         hpDie: body.vitals?.hpDie ?? null,
         manaDie: body.vitals?.manaDie ?? null,
+        caDie: body.vitals?.caDie ?? null,
+        caValue: body.vitals?.caValue ?? null,
         locked: body.vitals?.locked ?? true,
       },
     })

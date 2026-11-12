@@ -51,6 +51,7 @@ type WizardState = {
   hpValue: number | null
   manaDie: string
   manaValue: number | null
+  caValue: number | null
   oathAccepted: boolean
   selectedBlock: SelectedWizardBlock | null
   setSelectedBlock: (block: SelectedWizardBlock | null) => void
@@ -74,7 +75,7 @@ type WizardState = {
   setCreatedSkills: (skills: CreatedSkill[]) => void
   setVirtue: (key: keyof WizardState['virtues'], value: number) => void
   setVitals: (
-    patch: Partial<Pick<WizardState, 'hpDie' | 'hpValue' | 'manaDie' | 'manaValue'>>,
+    patch: Partial<Pick<WizardState, 'hpDie' | 'hpValue' | 'manaDie' | 'manaValue' | 'caValue'>>,
   ) => void
   setOathAccepted: (v: boolean) => void
   reset: () => void
@@ -164,6 +165,7 @@ const initial = {
   hpValue: null as number | null,
   manaDie: 'D12',
   manaValue: null as number | null,
+  caValue: null as number | null,
   oathAccepted: false,
   selectedBlock: null as SelectedWizardBlock | null,
 }
@@ -227,7 +229,7 @@ export const useCharacterWizardStore = create<WizardState>()(
           socialRank,
           sire: socialRank === 'Nobre' ? get().sire : '',
         }),
-      setCharacterClass: (characterClass) => set({ characterClass }),
+      setCharacterClass: (characterClass) => set({ characterClass, caValue: null }),
       setIdentity: (patch) => set(patch),
       setArchetype: (archetype) => set({ archetype }),
       setDemeanor: (demeanor) => set({ demeanor }),

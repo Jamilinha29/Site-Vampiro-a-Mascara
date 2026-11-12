@@ -342,36 +342,6 @@ export function AdminGlossaryEditor() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)_minmax(9rem,auto)] sm:items-center">
-        <div className="relative min-w-0">
-          <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
-            search
-          </span>
-          <input
-            className="input-feudal w-full pl-10"
-            placeholder="Buscar registro do glossário…"
-            value={registryQuery}
-            onChange={(e) => setRegistryQuery(e.target.value)}
-          />
-        </div>
-        <select className="input-feudal w-full pl-4 sm:w-auto" value={registryRarity} onChange={(e) => setRegistryRarity(e.target.value)}>
-          <option value="all">Raridade: todas</option>
-          <option value="ancestral">Raridade: Ancestral</option>
-          <option value="raro">Raridade: Raro</option>
-          <option value="incomum">Raridade: Incomum</option>
-          <option value="comum">Raridade: Comum</option>
-          <option value="proibido">Raridade: Proibido</option>
-        </select>
-        <select
-          className="input-feudal w-full pl-4 sm:w-auto"
-          value={registrySort}
-          onChange={(e) => setRegistrySort(e.target.value as 'recent' | 'name')}
-        >
-          <option value="recent">Mais recentes</option>
-          <option value="name">Nome A–Z</option>
-        </select>
-      </div>
-
       <section className="admin-form-panel admin-form-panel--compact">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -736,9 +706,35 @@ export function AdminGlossaryEditor() {
 
       <section className="mesa-panel p-5">
         <h3 className="font-label-sm text-xs text-secondary uppercase">Registros do glossário</h3>
-        <p className="mt-1 text-[11px] text-on-surface-variant">
-          Use a busca e os filtros acima para localizar entradas — edite para completar o que veio da loja ou do bestiário.
-        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)_minmax(9rem,auto)] sm:items-center">
+          <div className="relative min-w-0">
+            <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
+              search
+            </span>
+            <input
+              className="input-feudal w-full pl-10"
+              placeholder="Buscar registro do glossário…"
+              value={registryQuery}
+              onChange={(e) => setRegistryQuery(e.target.value)}
+            />
+          </div>
+          <select className="input-feudal w-full pl-4 sm:w-auto" value={registryRarity} onChange={(e) => setRegistryRarity(e.target.value)}>
+            <option value="all">Raridade: todas</option>
+            <option value="ancestral">Raridade: Ancestral</option>
+            <option value="raro">Raridade: Raro</option>
+            <option value="incomum">Raridade: Incomum</option>
+            <option value="comum">Raridade: Comum</option>
+            <option value="proibido">Raridade: Proibido</option>
+          </select>
+          <select
+            className="input-feudal w-full pl-4 sm:w-auto"
+            value={registrySort}
+            onChange={(e) => setRegistrySort(e.target.value as 'recent' | 'name')}
+          >
+            <option value="recent">Mais recentes</option>
+            <option value="name">Nome A–Z</option>
+          </select>
+        </div>
         <ul className="mt-3 space-y-2">
           {filteredEntries.map((item) => (
             <li

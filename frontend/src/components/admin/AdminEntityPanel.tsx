@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { readProfileImageFile } from '../../lib/profileMedia'
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { ChronicleEntity, CreateEntityPayload, EntityKind } from '../../types/chronicle'
@@ -31,6 +31,8 @@ type Props = {
   registryVariant?: 'list' | 'cards' | 'npc' | 'monster'
   /** Monstros/NPCs publicados alimentam o glossário; no glossário só completam o que falta. */
   syncGlossary?: boolean
+  /** Abre o formulário com um cadastro já salvo. */
+  editId?: string | null
 }
 
 export function AdminEntityPanel({
@@ -57,10 +59,14 @@ export function AdminEntityPanel({
   hideRegistry = false,
   registryVariant = 'list',
   syncGlossary = false,
+  editId = null,
 }: Props) {
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
+  const [hpMax, setHpMax] = useState<number | ''>('')
+  const [manaMax, setManaMax] = useState<number | ''>('')
+  const [location, setLocation] = useState('')
   const [statsText, setStatsText] = useState('')
   const [creatureType, setCreatureType] = useState(creatureTypeOptions[0] ?? '')
   const [archiveCategory, setArchiveCategory] = useState(fixedArchiveCategory ?? defaultArchiveCategory ?? 'chronicles')
@@ -72,10 +78,61 @@ export function AdminEntityPanel({
   const [fileName, setFileName] = useState('')
   const [fileUrl, setFileUrl] = useState<string | undefined>()
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const loadedEdit = useRef<string | null>(null)
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['admin-entities', kind],
     queryFn: () => api.adminListEntities(kind),
+  })
+
+  useEffect(() => {
+    if (!editId || loadedEdit.current === editId) return
+    const item = items.find((row) => row.id === editId)
+    if (!item) return
+    loadedEdit.current = editId
+    setEditingId(item.id)
+    setName(item.name)
+    setDesc(item.description ?? '')
+    setHpMax(item.hpMax ?? '')
+    setManaMax(item.manaMax ?? '')
+    setLocation(item.location ?? '')
+    setStatsText(item.statsText ?? '')
+    setCreatureType(item.creatureType ?? creatureTypeOptions[0] ?? '')
+    if (item.archiveCategory) setArchiveCategory(item.archiveCategory)
+    if (item.shopCategory) setShopCategory(item.shopCategory)
+    if (item.downloadCategory) setDownloadCategory(item.downloadCategory)
+    if (item.bestiaryTier) setBestiaryTier(item.bestiaryTier)
+    setPriceGold(item.priceGold ?? 0)
+    setPriceSilver(item.priceSilver ?? 0)
+    setFileName(item.fileName ?? '')
+    setFileUrl(item.fileUrl)
+    setError(null)
+    setNotice(null)
+  }, [editId, items])
+
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CreateEntityPayload }) => api.adminUpdateEntity(id, body),
+    onSuccess: (saved) => {
+      setName(saved.name)
+      setDesc(saved.description ?? '')
+      setHpMax(saved.hpMax ?? '')
+      setManaMax(saved.manaMax ?? '')
+      setLocation(saved.location ?? '')
+      setNotice('Alterações salvas.')
+      setError(null)
+      void qc.invalidateQueries({ queryKey: ['admin-entities', kind] })
+      if (syncGlossary || kind === 'monster') {
+        void qc.invalidateQueries({ queryKey: ['admin-entities', 'archive'] })
+        void qc.invalidateQueries({ queryKey: ['admin-entities'] })
+        invalidatePlayerPublishedContent(qc)
+      }
+    },
+    onError: (e: Error) => {
+      setNotice(null)
+      setError(e.message)
+    },
   })
 
   const create = useMutation({
@@ -89,6 +146,9 @@ export function AdminEntityPanel({
       }
       setName('')
       setDesc('')
+      setHpMax('')
+      setManaMax('')
+      setLocation('')
       setStatsText('')
       setFileName('')
       setFileUrl(undefined)
@@ -134,8 +194,13 @@ export function AdminEntityPanel({
     if (kind === 'monster') {
       body.bestiaryTier = fixedBestiaryTier ?? bestiaryTier
     }
-    if (kind === 'npc' && showCreatureType) {
-      body.statsText = body.statsText || `Tipo ${creatureType}`
+    if (kind === 'npc' || kind === 'monster') {
+      if (hpMax !== '') body.hpMax = hpMax
+      if (manaMax !== '') body.manaMax = manaMax
+      body.location = location.trim()
+      const hp = hpMax === '' ? 0 : hpMax
+      const mana = manaMax === '' ? 0 : manaMax
+      body.statsText = `HP: ${hp}\nMana: ${mana}`
     }
     if (showPrices) {
       body.priceGold = priceGold
@@ -145,13 +210,16 @@ export function AdminEntityPanel({
       body.fileName = fileName
       body.fileUrl = fileUrl
     }
-    create.mutate(body)
+    if (editingId) update.mutate({ id: editingId, body })
+    else create.mutate(body)
   }
 
   return (
     <section className="admin-form-panel admin-form-panel--compact">
       <header>
-        <h2 className="font-label-sm text-xs text-secondary uppercase">{title}</h2>
+        <h2 className="font-label-sm text-xs text-secondary uppercase">
+          {editingId ? `Editar ${title}` : title}
+        </h2>
         <p className="mt-1 text-sm text-on-surface-variant">{description}</p>
       </header>
 
@@ -258,21 +326,44 @@ export function AdminEntityPanel({
         ) : null}
       </div>
 
+      {kind === 'npc' || kind === 'monster' ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="block text-xs uppercase text-on-surface-variant">
+            HP
+            <input
+              type="number"
+              min={0}
+              className="input-feudal mt-1 pl-4"
+              value={hpMax}
+              onChange={(e) => setHpMax(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Mana
+            <input
+              type="number"
+              min={0}
+              className="input-feudal mt-1 pl-4"
+              value={manaMax}
+              onChange={(e) => setManaMax(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Local
+            <input
+              className="input-feudal mt-1 pl-4"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Onde aparece"
+            />
+          </label>
+        </div>
+      ) : null}
+
       <label className="block text-xs uppercase text-on-surface-variant">
         Descrição
         <textarea className="input-feudal textarea-compact mt-1 pl-4" value={desc} onChange={(e) => setDesc(e.target.value)} />
       </label>
-
-      {showStats ? (
-        <label className="block text-xs uppercase text-on-surface-variant">
-          Dados / estatísticas (ficha)
-          <textarea
-            className="input-feudal textarea-compact mt-1 pl-4 font-mono text-xs"
-            value={statsText}
-            onChange={(e) => setStatsText(e.target.value)}
-          />
-        </label>
-      ) : null}
 
       {showFileUpload ? (
         <label className="block text-xs uppercase text-on-surface-variant">
@@ -299,14 +390,42 @@ export function AdminEntityPanel({
       ) : null}
 
       {error ? <p className="text-sm text-primary">{error}</p> : null}
+      {notice ? <p className="text-sm text-secondary">{notice}</p> : null}
 
       <p className="text-[11px] text-on-surface-variant">
         Salvar cria um <strong className="font-normal text-secondary">rascunho</strong>. Use{' '}
         <strong className="font-normal text-secondary">Publicar</strong> na lista abaixo para o jogador ver na mesa, glossário ou bestiário.
       </p>
-      <button type="button" className="btn-primary text-sm" disabled={create.isPending} onClick={submit}>
-        Salvar rascunho
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-primary text-sm"
+          disabled={create.isPending || update.isPending}
+          onClick={submit}
+        >
+          {editingId ? 'Salvar alterações' : 'Salvar rascunho'}
+        </button>
+        {editingId ? (
+          <button
+            type="button"
+            className="btn-secondary text-sm"
+            onClick={() => {
+              setEditingId(null)
+              loadedEdit.current = null
+              setName('')
+              setDesc('')
+              setHpMax('')
+              setManaMax('')
+              setLocation('')
+              setStatsText('')
+              setFileName('')
+              setFileUrl(undefined)
+            }}
+          >
+            Novo cadastro
+          </button>
+        ) : null}
+      </div>
 
       {hideRegistry ? null : (
         <div className="border-t border-outline-variant/40 pt-4">
@@ -340,6 +459,8 @@ export function AdminEntityPanel({
                     <p className="truncate font-serif text-sm text-on-surface">{item.name}</p>
                     <p className="truncate text-[10px] text-on-surface-variant">
                       {item.creatureType ? `${item.creatureType} · ` : ''}
+                      HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'}
+                      {item.location ? ` · ${item.location}` : ''} ·{' '}
                       {item.visibility === 'published' ? 'No glossário' : 'Rascunho'}
                     </p>
                   </div>
@@ -369,7 +490,8 @@ export function AdminEntityPanel({
                   <div className="min-w-0">
                     <p className="truncate font-serif text-sm text-on-surface">{item.name}</p>
                     <p className="truncate text-[10px] text-on-surface-variant">
-                      {(item.threatLevel ?? 'comum').toString()} · HP {item.hpMax ?? '—'} ·{' '}
+                      {(item.threatLevel ?? 'comum').toString()} · HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'}
+                      {item.location ? ` · ${item.location}` : ''} ·{' '}
                       {item.bestiaryTier === 'known'
                         ? 'Conhecido'
                         : item.bestiaryTier === 'rumors'

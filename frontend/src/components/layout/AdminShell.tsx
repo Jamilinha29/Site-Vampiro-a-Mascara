@@ -18,10 +18,10 @@ const adminNavBase = [
 
 const adminNavClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'inline-flex shrink-0 items-center py-1 text-sm whitespace-nowrap transition-colors duration-200',
+    'inline-flex shrink-0 items-center self-stretch border-b-2 text-sm whitespace-nowrap transition-colors duration-200',
     isActive
-      ? 'border-b-2 border-primary font-bold text-primary'
-      : 'text-on-surface-variant hover:text-primary',
+      ? 'border-primary font-bold text-primary'
+      : 'border-transparent text-on-surface-variant hover:text-primary',
   ].join(' ')
 
 export function AdminShell() {
@@ -46,12 +46,12 @@ export function AdminShell() {
     <div className="app-shell bg-background">
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
         <div className="app-shell-header-bar">
-          <div className="flex min-w-0 flex-1 items-center gap-5 lg:gap-6">
-            <Link to="/admin" className="shrink-0 focus:outline-none">
+          <div className="flex min-w-0 flex-1 flex-wrap items-stretch gap-x-4 gap-y-1 lg:gap-x-6">
+            <Link to="/admin" className="flex shrink-0 items-center self-center focus:outline-none">
               <BrandLogo size="xs" className="h-9 w-9" />
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 items-center gap-4 overflow-x-auto lg:flex xl:gap-5">
+            <nav className="hidden min-w-0 flex-1 flex-wrap items-stretch gap-x-5 gap-y-1 lg:flex xl:gap-x-6">
               {adminNav.map((item) => (
                 <NavLink key={item.to} to={item.to} end={'end' in item ? item.end : false} className={adminNavClass}>
                   {item.label}
@@ -60,7 +60,7 @@ export function AdminShell() {
             </nav>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <div className="flex min-w-0 items-center self-center">
             <UserProfileMenu context="admin" />
           </div>
         </div>

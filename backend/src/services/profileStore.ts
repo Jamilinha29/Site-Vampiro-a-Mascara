@@ -58,6 +58,8 @@ export type CreatedSkill = {
 export type CharacterVitalsMeta = {
   hpDie?: string | null
   manaDie?: string | null
+  caDie?: string | null
+  caValue?: number | null
   locked?: boolean
 }
 

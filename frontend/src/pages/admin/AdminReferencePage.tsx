@@ -78,6 +78,9 @@ export default function AdminReferencePage() {
   const [kind, setKind] = useState(KINDS[0].id)
   const [draft, setDraft] = useState<Draft>(emptyDraft())
   const [preview, setPreview] = useState<Draft[] | null>(null)
+  const [savedQuery, setSavedQuery] = useState('')
+  const [editingSavedId, setEditingSavedId] = useState<string | null>(null)
+  const [savedDraft, setSavedDraft] = useState<Draft>(emptyDraft())
   const [message, setMessage] = useState<string | null>(null)
   const meta = KINDS.find((item) => item.id === kind) ?? KINDS[0]
 
@@ -93,7 +96,24 @@ export default function AdminReferencePage() {
       setMessage('Item salvo no sistema.')
       await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
       await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
+      if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
       if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
+    },
+    onError: (error: Error) => setMessage(error.message),
+  })
+
+  const moveFaith = useMutation({
+    mutationFn: (row: ReferenceEntry & { faithPath: 'luz' | 'trevas' }) =>
+      api.adminAddReference(kind, {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        faithPath: row.faithPath,
+      }),
+    onSuccess: async () => {
+      setMessage('Catedral movida para o caminho escolhido.')
+      await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
+      await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
     },
     onError: (error: Error) => setMessage(error.message),
   })
@@ -107,12 +127,49 @@ export default function AdminReferencePage() {
       )
       await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
       await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
+      if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
       if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
     },
     onError: (error: Error) => setMessage(error.message),
   })
 
   const saved = list.data ?? []
+  const saveSaved = useMutation({
+    mutationFn: (row: ReferenceEntry) =>
+      api.adminAddReference(kind, {
+        id: row.id,
+        name: savedDraft.name.trim() || row.name,
+        description: savedDraft.description,
+        className: savedDraft.className,
+        faithPath: row.faithPath,
+      }),
+    onSuccess: async () => {
+      setEditingSavedId(null)
+      setMessage('Item atualizado.')
+      await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
+      await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
+      if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
+    },
+    onError: (error: Error) => setMessage(error.message),
+  })
+
+  const faithGroups = {
+    luz: saved.filter((row) => row.faithPath === 'luz'),
+    trevas: saved.filter((row) => row.faithPath === 'trevas'),
+    none: saved.filter((row) => row.faithPath !== 'luz' && row.faithPath !== 'trevas'),
+  }
+  const savedQueryText = savedQuery.trim().toLowerCase()
+  const visibleSaved = saved.filter((row) => {
+    if (!savedQueryText) return true
+    return (
+      row.name.toLowerCase().includes(savedQueryText) ||
+      row.description.toLowerCase().includes(savedQueryText) ||
+      row.className.toLowerCase().includes(savedQueryText)
+    )
+  })
+  const editableSaved = meta.extra === 'class' || kind === 'monster_type' || kind === 'equipment_type' || kind === 'magic'
+  const faithNeedsPath = meta.extra === 'faith' && !draft.faithPath
+  const previewNeedsPath = meta.extra === 'faith' && (preview?.some((row) => !row.faithPath) ?? false)
   const columns = useMemo(() => {
     const base = ['Tipo', 'Descrição']
     if (meta.extra === 'faith') base.push('Caminho')
@@ -127,7 +184,7 @@ export default function AdminReferencePage() {
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
           Crie um item ou importe a planilha, revise e só então salve. O que for salvo fica na API mesmo se o
           Supabase pausar. CSV: nome, descrição
-          {meta.extra === 'faith' ? ', caminho (luz ou trevas)' : ''}
+          {meta.extra === 'faith' ? ', caminho (luz ou trevas, obrigatório)' : ''}
           {meta.extra === 'class' ? ', class_name' : ''}.
         </p>
       </header>
@@ -142,6 +199,8 @@ export default function AdminReferencePage() {
               setKind(item.id)
               setPreview(null)
               setMessage(null)
+              setSavedQuery('')
+              setEditingSavedId(null)
             }}
           >
             {item.label}
@@ -188,7 +247,7 @@ export default function AdminReferencePage() {
                   setDraft((row) => ({ ...row, faithPath: event.target.value as Draft['faithPath'] }))
                 }
               >
-                <option value="">Qualquer</option>
+                <option value="">Escolher caminho</option>
                 <option value="luz">Luz</option>
                 <option value="trevas">Trevas</option>
               </select>
@@ -198,7 +257,12 @@ export default function AdminReferencePage() {
         <button
           type="button"
           className="btn-primary text-xs"
-          disabled={!draft.name.trim() || (meta.extra === 'class' && !draft.className.trim()) || saveOne.isPending}
+          disabled={
+            !draft.name.trim() ||
+            (meta.extra === 'class' && !draft.className.trim()) ||
+            faithNeedsPath ||
+            saveOne.isPending
+          }
           onClick={() => saveOne.mutate()}
         >
           Salvar item
@@ -236,7 +300,7 @@ export default function AdminReferencePage() {
               <button
                 type="button"
                 className="btn-primary text-xs"
-                disabled={savePreview.isPending || preview.length === 0}
+                disabled={savePreview.isPending || preview.length === 0 || previewNeedsPath}
                 onClick={() => savePreview.mutate(preview)}
               >
                 Salvar importação
@@ -247,6 +311,7 @@ export default function AdminReferencePage() {
             </div>
             <p className="text-xs text-on-surface-variant">
               Salvar só acrescenta. Se o tipo já existe com a mesma descrição, a linha é ignorada. Se a descrição for outra, ela é atualizada sem criar outra cópia.
+              {previewNeedsPath ? ' Escolha Luz ou Trevas em cada catedral antes de salvar.' : ''}
             </p>
           </>
         ) : null}
@@ -258,16 +323,194 @@ export default function AdminReferencePage() {
         <h2 className="font-serif text-lg text-on-surface">Salvos</h2>
         <p className="mt-1 text-xs text-on-surface-variant">{columns.join(' · ')}</p>
         {list.isLoading ? <p className="mt-3 text-sm text-on-surface-variant">Carregando…</p> : null}
-        <ul className="mt-3 space-y-2">
-          {saved.map((row) => (
-            <SavedRow key={row.id} row={row} />
-          ))}
-          {!list.isLoading && saved.length === 0 ? (
-            <li className="text-sm text-on-surface-variant">Nenhum item salvo. As telas usam a lista do código até a primeira importação.</li>
-          ) : null}
-        </ul>
+        {meta.extra === 'faith' ? (
+          <div className="mt-4 space-y-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FaithColumn
+                title="Luz"
+                hint="Estas catedrais só aparecem no Caminho Iluminado."
+                rows={faithGroups.luz}
+                busy={moveFaith.isPending}
+                onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
+              />
+              <FaithColumn
+                title="Trevas"
+                hint="Estas catedrais só aparecem no Caminho Negro."
+                rows={faithGroups.trevas}
+                busy={moveFaith.isPending}
+                onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
+              />
+            </div>
+            {faithGroups.none.length ? (
+              <FaithColumn
+                title="Sem caminho"
+                hint="Escolha Luz ou Trevas. Enquanto estiverem aqui, não entram na ficha."
+                rows={faithGroups.none}
+                busy={moveFaith.isPending}
+                onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
+              />
+            ) : null}
+            {!list.isLoading && saved.length === 0 ? (
+              <p className="text-sm text-on-surface-variant">Nenhuma catedral salva.</p>
+            ) : null}
+          </div>
+        ) : editableSaved ? (
+          <div className="mt-3 space-y-3">
+            <div className="relative max-w-md">
+              <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
+                search
+              </span>
+              <input
+                className="input-feudal w-full pl-10"
+                placeholder="Buscar item salvo…"
+                value={savedQuery}
+                onChange={(event) => setSavedQuery(event.target.value)}
+              />
+            </div>
+            <ul className="space-y-2">
+              {visibleSaved.map((row) => (
+                <li key={row.id} className="rounded border border-outline-variant/40 px-3 py-2">
+                  {editingSavedId === row.id ? (
+                    <div className="space-y-2">
+                      {meta.extra === 'class' ? (
+                        <label className="block text-[10px] uppercase text-on-surface-variant">
+                          Classe
+                          <input
+                            className="input-feudal mt-1 pl-3 normal-case"
+                            value={savedDraft.className}
+                            onChange={(event) => setSavedDraft((current) => ({ ...current, className: event.target.value }))}
+                          />
+                        </label>
+                      ) : null}
+                      <label className="block text-[10px] uppercase text-on-surface-variant">
+                        Nome
+                        <input
+                          className="input-feudal mt-1 pl-3 normal-case"
+                          value={savedDraft.name}
+                          onChange={(event) => setSavedDraft((current) => ({ ...current, name: event.target.value }))}
+                        />
+                      </label>
+                      <label className="block text-[10px] uppercase text-on-surface-variant">
+                        Descrição
+                        <textarea
+                          className="input-feudal mt-1 min-h-20 pl-3 normal-case"
+                          value={savedDraft.description}
+                          onChange={(event) => setSavedDraft((current) => ({ ...current, description: event.target.value }))}
+                        />
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="btn-primary text-xs"
+                          disabled={saveSaved.isPending || !savedDraft.name.trim()}
+                          onClick={() => saveSaved.mutate(row)}
+                        >
+                          Salvar
+                        </button>
+                        <button type="button" className="btn-secondary text-xs" onClick={() => setEditingSavedId(null)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm text-on-surface">
+                          {row.className ? `${row.className} · ` : ''}
+                          {row.name}
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          {row.description || 'Sem descrição.'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs"
+                        onClick={() => {
+                          setEditingSavedId(row.id)
+                          setSavedDraft({
+                            name: row.name,
+                            description: row.description,
+                            className: row.className,
+                            faithPath: row.faithPath,
+                          })
+                        }}
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+              {!list.isLoading && visibleSaved.length === 0 ? (
+                <li className="text-sm text-on-surface-variant">Nenhum item encontrado.</li>
+              ) : null}
+            </ul>
+          </div>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {saved.map((row) => (
+              <SavedRow key={row.id} row={row} />
+            ))}
+            {!list.isLoading && saved.length === 0 ? (
+              <li className="text-sm text-on-surface-variant">Nenhum item salvo. As telas usam a lista do código até a primeira importação.</li>
+            ) : null}
+          </ul>
+        )}
       </section>
     </div>
+  )
+}
+
+function FaithColumn({
+  title,
+  hint,
+  rows,
+  busy,
+  onMove,
+}: {
+  title: string
+  hint: string
+  rows: ReferenceEntry[]
+  busy: boolean
+  onMove: (row: ReferenceEntry, faithPath: 'luz' | 'trevas') => void
+}) {
+  return (
+    <section className="rounded border border-outline-variant/40 p-3">
+      <h3 className="font-serif text-base text-on-surface">{title}</h3>
+      <p className="mt-1 text-xs text-on-surface-variant">{hint}</p>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-on-surface-variant">Nenhuma catedral neste caminho.</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {rows.map((row) => (
+            <li key={row.id} className="rounded border border-outline-variant/30 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-on-surface">{row.name}</p>
+                <select
+                  className="input-feudal w-auto pl-3 text-xs"
+                  value={row.faithPath}
+                  disabled={busy}
+                  aria-label={`Caminho de ${row.name}`}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    if (next !== 'luz' && next !== 'trevas') return
+                    onMove(row, next)
+                  }}
+                >
+                  {row.faithPath !== 'luz' && row.faithPath !== 'trevas' ? (
+                    <option value="">Escolher caminho</option>
+                  ) : null}
+                  <option value="luz">Luz</option>
+                  <option value="trevas">Trevas</option>
+                </select>
+              </div>
+              {row.description ? <p className="mt-1 text-xs text-on-surface-variant">{row.description}</p> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -340,7 +583,7 @@ function PreviewTable({
                     value={row.faithPath}
                     onChange={(event) => patch(index, { faithPath: event.target.value as Draft['faithPath'] })}
                   >
-                    <option value="">Qualquer</option>
+                    <option value="">Escolher caminho</option>
                     <option value="luz">Luz</option>
                     <option value="trevas">Trevas</option>
                   </select>

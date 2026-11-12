@@ -67,6 +67,7 @@ const entitySchema = z.object({
   imageUrl: z.string().max(1_500_000).optional(),
   hpMax: z.number().int().min(0).optional(),
   manaMax: z.number().int().min(0).optional(),
+  location: z.string().max(200).optional(),
   attributeMods: z.array(attributeModSchema).max(3).optional(),
   relicAmuletType: z.string().max(120).optional(),
   magicType: z.string().max(120).optional(),

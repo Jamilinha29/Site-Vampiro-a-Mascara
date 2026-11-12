@@ -123,7 +123,6 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
         </div>
         </div>
       </main>
-      <AuthFooter />
     </div>
   )
 }
@@ -173,29 +172,6 @@ function AuthHeader() {
   )
 }
 
-function AuthFooter() {
-  return (
-    <footer className="safe-px safe-pb relative z-10 shrink-0 border-t border-outline-variant/40 bg-surface-container-lowest/90 py-1.5 backdrop-blur sm:py-2">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-1 text-center md:flex-row md:gap-2 md:text-left">
-        <p className="flex items-center gap-2 text-[10px] text-on-surface-variant sm:text-xs">
-          <span className="material-symbols-outlined text-sm text-primary">military_tech</span>
-          © Vampiro: A Idade das Trevas — As Crônicas de Beladona
-        </p>
-        <nav className="hidden flex-wrap items-center justify-center gap-5 text-xs text-on-surface-variant sm:flex">
-          <Link to="/ajuda/codice" className="flex items-center gap-1 hover:text-primary">
-            <span className="material-symbols-outlined text-xs">menu_book</span>
-            Códice da Máscara
-          </Link>
-          <a href="/#estatutos" className="flex items-center gap-1 hover:text-primary">
-            <span className="material-symbols-outlined text-xs">gavel</span>
-            Estatutos da Noite
-          </a>
-        </nav>
-      </div>
-    </footer>
-  )
-}
-
 function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
     <div className="auth-portal-tabs mb-2 flex justify-center">
@@ -210,19 +186,19 @@ function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void
           }`}
         >
           <span className="material-symbols-outlined text-base">vpn_key</span>
-          Entrar nas Trevas
+          Entrar
         </button>
         <button
           type="button"
           onClick={() => setMode('register')}
           className={`flex flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-center font-label-md text-xs tracking-wider uppercase transition ${
             mode === 'register'
-              ? 'border border-secondary/70 bg-secondary/15 font-bold text-secondary shadow-sm'
-              : 'border border-transparent font-semibold text-on-surface-variant hover:bg-surface-container/70 hover:text-secondary'
+              ? 'border border-primary-container/70 bg-primary-container/20 font-bold text-primary shadow-sm'
+              : 'border border-transparent font-semibold text-on-surface-variant hover:bg-surface-container/70 hover:text-primary'
           }`}
         >
           <span className="material-symbols-outlined text-base">history_edu</span>
-          Forjar Linhagem
+          Forjar
         </button>
       </div>
     </div>
@@ -249,7 +225,7 @@ function LoginColumn({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
-  const [showAdminLogin, setShowAdminLogin] = useState(false)
+  const [adminMode, setAdminMode] = useState(false)
 
   if (mode !== 'login') return null
 
@@ -257,76 +233,90 @@ function LoginColumn({
     <div className="auth-portal-column flex flex-col p-4 sm:p-5 lg:col-start-1">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
-        <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="material-symbols-outlined shrink-0 text-xl text-primary">vpn_key</span>
-            <div className="min-w-0">
-              <h2 className="font-headline-sm text-sm font-bold tracking-wider text-primary uppercase md:text-base">
-                Entrar nas Trevas
-              </h2>
-              <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
-                Identificação nobiliárquica sob a Máscara
-              </p>
+        {adminMode ? (
+          <>
+            <div className="auth-portal-heading mb-3 flex items-center justify-between gap-2 border-b border-outline-variant/40 pb-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="material-symbols-outlined shrink-0 text-xl text-secondary">military_tech</span>
+                <div className="min-w-0">
+                  <h2 className="font-headline-sm text-sm font-bold tracking-wider text-secondary uppercase md:text-base">
+                    Login do mestre
+                  </h2>
+                  <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
+                    Correio narrador@… ou mestre@…
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 text-[11px] text-secondary hover:underline"
+                onClick={() => setAdminMode(false)}
+              >
+                Voltar
+              </button>
             </div>
-          </div>
-        </div>
-        <form
-          className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
-          onSubmit={(e) => {
-            e.preventDefault()
-            onSubmit(email, password)
-          }}
-        >
-          <Field label="Correio Feudal ou Nome de Guerra" required hint="ex: valerius@corte-noturna.org" id={emailId}>
-            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">shield_person</span>
-            <input
-              id={emailId}
-              className="input-feudal"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="username"
-            />
-          </Field>
-          <Field label="Selo Secreto (Senha)" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline">Esqueci o Selo</Link>}>
-            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
-            <input
-              id={passId}
-              type={showPass ? 'text' : 'password'}
-              className="input-feudal pr-11"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-            <button type="button" className="absolute right-3 text-outline hover:text-on-surface" onClick={() => setShowPass((s) => !s)} aria-label="Revelar senha">
-              <span className="material-symbols-outlined text-lg">{showPass ? 'visibility_off' : 'visibility'}</span>
-            </button>
-          </Field>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-on-surface-variant">
-            <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-outline-variant text-primary-container focus:ring-primary-container" />
-            Manter Vigília Ativa (Lembrar sessão)
-          </label>
-          <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
-            <span className="material-symbols-outlined text-lg">meeting_room</span>
-            {loading ? 'Abrindo…' : 'Adentrar o Santuário'}
-          </button>
-        </form>
-
-        <AuthSocialExtras
-          googleContext="login"
-          compact
-          showAdminLogin={showAdminLogin}
-          onToggleAdmin={() => setShowAdminLogin((v) => !v)}
-          onAdminSubmit={onAdminSubmit}
-          adminLoading={adminLoading}
-        />
-        <AuthAdminModal
-          open={showAdminLogin}
-          onClose={() => setShowAdminLogin(false)}
-          onAdminSubmit={onAdminSubmit}
-          adminLoading={adminLoading}
-        />
+            <AdminMasterPanel onAdminSubmit={onAdminSubmit} adminLoading={adminLoading} bare />
+          </>
+        ) : (
+          <>
+            <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="material-symbols-outlined shrink-0 text-xl text-primary">vpn_key</span>
+                <div className="min-w-0">
+                  <h2 className="font-headline-sm text-sm font-bold tracking-wider text-primary uppercase md:text-base">
+                    Entrar nas Trevas
+                  </h2>
+                  <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
+                    Identificação nobiliárquica sob a Máscara
+                  </p>
+                </div>
+              </div>
+            </div>
+            <form
+              className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
+              onSubmit={(e) => {
+                e.preventDefault()
+                onSubmit(email, password)
+              }}
+            >
+              <Field label="Correio Feudal ou Nome de Guerra" required hint="ex: valerius@corte-noturna.org" id={emailId}>
+                <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">shield_person</span>
+                <input
+                  id={emailId}
+                  className="input-feudal"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="username"
+                />
+              </Field>
+              <Field label="Selo Secreto (Senha)" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline">Esqueci o Selo</Link>}>
+                <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
+                <input
+                  id={passId}
+                  type={showPass ? 'text' : 'password'}
+                  className="input-feudal pr-11"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <button type="button" className="absolute right-3 text-outline hover:text-on-surface" onClick={() => setShowPass((s) => !s)} aria-label="Revelar senha">
+                  <span className="material-symbols-outlined text-lg">{showPass ? 'visibility_off' : 'visibility'}</span>
+                </button>
+              </Field>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-on-surface-variant">
+                <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-outline-variant text-primary-container focus:ring-primary-container" />
+                Manter Vigília Ativa (Lembrar sessão)
+              </label>
+              <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
+                <span className="material-symbols-outlined text-lg">meeting_room</span>
+                {loading ? 'Abrindo…' : 'Adentrar o Santuário'}
+              </button>
+            </form>
+            <AuthSocialExtras googleContext="login" compact onOpenAdmin={() => setAdminMode(true)} />
+          </>
+        )}
       </div>
     </div>
   )
@@ -336,105 +326,31 @@ function AuthSocialExtras({
   googleContext,
   allowAdmin = true,
   compact = false,
-  showAdminLogin,
-  onToggleAdmin,
-  onAdminSubmit,
-  adminLoading,
+  onOpenAdmin,
 }: {
   googleContext: 'login' | 'register'
   allowAdmin?: boolean
   compact?: boolean
-  showAdminLogin?: boolean
-  onToggleAdmin?: () => void
-  onAdminSubmit?: (email: string, password: string) => void
-  adminLoading?: boolean
+  onOpenAdmin?: () => void
 }) {
   return (
     <div className={`${compact ? 'mt-2 space-y-2' : 'mt-2.5 space-y-2.5'}`}>
       {!compact ? <AuthOuDivider /> : null}
       {allowAdmin ? (
-        <>
-          <div className={`grid gap-2 ${compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
-            <GoogleAuthButton context={googleContext} className={compact ? 'hidden sm:inline-flex' : ''} />
-            <button
-              type="button"
-              className={`inline-flex w-full items-center justify-center gap-1.5 rounded border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider transition ${
-                showAdminLogin
-                  ? 'border-secondary bg-secondary/15 text-secondary'
-                  : 'border-outline-variant/60 bg-surface-container text-on-surface-variant hover:border-secondary/50 hover:text-secondary'
-              }`}
-              onClick={onToggleAdmin}
-              aria-expanded={showAdminLogin}
-            >
-              <span className="material-symbols-outlined text-base">admin_panel_settings</span>
-              ADM
-            </button>
-          </div>
-          {showAdminLogin && onAdminSubmit ? (
-            <div className="hidden lg:block">
-              <AdminMasterPanel onAdminSubmit={onAdminSubmit} adminLoading={adminLoading ?? false} />
-            </div>
-          ) : null}
-        </>
+        <div className={`grid gap-2 ${compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
+          <GoogleAuthButton context={googleContext} className={compact ? 'hidden sm:inline-flex' : ''} />
+          <button
+            type="button"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container px-3 py-2 text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase transition hover:border-secondary/50 hover:text-secondary"
+            onClick={onOpenAdmin}
+          >
+            <span className="material-symbols-outlined text-base">admin_panel_settings</span>
+            ADM
+          </button>
+        </div>
       ) : (
         <GoogleAuthButton context={googleContext} className="w-full" />
       )}
-    </div>
-  )
-}
-
-function AuthAdminModal({
-  open,
-  onClose,
-  onAdminSubmit,
-  adminLoading,
-}: {
-  open: boolean
-  onClose: () => void
-  onAdminSubmit: (email: string, password: string) => void
-  adminLoading: boolean
-}) {
-  useEffect(() => {
-    if (!open) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [open])
-
-  if (!open) return null
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-end justify-center p-3 sm:items-center lg:hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="auth-admin-modal-title"
-    >
-      <button type="button" className="absolute inset-0 bg-black/65" aria-label="Fechar" onClick={onClose} />
-      <div className="safe-pb relative z-10 w-full max-w-md max-h-[min(85dvh,32rem)] overflow-y-auto overscroll-y-contain rounded-xl border border-secondary/40 bg-surface-container-high p-1 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-outline-variant/30 px-3 py-2">
-          <p id="auth-admin-modal-title" className="text-xs font-bold tracking-wider text-secondary uppercase">
-            Login do mestre
-          </p>
-          <button
-            type="button"
-            className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
-            onClick={onClose}
-            aria-label="Fechar painel"
-          >
-            <span className="material-symbols-outlined text-lg">close</span>
-          </button>
-        </div>
-        <AdminMasterPanel
-          onAdminSubmit={(email, password) => {
-            onAdminSubmit(email, password)
-          }}
-          adminLoading={adminLoading}
-          className="border-0 bg-transparent shadow-none"
-        />
-      </div>
     </div>
   )
 }
@@ -443,10 +359,12 @@ function AdminMasterPanel({
   onAdminSubmit,
   adminLoading,
   className = '',
+  bare = false,
 }: {
   onAdminSubmit: (email: string, password: string) => void
   adminLoading: boolean
   className?: string
+  bare?: boolean
 }) {
   const adminEmailId = useId()
   const adminPassId = useId()
@@ -454,14 +372,16 @@ function AdminMasterPanel({
   const [adminPassword, setAdminPassword] = useState('')
 
   return (
-    <div className={`space-y-2 rounded-lg border border-secondary/35 bg-secondary/5 p-2.5 sm:p-3 ${className}`}>
-      <div className="flex items-center gap-2 border-b border-secondary/20 pb-2">
-        <span className="material-symbols-outlined text-secondary">military_tech</span>
-        <div>
-          <p className="text-xs font-bold tracking-wider text-secondary uppercase">Login do mestre</p>
-          <p className="text-[11px] text-on-surface-variant">Use correio narrador@… ou mestre@…</p>
+    <div className={bare ? `space-y-2 ${className}` : `space-y-2 rounded-lg border border-secondary/35 bg-secondary/5 p-2.5 sm:p-3 ${className}`}>
+      {bare ? null : (
+        <div className="flex items-center gap-2 border-b border-secondary/20 pb-2">
+          <span className="material-symbols-outlined text-secondary">military_tech</span>
+          <div>
+            <p className="text-xs font-bold tracking-wider text-secondary uppercase">Login do mestre</p>
+            <p className="text-[11px] text-on-surface-variant">Use correio narrador@… ou mestre@…</p>
+          </div>
         </div>
-      </div>
+      )}
       <form
         className="space-y-3"
         onSubmit={(e) => {

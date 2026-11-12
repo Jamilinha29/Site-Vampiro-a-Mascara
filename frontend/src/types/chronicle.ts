@@ -24,6 +24,7 @@ export type ChronicleEntity = {
   imageUrl?: string
   hpMax?: number
   manaMax?: number
+  location?: string
   attributeMods?: AttributeMod[]
   relicAmuletType?: string
   magicType?: string
@@ -183,6 +184,7 @@ export type CreateEntityPayload = {
   imageUrl?: string
   hpMax?: number
   manaMax?: number
+  location?: string
   attributeMods?: AttributeMod[]
   relicAmuletType?: string
   magicType?: string

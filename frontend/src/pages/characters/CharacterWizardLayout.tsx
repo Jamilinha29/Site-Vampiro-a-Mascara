@@ -3,7 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useToast } from '../../components/ui/ToastProvider'
 import { STARTING_CHARACTER_XP } from '../../lib/characterAbilityRules'
-import { formatMortalFaithValue, MORTAL_FAITH_PATHS, OTHER_SPECIES_OPTIONS } from '../../lib/characterOptions'
+import {
+  classArmorDie,
+  formatMortalFaithValue,
+  MORTAL_FAITH_PATHS,
+  OTHER_SPECIES_OPTIONS,
+} from '../../lib/characterOptions'
 import { resolveResourceProfile } from '../../lib/characterSheetKind'
 import { useCharacterWizardStore, type WizardStepId } from '../../stores/characterWizardStore'
 
@@ -147,13 +152,15 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
   const [error, setError] = useState<string | null>(null)
 
   const speciesLabels: Record<string, string> = {
-    vampiro: 'Vampiro / Cainita',
-    mortal: 'Mortal / Caçador',
+    vampiro: 'Vampiros',
+    mortal: 'Caçadores',
     outros: 'Outras espécies',
   }
 
   const hpValue = useCharacterWizardStore((s) => s.hpValue)
   const manaValue = useCharacterWizardStore((s) => s.manaValue)
+  const caValue = useCharacterWizardStore((s) => s.caValue)
+  const characterClass = useCharacterWizardStore((s) => s.characterClass)
 
   const resources = resolveResourceProfile(
     species === 'vampiro' ? 'Vampiro' : species === 'mortal' ? 'Mortal' : 'Outras espécies',
@@ -166,6 +173,8 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
   if (resources.showMana && (manaValue == null || manaValue < 1)) {
     missing.push('informe a Mana rolada (etapa 04)')
   }
+  if (!characterClass) missing.push('escolha a classe (etapa 02)')
+  else if (caValue == null || caValue < 1) missing.push('informe a CA rolada (etapa 04)')
   if (!oathAccepted) missing.push('aceite as Seis Tradições')
 
   useEffect(() => {
@@ -213,6 +222,8 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
         vitals: {
           hpDie: state.hpDie,
           manaDie: resources.showMana ? state.manaDie : undefined,
+          caDie: classArmorDie(state.characterClass) ?? undefined,
+          caValue: state.caValue ?? undefined,
           locked: true,
         },
         balanceStats: {

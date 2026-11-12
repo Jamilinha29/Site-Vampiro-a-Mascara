@@ -35,6 +35,7 @@ export function AdminShopEditor() {
   const [stockTotal, setStockTotal] = useState(10)
   const [error, setError] = useState<string | null>(null)
   const [publishOnSave, setPublishOnSave] = useState(true)
+  const [vitrineQuery, setVitrineQuery] = useState('')
 
   const kind: EntityKind = tab === 'services' || tab === 'consumables' ? 'consumable' : 'equipment'
   const shopCategory = tab === 'relic' ? 'gear' : tab === 'gear' ? 'gear' : tab
@@ -171,10 +172,21 @@ export function AdminShopEditor() {
     setError(null)
   }
 
+  const q = vitrineQuery.trim().toLowerCase()
   const filtered = items.filter((i) => {
-    if (tab === 'gear') return i.shopCategory === 'gear' && i.classification !== 'relic'
-    if (tab === 'relic') return i.shopCategory === 'gear' && i.classification === 'relic'
-    return i.shopCategory === tab
+    const inTab =
+      tab === 'gear'
+        ? i.shopCategory === 'gear' && i.classification !== 'relic'
+        : tab === 'relic'
+          ? i.shopCategory === 'gear' && i.classification === 'relic'
+          : i.shopCategory === tab
+    if (!inTab) return false
+    if (!q) return true
+    return (
+      i.name.toLowerCase().includes(q) ||
+      (i.description ?? '').toLowerCase().includes(q) ||
+      (i.equipmentType ?? '').toLowerCase().includes(q)
+    )
   })
 
   const tabs: { id: ShopTab; label: string }[] = [
@@ -427,7 +439,20 @@ export function AdminShopEditor() {
       </section>
 
       <section className="mesa-panel p-5">
-        <h3 className="font-label-sm text-xs text-secondary uppercase">Itens desta vitrine</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-label-sm text-xs text-secondary uppercase">Itens desta vitrine</h3>
+          <div className="relative min-w-0 w-full flex-1 sm:max-w-xs">
+            <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
+              search
+            </span>
+            <input
+              className="input-feudal w-full pl-10"
+              placeholder="Buscar item…"
+              value={vitrineQuery}
+              onChange={(e) => setVitrineQuery(e.target.value)}
+            />
+          </div>
+        </div>
         <ul className="mt-3 space-y-2">
           {filtered.map((item) => (
             <li
