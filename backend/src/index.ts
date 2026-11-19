@@ -48,22 +48,30 @@ app.use((req, res, next) => {
   const originalJson = res.json.bind(res)
   const originalSend = res.send.bind(res)
   let armed = false
-  const writeAfterSave = (write: (...args: never[]) => Response) =>
-    ((...args: never[]) => {
-      if (armed || res.headersSent) return write(...args)
-      armed = true
-      void flushDurableState().then(
-        () => write(...args),
-        (err: unknown) => {
-          if (res.headersSent) return
-          const message = err instanceof Error ? err.message : 'Não foi possível gravar o estado da campanha.'
-          originalJson({ error: { message } })
-        },
-      )
-      return res
-    }) as typeof res.json
-  res.json = writeAfterSave(originalJson as (...args: never[]) => Response)
-  res.send = writeAfterSave(originalSend as (...args: never[]) => Response)
+  const waitThen = (write: () => void) => {
+    if (armed || res.headersSent) {
+      write()
+      return
+    }
+    armed = true
+    void flushDurableState().then(write, (err: unknown) => {
+      if (res.headersSent) return
+      const message = err instanceof Error ? err.message : 'Não foi possível gravar o estado da campanha.'
+      originalJson({ error: { message } })
+    })
+  }
+  res.json = (body) => {
+    waitThen(() => {
+      originalJson(body)
+    })
+    return res
+  }
+  res.send = (body) => {
+    waitThen(() => {
+      originalSend(body)
+    })
+    return res
+  }
   next()
 })
 app.use('/api/v1/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }), authRouter)
