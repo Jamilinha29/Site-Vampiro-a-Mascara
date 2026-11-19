@@ -117,17 +117,20 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
     const body = entitySchema.parse(req.body)
     const id = randomUUID()
     const imageUrl = await storeCatalogImage(catalogImageFolder(body), id, body.imageUrl)
-    res.status(201).json(createEntity({ ...body, id, imageUrl, visibility: 'draft' }))
+    res.status(201).json(await createEntity({ ...body, id, imageUrl, visibility: 'draft' }))
   } catch (e) {
     next(e)
   }
 })
 
 /** Importação em lote (planilha/JSON) — sempre rascunho até publicar no site. */
-adminChronicleRouter.post('/entities/import', (req, res, next) => {
+adminChronicleRouter.post('/entities/import', async (req, res, next) => {
   try {
     const rows = z.array(entitySchema).max(500).parse(req.body)
-    const created = rows.map((row) => createEntity({ ...row, visibility: 'draft' }))
+    const created = []
+    for (const row of rows) {
+      created.push(await createEntity({ ...row, visibility: 'draft' }))
+    }
     res.status(201).json({ imported: created.length, items: created })
   } catch (e) {
     next(e)
@@ -159,7 +162,7 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
         body.imageUrl,
       )
     }
-    const updated = updateEntity(req.params.id, patch)
+    const updated = await updateEntity(req.params.id, patch)
     if (!updated) {
       res.status(404).json({ error: { message: 'Registro não encontrado' } })
       return
@@ -170,22 +173,30 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
   }
 })
 
-adminChronicleRouter.post('/entities/:id/publish', (req, res) => {
-  const updated = publishEntity(req.params.id)
-  if (!updated) {
-    res.status(404).json({ error: { message: 'Registro não encontrado' } })
-    return
+adminChronicleRouter.post('/entities/:id/publish', async (req, res, next) => {
+  try {
+    const updated = await publishEntity(req.params.id)
+    if (!updated) {
+      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+      return
+    }
+    res.json(updated)
+  } catch (e) {
+    next(e)
   }
-  res.json(updated)
 })
 
-adminChronicleRouter.delete('/entities/:id', (req, res) => {
-  if (!getEntity(req.params.id)) {
-    res.status(404).json({ error: { message: 'Registro não encontrado' } })
-    return
+adminChronicleRouter.delete('/entities/:id', async (req, res, next) => {
+  try {
+    if (!getEntity(req.params.id)) {
+      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+      return
+    }
+    await deleteEntity(req.params.id)
+    res.status(204).send()
+  } catch (e) {
+    next(e)
   }
-  deleteEntity(req.params.id)
-  res.status(204).send()
 })
 
 const handoutSchema = z.object({
@@ -301,12 +312,14 @@ const scheduledSchema = z.object({
   scheduledAt: z.string().min(1),
   chronicleName: z.string().min(1).max(120).optional(),
   tableMeta: sessionTableMetaSchema.optional(),
+  listing: z.enum(['public', 'private']).optional(),
 })
 
 const patchScheduledSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   chronicleName: z.string().min(1).max(120).optional(),
   tableMeta: sessionTableMetaSchema.optional(),
+  listing: z.enum(['public', 'private']).optional(),
 })
 
 adminChronicleRouter.post('/scheduled-sessions', (req, res, next) => {
@@ -332,6 +345,7 @@ adminChronicleRouter.post('/scheduled-sessions', (req, res, next) => {
         chronicleName: body.chronicleName,
         tableMeta,
         narratorEmail: req.user!.email,
+        listing: body.listing,
       }),
     )
   } catch (e) {

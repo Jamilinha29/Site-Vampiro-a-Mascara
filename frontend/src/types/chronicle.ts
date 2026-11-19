@@ -122,8 +122,9 @@ export type ScheduledSession = {
   chronicleName?: string
   narratorEmail?: string
   tableMeta?: SessionTableMeta
-  /** Senha/código da mesa gerado na criação. */
+  /** Senha/código da mesa gerado na criação. Vazio na lista do jogador. */
   accessCode: string
+  listing?: 'public' | 'private'
   status: 'scheduled' | 'open' | 'closed'
   startedAt?: string
   endedAt?: string

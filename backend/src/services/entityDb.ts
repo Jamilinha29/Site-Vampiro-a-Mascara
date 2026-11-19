@@ -1,7 +1,7 @@
 import type { ChronicleEntity } from './chronicleStore.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
 
-const TABLE = 'chronicle_entities'
+const TABLE = 'EntidadesCronica'
 
 type DbRow = {
   id: string
@@ -111,7 +111,7 @@ export async function dbLoadEntities(): Promise<ChronicleEntity[] | null> {
 export async function dbLoadGrimoireSpells(): Promise<ChronicleEntity[]> {
   const sb = getSupabaseAdmin()
   if (!sb) return []
-  const { data, error } = await sb.from('reference_catalog').select('id, name, description').eq('kind', 'grimoire_spell')
+  const { data, error } = await sb.from('CatalogoReferencia').select('id, name, description').eq('kind', 'grimoire_spell')
   if (error || !data?.length) return []
   const now = new Date().toISOString()
   return data.flatMap((row) => {
@@ -135,9 +135,9 @@ export async function dbLoadGrimoireSpells(): Promise<ChronicleEntity[]> {
   })
 }
 
-export async function dbUpsertEntity(row: ChronicleEntity): Promise<void> {
+export async function dbUpsertEntity(row: ChronicleEntity): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = getSupabaseAdmin()
-  if (!sb) return
+  if (!sb) return { ok: true }
   const record = {
     id: row.id,
     kind: row.kind,
@@ -147,12 +147,20 @@ export async function dbUpsertEntity(row: ChronicleEntity): Promise<void> {
     updated_at: row.updatedAt,
   }
   const { error } = await sb.from(TABLE).upsert(record, { onConflict: 'id' })
-  if (error) console.warn('[supabase] Falha ao salvar entidade:', row.id, error.message)
+  if (error) {
+    console.warn('[supabase] Falha ao salvar entidade:', row.id, error.message)
+    return { ok: false, error: `Não foi possível gravar “${row.name}” no banco. A versão anterior continua valendo.` }
+  }
+  return { ok: true }
 }
 
-export async function dbDeleteEntity(id: string): Promise<void> {
+export async function dbDeleteEntity(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = getSupabaseAdmin()
-  if (!sb) return
+  if (!sb) return { ok: true }
   const { error } = await sb.from(TABLE).delete().eq('id', id)
-  if (error) console.warn('[supabase] Falha ao excluir entidade:', id, error.message)
+  if (error) {
+    console.warn('[supabase] Falha ao excluir entidade:', id, error.message)
+    return { ok: false, error: 'Não foi possível excluir no banco. O registro continua na mesa.' }
+  }
+  return { ok: true }
 }

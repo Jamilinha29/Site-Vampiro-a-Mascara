@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
 import { computeCharacterBalanceFromSheet } from './characterBalance.js'
 
 export const MAX_CHARACTER_LEVEL = 20
@@ -144,6 +145,19 @@ export type UserProfile = {
 
 const profiles = new Map<string, UserProfile>()
 
+function snapshotProfiles() {
+  rememberDocument('profiles', [...profiles.values()])
+}
+
+export async function hydrateProfiles() {
+  const doc = await loadDocument<UserProfile[]>('profiles')
+  if (!doc || documentWeight(doc.body) === 0) return
+  profiles.clear()
+  for (const profile of doc.body) {
+    if (profile?.email) profiles.set(profile.email, profile)
+  }
+}
+
 function handleFromEmail(email: string) {
   return `@${email.split('@')[0]?.replace(/\W/g, '_') ?? 'cainita'}`
 }
@@ -161,16 +175,27 @@ const defaultPreferences = (): UserProfile['preferences'] => ({
   defaultRpgTitle: null,
 })
 
-export function ensureProfile(email: string, displayName: string, role: UserProfile['role'] = 'player') {
+export function ensureProfile(
+  email: string,
+  displayName: string,
+  role: UserProfile['role'] = 'player',
+  options?: { authoritative?: boolean },
+) {
   if (profiles.has(email)) {
     const p = profiles.get(email)!
+    const previousName = p.displayName
+    const previousRole = p.role
     p.preferences = { ...defaultPreferences(), ...p.preferences }
     p.displayName = displayName
-    if (role === 'narrator' || role === 'admin') {
+    if (role === 'narrator' || role === 'admin' || options?.authoritative) {
       p.role = role
+      if (role === 'narrator' || role === 'admin') {
+        if (!p.badges.includes('Mestre da Mesa')) p.badges.push('Mestre da Mesa')
+      }
     } else if (p.role !== 'narrator' && p.role !== 'admin') {
       p.role = role
     }
+    if (previousName !== p.displayName || previousRole !== p.role) snapshotProfiles()
     return p
   }
   const profile: UserProfile = {
@@ -202,6 +227,7 @@ export function ensureProfile(email: string, displayName: string, role: UserProf
   }
   profiles.set(email, profile)
   syncDerivedMetrics(profile)
+  snapshotProfiles()
   return profile
 }
 
@@ -255,6 +281,7 @@ export function updateProfileMedia(
   if (!p) return null
   if (patch.avatarUrl !== undefined) p.avatarUrl = patch.avatarUrl
   if (patch.bannerUrl !== undefined) p.bannerUrl = patch.bannerUrl
+  snapshotProfiles()
   return p
 }
 
@@ -265,6 +292,7 @@ export function updateProfilePreferences(
   const p = profiles.get(email)
   if (!p) return null
   p.preferences = { ...p.preferences, ...patch }
+  snapshotProfiles()
   return p
 }
 
@@ -272,6 +300,7 @@ export function updateProfileDisplayName(email: string, displayName: string) {
   const p = profiles.get(email)
   if (!p) return null
   p.displayName = displayName.trim()
+  snapshotProfiles()
   return p
 }
 
@@ -363,6 +392,7 @@ export function patchCharacter(
     createdSkills: rest.createdSkills ?? current.createdSkills ?? [],
     vitals: current.vitals,
   }
+  snapshotProfiles()
   return p.characters[idx]
 }
 
@@ -408,6 +438,7 @@ export function applyCharacterXp(email: string, characterId: string, amount: num
     mana,
   }
   syncDerivedMetrics(p)
+  snapshotProfiles()
   return p.characters[idx]
 }
 
@@ -470,6 +501,7 @@ export function upsertCharacter(
   if (idx >= 0) p.characters[idx] = row
   else p.characters.push(row)
   syncDerivedMetrics(p)
+  snapshotProfiles()
   return row
 }
 

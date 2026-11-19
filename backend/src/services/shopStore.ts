@@ -1,7 +1,23 @@
+import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
 import { getEntity } from './chronicleStore.js'
 
 /** Compras por e-mail do jogador → entityId → quantidade. */
 const purchases = new Map<string, Map<string, number>>()
+
+function snapshotShop() {
+  const body: Record<string, Record<string, number>> = {}
+  for (const [email, items] of purchases) body[email] = Object.fromEntries(items)
+  rememberDocument('shop', body)
+}
+
+export async function hydrateShop() {
+  const doc = await loadDocument<Record<string, Record<string, number>>>('shop')
+  if (!doc || documentWeight(doc.body) === 0) return
+  purchases.clear()
+  for (const [email, items] of Object.entries(doc.body)) {
+    purchases.set(email, new Map(Object.entries(items)))
+  }
+}
 
 function bag(email: string) {
   if (!purchases.has(email)) purchases.set(email, new Map())
@@ -39,6 +55,7 @@ export function purchaseItem(email: string, entityId: string, qty = 1) {
   }
   const userBag = bag(email)
   userBag.set(entityId, (userBag.get(entityId) ?? 0) + qty)
+  snapshotShop()
   return {
     ok: true as const,
     owned: userBag.get(entityId)!,
@@ -54,5 +71,6 @@ export function consumeOwnedItem(email: string, entityId: string, qty = 1) {
   const next = owned - qty
   if (next <= 0) userBag.delete(entityId)
   else userBag.set(entityId, next)
+  snapshotShop()
   return { ok: true as const, owned: Math.max(0, next) }
 }

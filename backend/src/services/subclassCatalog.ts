@@ -43,7 +43,7 @@ export async function listSubclassesForClass(className: string) {
   const sb = getSupabaseAdmin()
   if (!sb) return []
   const { data, error } = await sb
-    .from('character_subclasses')
+    .from('SubclassesPersonagem')
     .select('name, sort_order')
     .eq('class_name', name)
     .order('sort_order', { ascending: true })

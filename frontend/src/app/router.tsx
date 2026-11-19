@@ -43,6 +43,8 @@ const AttributesStepPage = lazy(() => import('../pages/characters/AttributesStep
 const PowersStepPage = lazy(() => import('../pages/characters/PowersStepPage'))
 const ReviewStepPage = lazy(() => import('../pages/characters/ReviewStepPage'))
 const SettingsPage = lazy(() => import('../pages/user/SettingsPage'))
+const FriendsPage = lazy(() => import('../pages/user/FriendsPage'))
+const AdminAchievementsPage = lazy(() => import('../pages/admin/AdminAchievementsPage'))
 const CodexHelpPage = lazy(() => import('../pages/public/CodexHelpPage'))
 
 function Lazy({ children }: { children: React.ReactNode }) {
@@ -108,6 +110,7 @@ export function AppRouter() {
             <Route path="/user/profile" element={<Lazy><ProfilePage /></Lazy>} />
             <Route path="/user/users/:userId" element={<Lazy><ProfilePage /></Lazy>} />
             <Route path="/user/sessions" element={<Lazy><SessionsPage /></Lazy>} />
+            <Route path="/user/friends" element={<Lazy><FriendsPage /></Lazy>} />
             <Route path="/user/downloads" element={<Lazy><DownloadsPage /></Lazy>} />
             <Route path="/user/shop" element={<Lazy><ShopPage /></Lazy>} />
             <Route path="/user/archive" element={<Lazy><ArchivePage /></Lazy>} />
@@ -141,6 +144,7 @@ export function AppRouter() {
           <Route path="mesa/:sessionId" element={<Lazy><AdminMesaPage /></Lazy>} />
           <Route path="rewards" element={<Lazy><AdminRewardsPage /></Lazy>} />
           <Route path="users" element={<Lazy><AdminUsersPage /></Lazy>} />
+          <Route path="achievements" element={<Lazy><AdminAchievementsPage /></Lazy>} />
           <Route path="downloads" element={<Lazy><AdminDownloadsPage /></Lazy>} />
           <Route path="profile" element={<Lazy><AdminProfilePage /></Lazy>} />
           <Route path="settings" element={<Lazy><AdminSettingsPage /></Lazy>} />

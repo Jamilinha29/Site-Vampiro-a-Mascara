@@ -67,10 +67,10 @@ export const api = {
     request<{ remaining: number | null; ownedByYou: number }>(
       `/api/v1/wallets/shop-stock/${encodeURIComponent(entityId)}`,
     ),
-  buyShopItem: (body: { entityId: string; characterId?: string; quantity?: number }) =>
-    request<{ remaining: number | null; ownedByYou: number; itemName: string }>('/api/v1/wallets/shop/buy', {
+  buyShopItem: (body: { entityId: string; characterId?: string; sessionId?: string; quantity?: number; operationId?: string }) =>
+    request<{ remaining: number | null; ownedByYou: number; itemName: string; replayed?: boolean }>('/api/v1/wallets/shop/buy', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, operationId: body.operationId ?? crypto.randomUUID() }),
     }),
   getUnreadNotificationCount: () => request<{ count: number }>('/api/v1/notifications/unread-count'),
   getNotifications: () => request<import('../types/notifications').AppNotification[]>('/api/v1/notifications'),
@@ -313,6 +313,7 @@ export const api = {
     scheduledAt: string
     chronicleName?: string
     tableMeta?: import('../types/chronicle').SessionTableMeta
+    listing?: 'public' | 'private'
   }) =>
     request<import('../types/chronicle').ScheduledSession>('/api/v1/admin/chronicle/scheduled-sessions', {
       method: 'POST',
@@ -324,6 +325,7 @@ export const api = {
       title: string
       chronicleName: string
       tableMeta: import('../types/chronicle').SessionTableMeta
+      listing: 'public' | 'private'
     }>,
   ) =>
     request<import('../types/chronicle').ScheduledSession>(
@@ -436,6 +438,168 @@ export const api = {
       monstersSlain: import('../types/chronicle').SessionHandout['monstersSlain']
       participants: Array<{ displayName: string; characterName: string }>
     }>(`/api/v1/content/sessions/${sessionId}/act-canon`),
+
+  getAchievementMural: () =>
+    request<
+      Array<{
+        id: string
+        title: string
+        description: string
+        howToEarn: string
+        unlocked: boolean
+        unlockedAt: string | null
+      }>
+    >('/api/v1/court/achievements'),
+  getFriends: () =>
+    request<{
+      friends: Array<{ email: string; displayName: string; handle: string; characters: number }>
+      incoming: Array<{ id: string; createdAt: string; from: { email: string; displayName: string; handle: string } }>
+    }>('/api/v1/court/friends'),
+  searchCourtPlayers: (q: string) =>
+    request<
+      Array<{
+        email: string
+        displayName: string
+        handle: string
+        characters: number
+        relation: 'none' | 'friend' | 'outgoing' | 'incoming'
+        linkId: string | null
+      }>
+    >(`/api/v1/court/players?q=${encodeURIComponent(q)}`),
+  requestFriend: (email: string) =>
+    request('/api/v1/court/friends', { method: 'POST', body: JSON.stringify({ email }) }),
+  acceptFriend: (linkId: string) =>
+    request(`/api/v1/court/friends/${encodeURIComponent(linkId)}/accept`, { method: 'POST' }),
+  removeFriend: (id: string) =>
+    request(`/api/v1/court/friends/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getSessionBoard: (q: string) =>
+    request<{
+      publicTables: SessionBoardCard[]
+      friendTables: SessionBoardCard[]
+    }>(`/api/v1/court/session-board?q=${encodeURIComponent(q)}`),
+  getFerreiro: (sessionId: string, characterId?: string) =>
+    request<FerreiroPayload>(
+      `/api/v1/court/sessions/${encodeURIComponent(sessionId)}/ferreiro${characterId ? `?characterId=${encodeURIComponent(characterId)}` : ''}`,
+    ),
+  bidAuction: (auctionId: string, body: { amount: number; coin: CoinCode; characterId?: string }) =>
+    request(`/api/v1/court/auctions/${encodeURIComponent(auctionId)}/bid`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  withdrawAuction: (auctionId: string) =>
+    request(`/api/v1/court/auctions/${encodeURIComponent(auctionId)}/withdraw`, { method: 'POST' }),
+  adminListAchievements: () =>
+    request<Array<{ id: string; title: string; description: string; howToEarn: string }>>(
+      '/api/v1/court/admin/achievements',
+    ),
+  adminCreateAchievement: (body: { title: string; description: string; howToEarn: string }) =>
+    request('/api/v1/court/admin/achievements', { method: 'POST', body: JSON.stringify(body) }),
+  adminDeleteAchievement: (id: string) =>
+    request(`/api/v1/court/admin/achievements/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adminGrantAchievement: (id: string, email: string) =>
+    request(`/api/v1/court/admin/achievements/${encodeURIComponent(id)}/grant`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  adminCourtPlayers: () =>
+    request<{
+      registeredCount: number
+      friends: Array<{ email: string; displayName: string; handle: string; characters: number; memberSince: string | null }>
+      incoming: Array<{ id: string; createdAt: string; from: { email: string; displayName: string; handle: string; characters: number } }>
+      outgoing: Array<{ id: string; createdAt: string; to: { email: string; displayName: string; handle: string; characters: number } }>
+      roster: Array<{
+        email: string
+        displayName: string
+        handle: string
+        characters: number
+        memberSince: string | null
+        relation: 'none' | 'friend' | 'outgoing' | 'incoming'
+        linkId: string | null
+      }>
+    }>('/api/v1/court/admin/players'),
+  adminAddFriend: (email: string) =>
+    request('/api/v1/court/admin/friends', { method: 'POST', body: JSON.stringify({ email }) }),
+  adminRemoveFriend: (email: string) =>
+    request(`/api/v1/court/admin/friends/${encodeURIComponent(email)}`, { method: 'DELETE' }),
+  adminGrantCoins: (body: { sessionId: string; participantDisplayName: string; coin: CoinCode; amount: number }) =>
+    request('/api/v1/court/admin/grant-coins', { method: 'POST', body: JSON.stringify(body) }),
+  adminShopLevels: () => request<Record<string, number>>('/api/v1/court/admin/shop-levels'),
+  adminSetShopLevel: (entityId: string, requiredLevel: number) =>
+    request(`/api/v1/court/admin/shop-levels/${encodeURIComponent(entityId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ requiredLevel }),
+    }),
+  adminListAuctions: (sessionId: string) =>
+    request<AuctionCard[]>(`/api/v1/court/admin/sessions/${encodeURIComponent(sessionId)}/auctions`),
+  adminReleaseAuction: (
+    sessionId: string,
+    body: {
+      entityId: string
+      requiredLevel: number
+      minutes: number
+      npcName?: string
+      npcAmount?: number
+      npcCoin?: CoinCode
+    },
+  ) =>
+    request(`/api/v1/court/admin/sessions/${encodeURIComponent(sessionId)}/auctions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  adminNpcBid: (auctionId: string, body: { displayName: string; amount: number; coin: CoinCode }) =>
+    request(`/api/v1/court/admin/auctions/${encodeURIComponent(auctionId)}/npc-bid`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  adminCloseAuction: (auctionId: string) =>
+    request(`/api/v1/court/admin/auctions/${encodeURIComponent(auctionId)}/close`, { method: 'POST' }),
+}
+
+export type CoinCode = 'gold' | 'silver' | 'copper'
+
+export type SessionBoardCard = {
+  id: string
+  title: string
+  scheduledAt: string
+  status: 'scheduled' | 'open' | 'closed'
+  listing: 'public' | 'private'
+  narratorName: string
+  seatedNames: string[]
+}
+
+export type AuctionCard = {
+  id: string
+  sessionId: string
+  itemName: string
+  requiredLevel: number
+  endsAt: string
+  status: 'open' | 'awarded' | 'cancelled'
+  winnerLabel: string | null
+  bids: Array<{
+    id: string
+    displayName: string
+    amount: number
+    coin: CoinCode
+    npc: boolean
+    withdrawn: boolean
+  }>
+  leading: { displayName: string; amount: number; coin: CoinCode; npc: boolean } | null
+}
+
+export type FerreiroPayload = {
+  level: number
+  commerce: Array<{
+    id: string
+    name: string
+    description: string
+    shopCategory?: string
+    rarity: string
+    priceGold: number
+    priceSilver: number
+    priceCopper: number
+    requiredLevel: number
+  }>
+  auctions: AuctionCard[]
 }
 
 export type NewsPost = {

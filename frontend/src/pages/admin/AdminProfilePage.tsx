@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { AdminAchievementsPanel } from '../../components/admin/AdminAchievementsPanel'
+import { AdminNoticesPanel } from '../../components/admin/AdminNoticesPanel'
 import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 import { adminQueryKeys } from '../../lib/queryKeys'
@@ -26,11 +28,6 @@ export default function AdminProfilePage() {
     queryKey: adminQueryKeys.scheduledSessions,
     queryFn: () => api.adminListScheduledSessions(),
   })
-  const { data: players = [], isLoading: loadingPlayers } = useQuery({
-    queryKey: ['admin-registered-players'],
-    queryFn: () => api.adminListRegisteredPlayers(),
-  })
-
   if (isLoading || !profile) {
     return <p className="text-sm text-on-surface-variant">Abrindo registro do mestre…</p>
   }
@@ -74,16 +71,8 @@ export default function AdminProfilePage() {
             <p className="text-sm text-secondary">{profile.handle}</p>
             <p className="text-xs text-on-surface-variant">{profile.email}</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {profile.badges.map((b) => (
-                <span
-                  key={b}
-                  className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5 text-[10px] tracking-wide text-secondary uppercase"
-                >
-                  {b}
-                </span>
-              ))}
-              <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] text-primary uppercase">
-                Narrador
+              <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5 text-[10px] tracking-wide text-secondary uppercase">
+                Mestre de mesa
               </span>
             </div>
           </div>
@@ -135,34 +124,10 @@ export default function AdminProfilePage() {
         </section>
       </div>
 
-      <section className="card-surface p-5">
-        <h2 className="font-label-sm text-xs text-secondary uppercase">Jogadores inscritos</h2>
-        <p className="mt-1 text-xs text-on-surface-variant">
-          Contas registradas na corte ({players.length}).
-        </p>
-        {loadingPlayers ? (
-          <p className="mt-3 text-sm text-on-surface-variant">Carregando…</p>
-        ) : players.length === 0 ? (
-          <p className="mt-3 text-sm text-on-surface-variant">Nenhum jogador inscrito ainda.</p>
-        ) : (
-          <ul className="mt-4 max-h-80 divide-y divide-outline-variant/30 overflow-y-auto">
-            {players.map((p) => (
-              <li key={p.email} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                <div>
-                  <p className="font-serif text-on-surface">{p.displayName}</p>
-                  <p className="text-xs text-on-surface-variant">
-                    {p.handle} · {p.email}
-                  </p>
-                </div>
-                <div className="text-right text-xs text-on-surface-variant">
-                  <p>{p.characters} personagem(ns)</p>
-                  <p>Desde {new Date(p.memberSince).toLocaleDateString('pt-BR')}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <AdminNoticesPanel />
+        <AdminAchievementsPanel />
+      </div>
     </div>
   )
 }

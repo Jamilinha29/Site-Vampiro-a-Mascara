@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { listHandouts, listScheduledSessions } from './chronicleStore.js'
+import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
 
 export type NotificationKind = 'session' | 'chronicle' | 'system' | 'news'
@@ -41,7 +42,14 @@ export function createSentNotice(input: { title: string; message: string; href?:
   }
   sentNotices.unshift(row)
   writeJsonFile(NOTICE_FILE, sentNotices)
+  rememberDocument('notices', sentNotices)
   return row
+}
+
+export async function hydrateNotices() {
+  const doc = await loadDocument<SentNotice[]>('notices')
+  if (!doc || documentWeight(doc.body) === 0) return
+  sentNotices.splice(0, sentNotices.length, ...doc.body)
 }
 
 function formatSessionWhen(iso: string) {

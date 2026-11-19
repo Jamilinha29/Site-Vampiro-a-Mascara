@@ -198,7 +198,7 @@ Fonte oficial de schema: **`supabase/migrations/`** — aplicada com `supabase d
 
 1. Abra os arquivos em `supabase/migrations/` **na ordem do prefixo de data** (do mais antigo ao mais novo).
 2. Cole cada arquivo → **Run**.
-3. Confira **Table Editor** se as tabelas (`chronicle_entities`, `reference_catalog`, etc.) existem.
+3. Confira **Table Editor** se as tabelas (`EntidadesCronica`, `CatalogoReferencia`, `NotificacoesPublicas`, etc.) existem.
 
 ### 2.B) Automático pelo GitHub (repo → banco)
 

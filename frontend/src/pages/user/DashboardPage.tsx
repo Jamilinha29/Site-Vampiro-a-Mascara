@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { AchievementMural } from '../../components/domain/AchievementMural'
 import { StatBar } from '../../components/domain/StatBar'
 import { WalletLedgerPanel } from '../../components/domain/WalletLedgerPanel'
 import { CharacterArmorClassBar } from '../../components/characters/CharacterArmorClassBar'
@@ -148,6 +149,8 @@ export default function DashboardPage() {
           </div>
         </aside>
       </div>
+
+      <AchievementMural />
 
       <section>
         <h2 className="mb-3 font-headline-sm text-lg">Meus personagens</h2>

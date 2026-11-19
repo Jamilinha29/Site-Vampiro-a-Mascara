@@ -108,13 +108,11 @@ const createCharacterSchema = z.object({
   name: z.string().min(1).max(120),
   species: z.string().min(1).max(120),
   clan: z.string().max(120).optional(),
-  level: z.number().int().min(1).max(20).default(1),
   isPrimary: z.boolean().optional(),
   hp: poolSchema,
   blood: poolSchema.optional(),
   mana: poolSchema.optional(),
   will: poolSchema.optional(),
-  startingXp: z.number().int().min(0).max(100_000).optional(),
   vitals: z
     .object({
       hpDie: z.string().max(10).optional(),
@@ -131,18 +129,17 @@ const createCharacterSchema = z.object({
 meRouter.post('/characters', (req, res, next) => {
   try {
     const body = createCharacterSchema.parse(req.body)
-    const startingXp = body.startingXp ?? STARTING_CHARACTER_XP
     const created = upsertCharacter(req.user!.email, {
       name: body.name,
       species: body.species,
       clan: body.clan,
-      level: body.level,
+      level: 1,
       isPrimary: body.isPrimary ?? true,
       hp: body.hp,
       blood: body.blood,
       mana: body.mana,
       will: body.will,
-      xp: { current: startingXp, toNext: xpRequiredToAdvance(body.level) },
+      xp: { current: STARTING_CHARACTER_XP, toNext: xpRequiredToAdvance(1) },
       subclass: null,
       characterClass: body.characterClass ?? null,
       balanceStats: body.balanceStats ?? null,
@@ -334,7 +331,7 @@ meRouter.post('/sessions/:sessionId/join', (req, res, next) => {
   try {
     const body = z
       .object({
-        accessCode: z.string().min(4).max(32),
+        accessCode: z.string().max(32).optional().default(''),
         characterId: z.string().min(1),
       })
       .parse(req.body)

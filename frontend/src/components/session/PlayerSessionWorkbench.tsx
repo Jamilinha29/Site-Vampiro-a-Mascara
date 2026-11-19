@@ -7,6 +7,7 @@ import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
 import { useAuthStore } from '../../stores/authStore'
 import { mesaDisplayName } from '../../lib/mesaSession'
+import { FerreiroPanel } from './FerreiroPanel'
 import { SessionTableInfoPanel } from './SessionTableInfoPanel'
 import { DEFAULT_CHRONICLE_AMBIENCE, EXTERNAL_MAP_NOTICE, formatAmbienceChip } from '../../lib/chronicleAmbience'
 import { useToast } from '../ui/ToastProvider'
@@ -548,6 +549,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           </SessionPanel>
         </div>
       </div>
+
+      <FerreiroPanel sessionId={sessionId} characterId={character?.id} characterLevel={character?.level ?? 1} />
 
       <SessionPanel title="Ameaças em cena" icon="pest_control">
         {threats.length === 0 ? (

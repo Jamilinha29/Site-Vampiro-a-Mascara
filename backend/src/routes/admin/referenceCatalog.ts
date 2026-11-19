@@ -36,31 +36,35 @@ adminReferenceRouter.get('/:kind', async (req, res) => {
   res.json(listReference(kind.data))
 })
 
-adminReferenceRouter.post('/:kind', (req, res, next) => {
+adminReferenceRouter.post('/:kind', async (req, res, next) => {
   try {
     const kind = kindSchema.parse(req.params.kind)
     const body = entrySchema.parse(req.body)
-    res.status(201).json(upsertReference({ ...body, kind }))
+    res.status(201).json(await upsertReference({ ...body, kind }))
   } catch (error) {
     next(error)
   }
 })
 
-adminReferenceRouter.put('/:kind', (req, res, next) => {
+adminReferenceRouter.put('/:kind', async (req, res, next) => {
   try {
     const kind = kindSchema.parse(req.params.kind) as ReferenceKind
     const rows = z.array(entrySchema).max(500).parse(req.body)
-    res.json(mergeReferenceKind(kind, rows))
+    res.json(await mergeReferenceKind(kind, rows))
   } catch (error) {
     next(error)
   }
 })
 
-adminReferenceRouter.delete('/:kind/:id', (req, res) => {
-  const ok = deleteReference(req.params.id)
-  if (!ok) {
-    res.status(404).json({ error: { message: 'Item não encontrado' } })
-    return
+adminReferenceRouter.delete('/:kind/:id', async (req, res, next) => {
+  try {
+    const ok = await deleteReference(req.params.id)
+    if (!ok) {
+      res.status(404).json({ error: { message: 'Item não encontrado' } })
+      return
+    }
+    res.status(204).send()
+  } catch (error) {
+    next(error)
   }
-  res.status(204).send()
 })

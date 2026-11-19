@@ -52,6 +52,26 @@ describe('admin vs player API isolation', () => {
   })
 })
 
+describe('character creation', () => {
+  const playerToken = `dev-${Buffer.from('jogador.ficha@ci.local').toString('base64url')}`
+
+  it('ignores level and xp sent by the client', async () => {
+    const res = await request(app)
+      .post('/api/v1/me/characters')
+      .set('Authorization', `Bearer ${playerToken}`)
+      .send({
+        name: 'Recém-nascido',
+        species: 'Vampiro',
+        level: 20,
+        startingXp: 9000,
+        hp: { current: 12, max: 12 },
+      })
+    expect(res.status).toBe(201)
+    expect(res.body.level).toBe(1)
+    expect(res.body.xp.current).toBe(0)
+  })
+})
+
 describe('auth login', () => {
   it('issues session token for valid payload', async () => {
     const res = await request(app)
@@ -60,6 +80,28 @@ describe('auth login', () => {
     expect(res.status).toBe(200)
     expect(res.body.accessToken).toMatch(/^dev-/)
     expect(res.body.role).toBe('player')
+  })
+
+  it('refuses local tokens when the server is in production without Supabase', async () => {
+    const previousEnv = process.env.NODE_ENV
+    const previousUrl = process.env.SUPABASE_URL
+    const previousAnon = process.env.SUPABASE_ANON_KEY
+    process.env.NODE_ENV = 'production'
+    delete process.env.SUPABASE_URL
+    delete process.env.SUPABASE_ANON_KEY
+    try {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'mestre@ci.local', password: 'senha1234' })
+      expect(res.status).toBe(503)
+      expect(res.body.accessToken).toBeUndefined()
+    } finally {
+      process.env.NODE_ENV = previousEnv
+      if (previousUrl === undefined) delete process.env.SUPABASE_URL
+      else process.env.SUPABASE_URL = previousUrl
+      if (previousAnon === undefined) delete process.env.SUPABASE_ANON_KEY
+      else process.env.SUPABASE_ANON_KEY = previousAnon
+    }
   })
 
   it('rejects password shorter than 8 characters', async () => {

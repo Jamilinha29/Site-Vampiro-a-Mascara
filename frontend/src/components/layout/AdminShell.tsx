@@ -14,6 +14,7 @@ const adminNavBase = [
   { to: '/admin/catalog', label: 'Glossário' },
   { to: '/admin/reference', label: 'Catálogos' },
   { to: '/admin/downloads', label: 'Downloads' },
+  { to: '/admin/users', label: 'Amigos' },
 ] as const
 
 const adminNavClass = ({ isActive }: { isActive: boolean }) =>

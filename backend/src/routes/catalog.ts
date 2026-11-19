@@ -52,7 +52,7 @@ catalogRouter.get('/clans', async (_req, res) => {
   const sb = getSupabaseAdmin()
   if (sb) {
     const { data, error } = await sb
-      .from('clans')
+      .from('Linhagens')
       .select('id, name, slug')
       .eq('active', true)
       .order('name', { ascending: true })

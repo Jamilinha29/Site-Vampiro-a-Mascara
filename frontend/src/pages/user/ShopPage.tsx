@@ -74,7 +74,6 @@ export default function ShopPage() {
     mutationFn: () =>
       api.buyShopItem({
         entityId: selected!.id,
-        characterId: primary?.id,
         quantity: 1,
       }),
     onSuccess: (res) => {
@@ -360,7 +359,10 @@ function PurchasePanel({
 
         <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/70">
           <p className="text-[10px] font-semibold tracking-wider text-secondary uppercase">Compra</p>
-          <p className="mt-2">Personagem: {primaryName ?? 'Nenhum personagem ativo'}</p>
+          <p className="mt-2">
+            Entra no personagem sentado na mesa aberta
+            {primaryName ? ` (${primaryName} é o ativo nesta conta)` : ''}.
+          </p>
           <p className="mt-1">
             Saldo: {walletSilver} prata · {walletGold} ouro
           </p>

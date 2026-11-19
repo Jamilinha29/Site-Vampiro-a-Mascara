@@ -33,6 +33,7 @@ export function AdminShopEditor() {
   const [priceAmount, setPriceAmount] = useState(2)
   const [priceCoin, setPriceCoin] = useState<'ouro' | 'prata' | 'bronze'>('prata')
   const [stockTotal, setStockTotal] = useState(10)
+  const [requiredLevel, setRequiredLevel] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [publishOnSave, setPublishOnSave] = useState(true)
   const [vitrineQuery, setVitrineQuery] = useState('')
@@ -43,6 +44,10 @@ export function AdminShopEditor() {
   const { data: items = [] } = useQuery({
     queryKey: ['admin-entities', kind],
     queryFn: () => api.adminListEntities(kind),
+  })
+  const { data: shopLevels = {} } = useQuery({
+    queryKey: ['admin-shop-levels'],
+    queryFn: () => api.adminShopLevels(),
   })
 
   function resetForm() {
@@ -57,6 +62,7 @@ export function AdminShopEditor() {
   const create = useMutation({
     mutationFn: async (body: CreateEntityPayload) => {
       const row = await api.adminCreateEntity(body)
+      await api.adminSetShopLevel(row.id, requiredLevel)
       if (publishOnSave && row.visibility === 'draft') {
         return api.adminPublishEntity(row.id)
       }
@@ -73,6 +79,7 @@ export function AdminShopEditor() {
   const update = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: CreateEntityPayload }) => {
       const row = await api.adminUpdateEntity(id, body)
+      await api.adminSetShopLevel(row.id, requiredLevel)
       if (publishOnSave && row.visibility === 'draft') {
         return api.adminPublishEntity(row.id)
       }
@@ -169,6 +176,7 @@ export function AdminShopEditor() {
     setMods(item.attributeMods ?? [])
     applyPriceFromEntity(item)
     setStockTotal(item.stockTotal ?? 10)
+    setRequiredLevel(shopLevels[item.id] ?? 1)
     setError(null)
   }
 
@@ -398,6 +406,17 @@ export function AdminShopEditor() {
                 <option value="bronze">Bronze</option>
               </select>
             </div>
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Nível mínimo para comprar
+            <input
+              type="number"
+              min={1}
+              max={20}
+              className="input-feudal mt-1 pl-4"
+              value={requiredLevel}
+              onChange={(e) => setRequiredLevel(Number(e.target.value) || 1)}
+            />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant">
             Estoque total

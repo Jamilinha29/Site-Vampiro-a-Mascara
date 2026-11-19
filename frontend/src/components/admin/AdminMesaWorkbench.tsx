@@ -6,6 +6,8 @@ import { useMesaHandout } from '../../hooks/useMesaHandout'
 import { useAuthStore } from '../../stores/authStore'
 import { StatBar } from '../domain/StatBar'
 import { mesaDisplayName } from '../../lib/mesaSession'
+import { MesaAuctionDesk } from './MesaAuctionDesk'
+import { MesaCoinGrant } from './MesaCoinGrant'
 import { MesaSceneThreatsPanel } from './MesaSceneThreatsPanel'
 import { MesaSceneNpcsPanel } from './MesaSceneNpcsPanel'
 import {
@@ -402,6 +404,7 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
               </button>
             ))}
           </div>
+          <MesaCoinGrant sessionId={session.id} participant={grantParticipant} live={live} />
         </section>
 
         <section className="mesa-panel p-4 lg:col-span-6">
@@ -419,6 +422,10 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
             </ul>
           )}
         </section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-12">
+        <MesaAuctionDesk sessionId={session.id} live={live} />
       </div>
 
       <section className="mesa-panel p-4 sm:p-5">

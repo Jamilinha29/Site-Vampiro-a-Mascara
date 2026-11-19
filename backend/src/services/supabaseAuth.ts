@@ -8,7 +8,7 @@ export function isSupabaseAuthConfigured() {
   const anon = process.env.SUPABASE_ANON_KEY?.trim()
   if (url && !anon) {
     console.warn(
-      '[auth] SUPABASE_URL definido mas falta SUPABASE_ANON_KEY (chave pública). Login usa modo dev até corrigir o .env.',
+      '[auth] SUPABASE_URL definido mas falta SUPABASE_ANON_KEY (chave pública). O login do Supabase fica desligado até corrigir o .env.',
     )
     return false
   }
@@ -20,17 +20,26 @@ export function isSupabaseAuthConfigured() {
   return Boolean(url && anon)
 }
 
-function allowDevAuth() {
-  if (process.env.ALLOW_DEV_AUTH === 'true') return true
+export function allowDevAuth() {
+  if (process.env.NODE_ENV === 'production') return false
   if (process.env.ALLOW_DEV_AUTH === 'false') return false
   if (process.env.NODE_ENV === 'test') return true
-  return !isSupabaseAuthConfigured()
+  return process.env.ALLOW_DEV_AUTH === 'true'
 }
 
-function roleFromSupabaseUser(email: string, metadata: Record<string, unknown>, appMeta: Record<string, unknown>): DevRole {
-  const raw = metadata.role ?? appMeta.role
-  if (raw === 'admin' || raw === 'narrator' || raw === 'player') return raw
-  return devRoleForEmail(email)
+function narratorAllowlist() {
+  return (process.env.NARRATOR_EMAILS ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+/** Papel de mestre só vem do servidor: lista NARRATOR_EMAILS ou app_metadata. O cadastro público não escolhe o papel. */
+function roleFromSupabaseUser(email: string, appMeta: Record<string, unknown>): DevRole {
+  if (narratorAllowlist().includes(email.trim().toLowerCase())) return 'narrator'
+  const raw = appMeta.role
+  if (raw === 'admin' || raw === 'narrator') return raw
+  return 'player'
 }
 
 function resolveDevUser(token: string): RequestUser | null {
@@ -77,14 +86,14 @@ export async function resolveUserFromAuthHeader(authHeader?: string): Promise<Re
   const email = data.user.email
   const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>
   const appMeta = (data.user.app_metadata ?? {}) as Record<string, unknown>
-  const role = roleFromSupabaseUser(email, meta, appMeta)
+  const role = roleFromSupabaseUser(email, appMeta)
   const displayName =
     (typeof meta.display_name === 'string' && meta.display_name) ||
     (typeof meta.displayName === 'string' && meta.displayName) ||
     email.split('@')[0] ||
     'Cainita'
 
-  ensureProfile(email, displayName, role)
+  ensureProfile(email, displayName, role, { authoritative: true })
   return {
     userId: data.user.id,
     email,
@@ -101,17 +110,13 @@ export async function loginWithSupabase(email: string, password: string) {
   if (error || !data.session || !data.user.email) {
     return { ok: false as const, message: error?.message ?? 'Correio ou senha recusados.' }
   }
-  const role = roleFromSupabaseUser(
-    data.user.email,
-    (data.user.user_metadata ?? {}) as Record<string, unknown>,
-    (data.user.app_metadata ?? {}) as Record<string, unknown>,
-  )
+  const role = roleFromSupabaseUser(data.user.email, (data.user.app_metadata ?? {}) as Record<string, unknown>)
   const displayName =
     (typeof data.user.user_metadata?.display_name === 'string' && data.user.user_metadata.display_name) ||
     (typeof data.user.user_metadata?.displayName === 'string' && data.user.user_metadata.displayName) ||
     email.split('@')[0] ||
     'Cainita'
-  ensureProfile(data.user.email, displayName, role)
+  ensureProfile(data.user.email, displayName, role, { authoritative: true })
   return {
     ok: true as const,
     session: {
@@ -131,13 +136,12 @@ export async function registerWithSupabase(
 ) {
   const url = process.env.SUPABASE_URL!.trim()
   const anon = process.env.SUPABASE_ANON_KEY!.trim()
-  const role = devRoleForEmail(email)
   const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data, error } = await sb.auth.signUp({
     email,
     password,
     options: {
-      data: { display_name: displayName, displayName, role },
+      data: { display_name: displayName, displayName },
     },
   })
   if (error) return { ok: false as const, message: error.message }
@@ -148,7 +152,8 @@ export async function registerWithSupabase(
       pendingConfirmation: true as const,
     }
   }
-  ensureProfile(data.user.email, displayName, role)
+  const role = roleFromSupabaseUser(data.user.email, {})
+  ensureProfile(data.user.email, displayName, role, { authoritative: true })
   return {
     ok: true as const,
     session: {

@@ -31,6 +31,9 @@ export function PlayerShell() {
               <NavLink to="/user/sessions" className={playerNavClass}>
                 Sessões
               </NavLink>
+              <NavLink to="/user/friends" className={playerNavClass}>
+                Amigos
+              </NavLink>
               <NavLink to="/user/shop" className={playerNavClass}>
                 Loja
               </NavLink>
@@ -58,6 +61,9 @@ export function PlayerShell() {
           </NavLink>
           <NavLink to="/user/sessions" className={playerNavClass}>
             Sessões
+          </NavLink>
+          <NavLink to="/user/friends" className={playerNavClass}>
+            Amigos
           </NavLink>
           <NavLink to="/user/shop" className={playerNavClass}>
             Loja

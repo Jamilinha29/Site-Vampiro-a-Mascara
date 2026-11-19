@@ -59,7 +59,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
       push('Conclave aberto. Bem-vindo, mestre.', 'success')
       navigate('/admin')
     },
-    onError: () => push('Login do mestre recusado.', 'error'),
+    onError: (err: Error) => push(err.message || 'Login do mestre recusado.', 'error'),
   })
 
   const registerMutation = useMutation({

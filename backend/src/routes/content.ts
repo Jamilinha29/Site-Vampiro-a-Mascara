@@ -62,8 +62,8 @@ contentRouter.get('/session-handouts', (_req, res) => {
   res.json(listHandouts(false).filter((h) => h.status === 'closed'))
 })
 
-contentRouter.get('/scheduled-sessions', (_req, res) => {
-  res.json(listPublishedSessionsForPlayers())
+contentRouter.get('/scheduled-sessions', (req, res) => {
+  res.json(listPublishedSessionsForPlayers(req.user?.email))
 })
 
 contentRouter.get('/sessions/:sessionId/scene-threats', (req, res) => {

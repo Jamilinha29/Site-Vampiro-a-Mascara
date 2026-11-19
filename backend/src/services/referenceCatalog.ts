@@ -64,7 +64,7 @@ function findSameEntry(kind: ReferenceKind, name: string, className: string) {
 }
 
 /** Acrescenta linhas novas. Nome igual com a mesma descrição é duplicata e fica de fora. */
-export function mergeReferenceKind(kind: ReferenceKind, rows: Array<Partial<ReferenceEntry> & { name: string }>) {
+export async function mergeReferenceKind(kind: ReferenceKind, rows: Array<Partial<ReferenceEntry> & { name: string }>) {
   const now = new Date().toISOString()
   const added: ReferenceEntry[] = []
   const updated: ReferenceEntry[] = []
@@ -75,37 +75,49 @@ export function mergeReferenceKind(kind: ReferenceKind, rows: Array<Partial<Refe
     const className = kind === 'subclass' ? row.className?.trim() ?? '' : ''
     const description = row.description?.trim() ?? ''
     const faithPath = kind === 'faith' && (row.faithPath === 'luz' || row.faithPath === 'trevas') ? row.faithPath : ''
-    const existing = findSameEntry(kind, name, className)
+    const existing =
+      findSameEntry(kind, name, className) ??
+      added.find((row) => sameText(row.name, name) && sameText(row.className, className)) ??
+      updated.find((row) => sameText(row.name, name) && sameText(row.className, className))
     if (existing) {
       if (sameText(existing.description, description) && existing.faithPath === faithPath) {
         skipped += 1
         continue
       }
-      existing.description = description || existing.description
-      if (faithPath) existing.faithPath = faithPath
-      existing.updatedAt = now
-      updated.push(existing)
+      const next = {
+        ...existing,
+        description: description || existing.description,
+        faithPath: faithPath || existing.faithPath,
+        updatedAt: now,
+      }
+      const addedIndex = added.findIndex((item) => item.id === existing.id)
+      if (addedIndex >= 0) {
+        added[addedIndex] = next
+        continue
+      }
+      const updatedIndex = updated.findIndex((item) => item.id === existing.id)
+      if (updatedIndex >= 0) updated[updatedIndex] = next
+      else updated.push(next)
       continue
     }
-    const next: ReferenceEntry = {
+    added.push({
       id: randomUUID(),
       kind,
       name,
       description,
       className,
       faithPath,
-      sortOrder: row.sortOrder ?? listReference(kind).length,
+      sortOrder: row.sortOrder ?? listReference(kind).length + added.length,
       updatedAt: now,
-    }
-    entries.set(next.id, next)
-    added.push(next)
+    })
   }
+  await upsertReferenceRows([...added, ...updated])
+  for (const row of [...added, ...updated]) entries.set(row.id, row)
   snapshot()
-  void upsertReferenceRows([...added, ...updated])
   return { added: added.length, updated: updated.length, skipped, items: listReference(kind) }
 }
 
-export function upsertReference(input: Partial<ReferenceEntry> & { kind: ReferenceKind; name: string }) {
+export async function upsertReference(input: Partial<ReferenceEntry> & { kind: ReferenceKind; name: string }) {
   const current = input.id ? entries.get(input.id) : undefined
   const row: ReferenceEntry = {
     id: current?.id ?? input.id ?? randomUUID(),
@@ -122,19 +134,25 @@ export function upsertReference(input: Partial<ReferenceEntry> & { kind: Referen
     sortOrder: input.sortOrder ?? current?.sortOrder ?? listReference(input.kind).length,
     updatedAt: new Date().toISOString(),
   }
+  await upsertReferenceRows([row])
   entries.set(row.id, row)
   snapshot()
-  void upsertReferenceRows([row])
   return row
 }
 
-export function deleteReference(id: string) {
+export async function deleteReference(id: string) {
   const row = entries.get(id)
   if (!row) return false
+  const sb = process.env.NODE_ENV === 'test' ? null : getSupabaseAdmin()
+  if (sb) {
+    const { error } = await sb.from('CatalogoReferencia').delete().eq('id', id)
+    if (error) {
+      console.warn('[catálogo] Falha ao excluir:', error.message)
+      throw new Error('Não foi possível excluir no banco. O item continua no catálogo.')
+    }
+  }
   entries.delete(id)
   snapshot()
-  const sb = getSupabaseAdmin()
-  if (sb) void sb.from('reference_catalog').delete().eq('id', id)
   return true
 }
 
@@ -152,10 +170,30 @@ function dbRecord(row: ReferenceEntry) {
 }
 
 async function upsertReferenceRows(rows: ReferenceEntry[]) {
+  if (process.env.NODE_ENV === 'test') return
   const sb = getSupabaseAdmin()
   if (!sb || !rows.length) return
-  const { error } = await sb.from('reference_catalog').upsert(rows.map(dbRecord), { onConflict: 'id' })
-  if (error) console.warn('[catálogo] Falha ao gravar:', error.message)
+  const { error } = await sb.from('CatalogoReferencia').upsert(rows.map(dbRecord), { onConflict: 'id' })
+  if (!error) return
+  if (!/duplicate key/i.test(error.message)) {
+    console.warn('[catálogo] Falha ao gravar:', error.message)
+    throw new Error('Não foi possível gravar o catálogo no banco. A lista anterior continua valendo.')
+  }
+  for (const row of rows) {
+    const record = dbRecord(row)
+    const { id: _id, ...rest } = record
+    const { data, error: updateError } = await sb
+      .from('CatalogoReferencia')
+      .update(rest)
+      .eq('kind', row.kind)
+      .eq('name', row.name)
+      .eq('class_name', row.className)
+      .select('id')
+    if (updateError || !data?.length) {
+      console.warn('[catálogo] Falha ao gravar:', updateError?.message ?? error.message)
+      throw new Error('Não foi possível gravar o catálogo no banco. A lista anterior continua valendo.')
+    }
+  }
 }
 
 function applyRows(rows: ReferenceEntry[]) {
@@ -176,7 +214,7 @@ export async function hydrateReferenceCatalog() {
     return
   }
   const { data, error } = await sb
-    .from('reference_catalog')
+    .from('CatalogoReferencia')
     .select('id, kind, name, description, class_name, faith_path, sort_order, updated_at')
     .order('sort_order', { ascending: true })
   if (error) {

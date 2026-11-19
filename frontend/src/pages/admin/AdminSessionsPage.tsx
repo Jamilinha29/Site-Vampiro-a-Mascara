@@ -16,9 +16,8 @@ import type { SessionTableMeta } from '../../types/chronicle'
 
 export default function AdminSessionsPage() {
   const [expandedHandoutId, setExpandedHandoutId] = useState<string | null>(null)
-  const [noticeTitle, setNoticeTitle] = useState('')
-  const [noticeMessage, setNoticeMessage] = useState('')
   const [tableMeta, setTableMeta] = useState<SessionTableMeta>(() => newSessionTableMetaDefaults())
+  const [listing, setListing] = useState<'public' | 'private'>('private')
   const qc = useQueryClient()
   const navigate = useNavigate()
 
@@ -38,21 +37,6 @@ export default function AdminSessionsPage() {
       /* ignore */
     }
   }, [])
-
-  const { data: notices = [] } = useQuery({
-    queryKey: ['admin-notices'],
-    queryFn: () => api.adminListNotices(),
-  })
-
-  const sendNotice = useMutation({
-    mutationFn: () => api.adminSendNotice({ title: noticeTitle.trim(), message: noticeMessage.trim() }),
-    onSuccess: () => {
-      setNoticeTitle('')
-      setNoticeMessage('')
-      void qc.invalidateQueries({ queryKey: ['admin-notices'] })
-      invalidatePlayerPublishedContent(qc)
-    },
-  })
 
   const { data: scheduled = [] } = useQuery({
     queryKey: adminQueryKeys.scheduledSessions,
@@ -82,6 +66,7 @@ export default function AdminSessionsPage() {
         chronicleName: campaign,
         scheduledAt: start.toISOString(),
         tableMeta: meta,
+        listing,
       })
     },
     onSuccess: (created) => {
@@ -108,6 +93,15 @@ export default function AdminSessionsPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
+      invalidatePlayerPublishedContent(qc)
+    },
+  })
+
+  const setListingOn = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: 'public' | 'private' }) =>
+      api.adminPatchScheduledSession(id, { listing: next }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
       invalidatePlayerPublishedContent(qc)
     },
   })
@@ -154,51 +148,6 @@ export default function AdminSessionsPage() {
         </p>
       </header>
 
-      <section id="avisos" className="admin-form-panel">
-        <p className="font-label-sm text-xs text-secondary uppercase">Avisos aos jogadores</p>
-        <p className="text-sm text-on-surface-variant">
-          A mensagem aparece no sino de todos os jogadores. O mesmo atalho fica no perfil do mestre.
-        </p>
-        <label className="mt-3 block text-xs uppercase text-on-surface-variant">
-          Título
-          <input
-            className="input-feudal mt-1 pl-4"
-            value={noticeTitle}
-            maxLength={120}
-            onChange={(event) => setNoticeTitle(event.target.value)}
-          />
-        </label>
-        <label className="mt-3 block text-xs uppercase text-on-surface-variant">
-          Mensagem
-          <textarea
-            className="input-feudal textarea-compact mt-1 pl-4"
-            value={noticeMessage}
-            maxLength={500}
-            onChange={(event) => setNoticeMessage(event.target.value)}
-          />
-        </label>
-        <button
-          type="button"
-          className="btn-primary mt-3 text-xs"
-          disabled={sendNotice.isPending || !noticeTitle.trim() || !noticeMessage.trim()}
-          onClick={() => sendNotice.mutate()}
-        >
-          {sendNotice.isPending ? 'Enviando…' : 'Enviar aviso'}
-        </button>
-        {sendNotice.isError ? <p className="mt-2 text-xs text-primary">{(sendNotice.error as Error).message}</p> : null}
-        {notices.length > 0 ? (
-          <ul className="mt-4 space-y-2">
-            {notices.map((notice) => (
-              <li key={notice.id} className="rounded border border-outline-variant/40 px-3 py-2">
-                <p className="font-serif text-sm text-on-surface">{notice.title}</p>
-                <p className="mt-1 text-xs text-on-surface-variant">{notice.message}</p>
-                <p className="mt-1 text-[10px] text-outline">{new Date(notice.createdAt).toLocaleString('pt-BR')}</p>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
       <section className="admin-form-panel">
         <p className="font-label-sm text-xs text-secondary uppercase">Criar outra mesa</p>
         <p className="text-sm text-on-surface-variant">
@@ -206,6 +155,17 @@ export default function AdminSessionsPage() {
           tabela na sala ao vivo.
         </p>
         <SessionTableMetaForm columns="row" value={tableMeta} onChange={setTableMeta} />
+        <label className="mt-3 block text-xs uppercase text-on-surface-variant">
+          Acesso
+          <select
+            className="input-feudal mt-1 py-2 pl-3 text-sm normal-case"
+            value={listing}
+            onChange={(e) => setListing(e.target.value as 'public' | 'private')}
+          >
+            <option value="private">Privada — só com código de sala</option>
+            <option value="public">Aberta ao público</option>
+          </select>
+        </label>
         <button
           type="button"
           className="btn-primary mt-4 text-xs"
@@ -237,7 +197,8 @@ export default function AdminSessionsPage() {
                       {new Date(s.scheduledAt).toLocaleString('pt-BR')}
                     </p>
                     <p className="mt-1 text-xs text-secondary">
-                      Código da mesa: <strong className="tracking-widest">{s.accessCode}</strong>
+                      {(s.listing ?? 'private') === 'public' ? 'Pública' : 'Privada'} · Código da mesa:{' '}
+                      <strong className="tracking-widest">{s.accessCode}</strong>
                     </p>
                     {(s.startedAt || s.endedAt || s.activeDurationMs) && (
                       <p className="mt-1 text-xs text-on-surface-variant">
@@ -253,6 +214,19 @@ export default function AdminSessionsPage() {
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      disabled={setListingOn.isPending}
+                      onClick={() =>
+                        setListingOn.mutate({
+                          id: s.id,
+                          next: (s.listing ?? 'private') === 'public' ? 'private' : 'public',
+                        })
+                      }
+                    >
+                      {(s.listing ?? 'private') === 'public' ? 'Tornar privada' : 'Tornar pública'}
+                    </button>
                     {s.status !== 'open' && s.status !== 'closed' ? (
                       <button
                         type="button"

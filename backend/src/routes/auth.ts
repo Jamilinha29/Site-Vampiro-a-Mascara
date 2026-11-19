@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import {
+  allowDevAuth,
   devLogin,
   isSupabaseAuthConfigured,
   loginWithSupabase,
@@ -26,6 +27,10 @@ const registerSchema = z.object({
 authRouter.post('/login', async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body)
+    if (!allowDevAuth() && !isSupabaseAuthConfigured()) {
+      res.status(503).json({ error: { message: 'Autenticação não configurada neste servidor.' } })
+      return
+    }
     if (isSupabaseAuthConfigured()) {
       const result = await loginWithSupabase(body.email, body.password)
       if (!result.ok) {
@@ -44,6 +49,10 @@ authRouter.post('/login', async (req, res, next) => {
 authRouter.post('/register', async (req, res, next) => {
   try {
     const body = registerSchema.parse(req.body)
+    if (!allowDevAuth() && !isSupabaseAuthConfigured()) {
+      res.status(503).json({ error: { message: 'Autenticação não configurada neste servidor.' } })
+      return
+    }
     if (isSupabaseAuthConfigured()) {
       const result = await registerWithSupabase(body.email, body.password, body.displayName)
       if (!result.ok) {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { dbDeleteEntity, dbLoadEntities, dbLoadGrimoireSpells, dbUpsertEntity } from './entityDb.js'
+import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
 
 export type EntityKind = 'npc' | 'monster' | 'equipment' | 'consumable' | 'archive' | 'download'
@@ -161,6 +162,8 @@ export type ScheduledSession = {
   narratorEmail?: string
   tableMeta?: SessionTableMeta
   accessCode: string
+  /** public: entra sem código. private: só com código de sala. */
+  listing?: 'public' | 'private'
   status: 'scheduled' | 'open' | 'closed'
   startedAt?: string
   endedAt?: string
@@ -190,28 +193,43 @@ function sameEntityText(left: string, right: string) {
   return left.trim().toLowerCase() === right.trim().toLowerCase()
 }
 
-/** Junta o que veio do banco sem apagar nem duplicar o que já está na memória. */
+/** Junta o que o banco confirmou. Consulta falha ou tabela vazia não apaga o que já está na memória. */
 export async function refreshEntitiesFromDatabase() {
   const loaded = await dbLoadEntities()
+  if (loaded === null) return
   const spells = await dbLoadGrimoireSpells()
-  const rows = [...(loaded ?? []), ...spells]
+  const rows = [...loaded, ...spells]
   if (!rows.length) return
-  let added = 0
+  let changed = false
   for (const row of rows) {
-    if (!row.name) continue
+    if (!row.name || !row.id) continue
+    const byId = entities.get(row.id)
+    if (byId) {
+      if (row.updatedAt >= byId.updatedAt) {
+        entities.set(row.id, { ...byId, ...row, id: byId.id })
+        changed = true
+      }
+      continue
+    }
     const same = [...entities.values()].find(
       (item) => item.kind === row.kind && sameEntityText(item.name, row.name),
     )
     if (!same) {
       entities.set(row.id, row)
-      added += 1
+      changed = true
       continue
     }
-    if (!sameEntityText(same.description, row.description) && row.description && !same.description) {
-      entities.set(same.id, { ...same, description: row.description, updatedAt: row.updatedAt })
+    if (row.updatedAt >= same.updatedAt) {
+      entities.set(same.id, {
+        ...same,
+        description: row.description || same.description,
+        visibility: row.visibility,
+        updatedAt: row.updatedAt,
+      })
+      changed = true
     }
   }
-  if (added) writeEntityFile()
+  if (changed) writeEntityFile()
 }
 
 export async function hydrateEntitiesFromDatabase() {
@@ -232,12 +250,31 @@ export async function hydrateEntitiesFromDatabase() {
   }
 }
 
-function persistEntity(row: ChronicleEntity) {
-  void dbUpsertEntity(row)
+async function commitEntity(row: ChronicleEntity) {
+  const saved = await dbUpsertEntity(row)
+  if (!saved.ok) throw new Error(saved.error)
+  entities.set(row.id, row)
   writeEntityFile()
 }
 const handouts = new Map<string, SessionHandout>()
 const scheduledSessions = new Map<string, ScheduledSession>()
+
+function snapshotSessions() {
+  rememberDocument('sessions', {
+    sessions: [...scheduledSessions.values()],
+    handouts: [...handouts.values()],
+  })
+}
+
+export async function hydrateSessions() {
+  const doc = await loadDocument<{ sessions: ScheduledSession[]; handouts: SessionHandout[] }>('sessions')
+  if (!doc || documentWeight(doc.body) === 0) return
+  if (!doc.body.sessions?.length && !doc.body.handouts?.length) return
+  scheduledSessions.clear()
+  handouts.clear()
+  for (const session of doc.body.sessions ?? []) scheduledSessions.set(session.id, session)
+  for (const handout of doc.body.handouts ?? []) handouts.set(handout.id, handout)
+}
 
 function now() {
   return new Date().toISOString()
@@ -254,7 +291,7 @@ export function getEntity(id: string) {
   return entities.get(id) ?? null
 }
 
-export function createEntity(
+export async function createEntity(
   input: Omit<ChronicleEntity, 'id' | 'createdAt' | 'updatedAt'> & {
     visibility?: ChronicleEntity['visibility']
     id?: string
@@ -269,61 +306,69 @@ export function createEntity(
     createdAt: now(),
     updatedAt: now(),
   }
-  entities.set(id, row)
-  persistEntity(row)
+  await commitEntity(row)
   return row
 }
 
-export function updateEntity(id: string, patch: Partial<Omit<ChronicleEntity, 'id' | 'createdAt'>>) {
+export async function updateEntity(id: string, patch: Partial<Omit<ChronicleEntity, 'id' | 'createdAt'>>) {
   const row = entities.get(id)
   if (!row) return null
   const next = { ...row, ...patch, updatedAt: now() }
-  entities.set(id, next)
-  persistEntity(next)
+  await commitEntity(next)
   if ((next.kind === 'npc' || next.kind === 'monster') && next.visibility === 'published') {
-    glossaryMirrorForNpcOrMonster(next)
+    await glossaryMirrorForNpcOrMonster(next)
   }
   return next
 }
 
-export function deleteEntity(id: string) {
-  const ok = entities.delete(id)
-  if (ok) {
-    void dbDeleteEntity(id)
-    writeEntityFile()
-  }
-  return ok
+export async function deleteEntity(id: string) {
+  if (!entities.has(id)) return false
+  const removed = await dbDeleteEntity(id)
+  if (!removed.ok) throw new Error(removed.error)
+  entities.delete(id)
+  writeEntityFile()
+  return true
+}
+
+function forPlayers(rows: ChronicleEntity[]) {
+  return rows
+    .filter((e) => e.visibility === 'published')
+    .map(({ narratorNotes: _notes, ...rest }) => rest)
 }
 
 export function listPublishedForArchive(category: ArchiveCategory) {
-  return listEntities().filter(
-    (e) =>
-      e.kind === 'archive' ||
-      e.kind === 'equipment' ||
-      e.kind === 'consumable' ||
-      e.kind === 'monster',
-  ).filter((e) => {
-    if (e.kind === 'archive') return e.archiveCategory === category
-    if (e.archiveCategory === category) return true
-    return false
-  })
+  return forPlayers(
+    listEntities().filter(
+      (e) =>
+        e.kind === 'archive' ||
+        e.kind === 'equipment' ||
+        e.kind === 'consumable' ||
+        e.kind === 'monster',
+    ).filter((e) => {
+      if (e.kind === 'archive') return e.archiveCategory === category
+      if (e.archiveCategory === category) return true
+      return false
+    }),
+  )
 }
 
 export function listPublishedForShop(category: ShopCategory) {
-  return listEntities().filter(
-    (e) => (e.kind === 'equipment' || e.kind === 'consumable') && e.shopCategory === category,
+  return forPlayers(
+    listEntities().filter(
+      (e) => (e.kind === 'equipment' || e.kind === 'consumable') && e.shopCategory === category,
+    ),
   )
 }
 
 export function listPublishedForBestiary(tier: BestiaryTier) {
-  return listEntities().filter(
-    (e) => e.kind === 'monster' && (e.bestiaryTier ?? 'known') === tier,
+  return forPlayers(
+    listEntities().filter((e) => e.kind === 'monster' && (e.bestiaryTier ?? 'known') === tier),
   )
 }
 
 export function listPublishedDownloads(category: DownloadCategory) {
-  const files = listEntities({ visibility: 'published' }).filter(
-    (e) => e.kind === 'download' && e.downloadCategory === category,
+  const files = forPlayers(
+    listEntities({ visibility: 'published' }).filter((e) => e.kind === 'download' && e.downloadCategory === category),
   )
   if (category === 'handouts') {
     const sessionDocs = [...handouts.values()].filter((h) => h.publishedToPlayers && h.status === 'closed')
@@ -362,6 +407,7 @@ export function createHandout(
     createdAt: now(),
   }
   handouts.set(id, row)
+  snapshotSessions()
   return row
 }
 
@@ -468,10 +514,11 @@ export function updateHandout(id: string, patch: Partial<SessionHandout>) {
   if (!row) return null
   const next = { ...row, ...patch, ...(patch.status === 'closed' && !row.closedAt ? { closedAt: now() } : {}) }
   handouts.set(id, next)
+  snapshotSessions()
   return next
 }
 
-function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
+async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
   if (row.kind !== 'npc' && row.kind !== 'monster') return
   const archiveCategory: ArchiveCategory =
     row.archiveCategory ?? (row.kind === 'monster' ? 'relics' : 'chronicles')
@@ -507,10 +554,10 @@ function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
     visibility: 'published' as const,
   }
   if (twin) {
-    updateEntity(twin.id, patch)
+    await updateEntity(twin.id, patch)
     return
   }
-  createEntity({
+  await createEntity({
     kind: 'archive',
     name: row.name,
     archiveCategory,
@@ -519,19 +566,15 @@ function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
 }
 
 /** Publica entidade; NPC/monstro ganham espelho `archive` no glossário do jogador. */
-export function publishEntity(id: string) {
-  const row = updateEntity(id, { visibility: 'published' })
-  if (!row) return null
-  if (row.kind === 'npc' || row.kind === 'monster') {
-    glossaryMirrorForNpcOrMonster(row)
-  }
-  return row
+export async function publishEntity(id: string) {
+  return updateEntity(id, { visibility: 'published' })
 }
 
 function ensureSessionDefaults(row: ScheduledSession): ScheduledSession {
   const next: ScheduledSession = {
     ...row,
     accessCode: row.accessCode || generateAccessCode(),
+    listing: row.listing ?? 'private',
     status: row.status ?? 'scheduled',
     activeDurationMs: row.activeDurationMs ?? 0,
     presence: row.presence ?? [],
@@ -539,6 +582,7 @@ function ensureSessionDefaults(row: ScheduledSession): ScheduledSession {
   }
   if (!row.accessCode || !row.status || !row.presence || !row.seats) {
     scheduledSessions.set(row.id, next)
+    snapshotSessions()
   }
   return next
 }
@@ -591,6 +635,7 @@ export function createScheduledSession(input: {
   chronicleName?: string
   narratorEmail?: string
   tableMeta?: SessionTableMeta
+  listing?: 'public' | 'private'
 }) {
   const id = randomUUID()
   const chronicleName = input.chronicleName?.trim()
@@ -604,6 +649,7 @@ export function createScheduledSession(input: {
     narratorEmail: input.narratorEmail,
     tableMeta,
     accessCode: generateAccessCode(),
+    listing: input.listing === 'public' ? 'public' : 'private',
     status: 'scheduled',
     activeDurationMs: 0,
     presence: [],
@@ -611,6 +657,7 @@ export function createScheduledSession(input: {
     createdAt: now(),
   }
   scheduledSessions.set(id, row)
+  snapshotSessions()
   ensureHandoutForScheduledSession(id)
   return row
 }
@@ -627,6 +674,7 @@ export function updateScheduledSession(
   }
   const next = { ...row, ...patch, tableMeta }
   scheduledSessions.set(id, next)
+  snapshotSessions()
   return next
 }
 
@@ -640,6 +688,7 @@ export function deleteScheduledSession(sessionId: string, narratorEmail: string)
   const handout = findHandoutByScheduledSession(sessionId)
   if (handout) handouts.delete(handout.id)
   scheduledSessions.delete(sessionId)
+  snapshotSessions()
   return { ok: true as const }
 }
 
@@ -704,7 +753,8 @@ export function joinSessionWithCode(
 ) {
   const row = getScheduledSession(sessionId)
   if (!row) return { ok: false as const, reason: 'not_found' as const }
-  if (row.accessCode.toUpperCase() !== accessCode.trim().toUpperCase()) {
+  const listing = row.listing ?? 'private'
+  if (listing !== 'public' && row.accessCode.toUpperCase() !== accessCode.trim().toUpperCase()) {
     return { ok: false as const, reason: 'bad_code' as const }
   }
   if (row.status !== 'open') {
@@ -1038,6 +1088,17 @@ export function getPlayerSessionActCanon(sessionId: string): PlayerSessionActCan
   }
 }
 
-export function listPublishedSessionsForPlayers() {
+export function listPublishedSessionsForPlayers(viewerEmail?: string) {
+  const viewer = viewerEmail?.trim().toLowerCase() ?? ''
   return listScheduledSessions()
+    .filter((s) => {
+      const listing = s.listing ?? 'private'
+      if (listing === 'public') return true
+      if (!viewer) return false
+      if (s.narratorEmail?.toLowerCase() === viewer) return true
+      if ((s.seats ?? []).some((seat) => !seat.leftAt && seat.email.toLowerCase() === viewer)) return true
+      if ((s.presence ?? []).some((p) => p.email.toLowerCase() === viewer)) return true
+      return false
+    })
+    .map((s) => ({ ...s, listing: s.listing ?? 'private', accessCode: '' }))
 }

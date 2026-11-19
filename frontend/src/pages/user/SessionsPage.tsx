@@ -26,6 +26,10 @@ function statusLabel(s: ScheduledSession) {
 export default function SessionsPage() {
   const [panel, setPanel] = useState<PanelState>(null)
   const [joinSessionId, setJoinSessionId] = useState<string | null>(null)
+  const [publicJoin, setPublicJoin] = useState(false)
+  const [boardQuery, setBoardQuery] = useState('')
+  const [boardSearch, setBoardSearch] = useState('')
+  const [privateCode, setPrivateCode] = useState('')
   const [accessCode, setAccessCode] = useState('')
   const [characterId, setCharacterId] = useState('')
   const auth = useAuthStore((s) => s.session)
@@ -41,6 +45,10 @@ export default function SessionsPage() {
     queryKey: playerQueryKeys.profile,
     queryFn: () => api.getMeProfile(),
   })
+  const { data: board } = useQuery({
+    queryKey: ['session-board', boardSearch],
+    queryFn: () => api.getSessionBoard(boardSearch),
+  })
 
   const characters = profile?.characters ?? []
 
@@ -55,11 +63,12 @@ export default function SessionsPage() {
 
   const join = useMutation({
     mutationFn: () =>
-      api.joinSessionWithCode(joinSessionId!, { accessCode, characterId }),
+      api.joinSessionWithCode(joinSessionId!, { accessCode: publicJoin ? '' : accessCode, characterId }),
     onSuccess: () => {
       push('Entrou na mesa.', 'success')
       const id = joinSessionId
       setJoinSessionId(null)
+      setPublicJoin(false)
       setAccessCode('')
       void qc.invalidateQueries({ queryKey: playerQueryKeys.scheduledSessions })
       if (id) window.location.assign(`/user/sessions/${id}/table`)
@@ -88,9 +97,121 @@ export default function SessionsPage() {
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de sessões</h1>
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
-          Confirme presença, use o código da mesa quando o mestre abrir a sala e escolha o personagem da sessão.
+          Procure mesas públicas e mesas de amigos. Mesas privadas pedem o código de sala.
         </p>
       </header>
+
+      <section className="mesa-panel space-y-4 p-5">
+        <h2 className="font-headline-sm text-lg">Procurar sessão</h2>
+        <form
+          className="flex flex-wrap gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setBoardSearch(boardQuery.trim())
+          }}
+        >
+          <input
+            className="input-feudal min-w-[14rem] flex-1 pl-4"
+            value={boardQuery}
+            onChange={(e) => setBoardQuery(e.target.value)}
+            placeholder="Nome da crônica, narrador ou amigo"
+          />
+          <button type="submit" className="btn-secondary text-xs">
+            Procurar
+          </button>
+        </form>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <p className="text-xs uppercase text-secondary">Abertas ao público</p>
+            <ul className="mt-2 space-y-2">
+              {(board?.publicTables ?? []).length === 0 ? (
+                <li className="text-sm text-on-surface-variant">Nenhuma mesa pública.</li>
+              ) : null}
+              {(board?.publicTables ?? []).map((table) => (
+                <li key={table.id} className="rounded border border-outline-variant/30 px-3 py-2 text-sm">
+                  <p className="font-serif text-on-surface">{table.title}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {table.narratorName} · {table.status === 'open' ? 'Ao vivo' : 'Agendada'}
+                  </p>
+                  {table.status === 'open' ? (
+                    <button
+                      type="button"
+                      className="btn-primary mt-2 text-[10px]"
+                      onClick={() => {
+                        setPublicJoin(true)
+                        setAccessCode('')
+                        setJoinSessionId(table.id)
+                        setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
+                      }}
+                    >
+                      Entrar
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs uppercase text-secondary">Mesas de amigos</p>
+            <ul className="mt-2 space-y-2">
+              {(board?.friendTables ?? []).length === 0 ? (
+                <li className="text-sm text-on-surface-variant">Nenhuma mesa privada de amigos.</li>
+              ) : null}
+              {(board?.friendTables ?? []).map((table) => (
+                <li key={table.id} className="rounded border border-outline-variant/30 px-3 py-2 text-sm">
+                  <p className="font-serif text-on-surface">{table.title}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {table.narratorName}
+                    {table.seatedNames.length ? ` · ${table.seatedNames.join(', ')}` : ''} · código de sala
+                  </p>
+                  {table.status === 'open' ? (
+                    <button
+                      type="button"
+                      className="btn-secondary mt-2 text-[10px]"
+                      onClick={() => {
+                        setPublicJoin(false)
+                        setJoinSessionId(table.id)
+                        setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
+                      }}
+                    >
+                      Entrar com código
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <form
+          className="flex flex-wrap items-end gap-2 border-t border-outline-variant/30 pt-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!privateCode.trim()) return
+            void api.joinSessionByCode(privateCode.trim()).then(
+              (found) => {
+                setPublicJoin(false)
+                setAccessCode(privateCode.trim())
+                setJoinSessionId(found.sessionId)
+                setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
+              },
+              (err: Error) => push(err.message, 'error'),
+            )
+          }}
+        >
+          <label className="text-xs uppercase text-on-surface-variant">
+            Mesa privada · código
+            <input
+              className="input-feudal mt-1 pl-4 uppercase tracking-widest"
+              value={privateCode}
+              onChange={(e) => setPrivateCode(e.target.value)}
+              placeholder="Código de sala"
+            />
+          </label>
+          <button type="submit" className="btn-secondary text-xs">
+            Achar sala
+          </button>
+        </form>
+      </section>
 
       {next ? (
         <section className="mesa-panel overflow-hidden">
@@ -131,11 +252,12 @@ export default function SessionsPage() {
                   type="button"
                   className="btn-primary text-xs"
                   onClick={() => {
+                    setPublicJoin((next.listing ?? 'private') === 'public')
                     setJoinSessionId(next.id)
                     setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
                   }}
                 >
-                  Entrar com código
+                  {(next.listing ?? 'private') === 'public' ? 'Entrar' : 'Entrar com código'}
                 </button>
               ) : (
                 <button type="button" className="btn-primary text-xs" disabled>
@@ -177,11 +299,12 @@ export default function SessionsPage() {
                     type="button"
                     className="btn-primary text-xs"
                     onClick={() => {
+                      setPublicJoin((s.listing ?? 'private') === 'public')
                       setJoinSessionId(s.id)
                       setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
                     }}
                   >
-                    Entrar com código
+                    {(s.listing ?? 'private') === 'public' ? 'Entrar' : 'Entrar com código'}
                   </button>
                 ) : null}
                 {canConfirmPresence && s.status === 'scheduled' ? (
@@ -222,8 +345,11 @@ export default function SessionsPage() {
           <div className="card-surface w-full max-w-md space-y-4 p-6">
             <h2 className="font-headline-sm text-lg text-on-surface">Entrar na mesa</h2>
             <p className="text-xs text-on-surface-variant">
-              Informe o código criado com a mesa. Se saiu da sala, precisa do código novamente.
+              {publicJoin
+                ? 'Mesa pública. Escolha o personagem para sentar.'
+                : 'Informe o código da sala privada. Se saiu, precisa do código novamente.'}
             </p>
+            {publicJoin ? null : (
             <label className="block text-xs uppercase text-on-surface-variant">
               Código / senha
               <input
@@ -233,6 +359,7 @@ export default function SessionsPage() {
                 placeholder="Ex: A7K2QM"
               />
             </label>
+            )}
             <label className="block text-xs uppercase text-on-surface-variant">
               Personagem na sessão
               <select
@@ -255,7 +382,7 @@ export default function SessionsPage() {
               <button
                 type="button"
                 className="btn-primary text-xs"
-                disabled={!accessCode.trim() || !characterId || join.isPending}
+                disabled={(!publicJoin && !accessCode.trim()) || !characterId || join.isPending}
                 onClick={() => join.mutate()}
               >
                 Entrar
