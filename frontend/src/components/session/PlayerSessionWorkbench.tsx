@@ -275,6 +275,9 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         <div className="px-4 py-4 sm:px-6">
           <p className="font-label-sm text-[0.65rem] text-primary uppercase tracking-[0.2em]">{chronicle}</p>
           <h1 className="font-headline-lg mt-1 text-xl text-on-surface sm:text-2xl">Sessão ao vivo</h1>
+          <button type="button" className="btn-secondary mt-2 text-xs no-print" onClick={() => window.print()}>
+            Imprimir resumo
+          </button>
           <p className="mt-1 text-sm text-on-surface-variant">
             Narrador · <span className="text-secondary">{session?.narratorEmail ?? auth?.displayName ?? '—'}</span>
             {session ? (
@@ -365,9 +368,9 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
 
               {!dead ? (
                 <div className="space-y-2 rounded border border-outline-variant/35 bg-surface-container-lowest/40 p-3">
-                  <p className="text-[10px] font-semibold tracking-wider text-secondary uppercase">Combate & recuperação</p>
+                  <p className="text-xs font-semibold tracking-wider text-secondary uppercase">Combate & recuperação</p>
                   <div className="flex flex-wrap items-end gap-2">
-                    <label className="text-[10px] uppercase text-on-surface-variant">
+                    <label className="text-xs uppercase text-on-surface-variant">
                       Dano recebido
                       <input
                         type="number"
@@ -379,7 +382,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                     </label>
                     <button
                       type="button"
-                      className="btn-primary text-[10px]"
+                      className="btn-primary text-xs"
                       disabled={vitalsBusy}
                       onClick={() => void applyDamage(damageInput)}
                     >
@@ -392,7 +395,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                         <button
                           key={p.id}
                           type="button"
-                          className="btn-secondary text-[9px]"
+                          className="btn-secondary text-xs"
                           disabled={vitalsBusy}
                           onClick={() => void consumePotion(p.id)}
                         >
@@ -401,15 +404,17 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[10px] text-on-surface-variant">
+                    <p className="text-xs text-on-surface-variant">
                       Sem poções na bolsa. Mana em 0 só se recupera com poção/equipamento.
                     </p>
                   )}
                 </div>
               ) : null}
 
+              <SessionRollBox sessionId={sessionId} characterName={character.name} />
+
               <div className="flex flex-wrap gap-2">
-                <Link to={`/user/characters/${character.id}?view=ficha`} className="btn-secondary text-[10px]">
+                <Link to={`/user/characters/${character.id}?view=ficha`} className="btn-secondary text-xs">
                   Abrir ficha completa
                 </Link>
                 <select
@@ -429,7 +434,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 </select>
                 <button
                   type="button"
-                  className="btn-secondary text-[10px]"
+                  className="btn-secondary text-xs"
                   disabled={dead || !replaceId || replaceChar.isPending}
                   onClick={() => replaceChar.mutate(replaceId)}
                 >
@@ -511,7 +516,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             ) : (
               <p className="mt-3 text-sm text-on-surface-variant">Use uma habilidade criada para registrar na sessão.</p>
             )}
-            <label className="mt-3 block text-[10px] uppercase text-on-surface-variant">
+            <label className="mt-3 block text-xs uppercase text-on-surface-variant">
               Declarar ação ao narrador
               <textarea
                 className="input-feudal mt-1 min-h-16 pl-3 normal-case"
@@ -522,7 +527,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             </label>
             <button
               type="button"
-              className="btn-secondary mt-2 text-[10px]"
+              className="btn-secondary mt-2 text-xs"
               disabled={!declareText.trim()}
               onClick={() => {
                 setUsedLog((prev) => [`Declaração: ${declareText.trim()}`, ...prev].slice(0, 8))
@@ -594,6 +599,50 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           </div>
         </div>
       </footer>
+    </div>
+  )
+}
+
+function SessionRollBox({ sessionId, characterName }: { sessionId: string; characterName: string }) {
+  const [formula, setFormula] = useState('1d10')
+  const { push } = useToast()
+  const qc = useQueryClient()
+  const rolls = useQuery({
+    queryKey: ['session-rolls', sessionId],
+    queryFn: () => api.listSessionRolls(sessionId),
+    refetchInterval: 5000,
+  })
+  return (
+    <div className="space-y-2 rounded border border-outline-variant/35 p-3">
+      <p className="text-xs font-semibold tracking-wider text-secondary uppercase">Rolagem</p>
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void api
+            .rollAtSession(sessionId, { formula, characterName })
+            .then((row) => {
+              push(`${row.formula} = ${row.total}`, 'success')
+              void qc.invalidateQueries({ queryKey: ['session-rolls', sessionId] })
+            })
+            .catch((error: Error) => push(error.message, 'error'))
+        }}
+      >
+        <label className="text-xs uppercase text-on-surface-variant">
+          Fórmula
+          <input className="input-feudal mt-1 w-24 pl-3" value={formula} onChange={(event) => setFormula(event.target.value)} />
+        </label>
+        <button type="submit" className="btn-secondary self-end text-xs">
+          Rolar
+        </button>
+      </form>
+      <ul className="space-y-1 text-xs text-on-surface-variant">
+        {(rolls.data ?? []).slice(-5).reverse().map((row) => (
+          <li key={row.id}>
+            {row.characterName}: {row.formula} = {row.secret ? 'secreta' : row.total}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -35,6 +35,7 @@ const AdminRewardsPage = lazy(() => import('../pages/admin/AdminRewardsPage'))
 const AdminUsersPage = lazy(() => import('../pages/admin/AdminUsersPage'))
 const AdminDownloadsPage = lazy(() => import('../pages/admin/AdminDownloadsPage'))
 const AdminProfilePage = lazy(() => import('../pages/admin/AdminProfilePage'))
+const AdminCampaignPage = lazy(() => import('../pages/admin/AdminCampaignPage'))
 const AdminSettingsPage = lazy(() => import('../pages/admin/AdminSettingsPage'))
 const LineageStepPage = lazy(() => import('../pages/characters/LineageStepPage'))
 const IdentityStepPage = lazy(() => import('../pages/characters/IdentityStepPage'))
@@ -147,6 +148,7 @@ export function AppRouter() {
           <Route path="achievements" element={<Lazy><AdminAchievementsPage /></Lazy>} />
           <Route path="downloads" element={<Lazy><AdminDownloadsPage /></Lazy>} />
           <Route path="profile" element={<Lazy><AdminProfilePage /></Lazy>} />
+          <Route path="campaign" element={<Lazy><AdminCampaignPage /></Lazy>} />
           <Route path="settings" element={<Lazy><AdminSettingsPage /></Lazy>} />
           </Route>
         </Route>

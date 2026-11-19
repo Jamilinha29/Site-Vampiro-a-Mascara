@@ -21,15 +21,18 @@ import { hydrateSessions, hydrateEntitiesFromDatabase } from './services/chronic
 import { hydrateCourt } from './services/courtStore.js'
 import { hydrateNotices } from './services/notificationStore.js'
 import { hydrateProfiles } from './services/profileStore.js'
+import { hydrateOperations } from './services/operationLog.js'
+import { hydrateRolls } from './services/sessionRolls.js'
+import { hydrateCampaignExtras } from './services/campaignExtras.js'
 import { hydrateShopOperations } from './services/shopPurchase.js'
 import { hydrateShop } from './services/shopStore.js'
 import { ensureMediaBuckets } from './services/mediaStorage.js'
 import { adminReferenceRouter } from './routes/admin/referenceCatalog.js'
 import { hydrateReferenceCatalog } from './services/referenceCatalog.js'
+import { getSupabaseAdmin, isSupabasePersistenceEnabled } from './services/supabaseClient.js'
 
 const app = express()
 const port = Number(process.env.PORT ?? 4000)
-const startedAt = Date.now()
 
 app.use(helmet())
 app.use(requestLogger)
@@ -78,12 +81,22 @@ app.use('/api/v1/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }), authR
 app.use('/api/v1/registrations', rateLimit({ windowMs: 60 * 1000, max: 20 }), registrationsRouter)
 
 app.get('/health', (_req, res) => {
-  res.json({
-    ok: true,
-    service: 'beladona-api',
-    uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
-    version: process.env.npm_package_version ?? '0.1.0',
-  })
+  res.json({ ok: true })
+})
+
+app.get('/ready', async (_req, res) => {
+  try {
+    await ready
+    const supabase = isSupabasePersistenceEnabled()
+    if (supabase) {
+      const admin = getSupabaseAdmin()
+      const { error } = await admin!.from('EntidadesCronica').select('id').limit(1)
+      if (error) throw error
+    }
+    res.json({ ok: true, supabase })
+  } catch {
+    res.status(503).json({ ok: false })
+  }
 })
 
 app.use('/api/v1/catalog', catalogRouter)
@@ -100,8 +113,10 @@ app.use('/api/v1/court', courtRouter)
 app.use(errorHandler)
 
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+/** Em testes nunca abre porta (evita EADDRINUSE no CI e com `dev:api` local). */
 const standalone =
-  process.env.RUN_STANDALONE === 'true' || (process.env.NODE_ENV !== 'test' && !isServerless)
+  process.env.NODE_ENV !== 'test' &&
+  (process.env.RUN_STANDALONE === 'true' || !isServerless)
 
 export const ready =
   process.env.NODE_ENV === 'test'
@@ -116,6 +131,9 @@ export const ready =
         hydrateShop(),
         hydrateShopOperations(),
         hydrateNotices(),
+        hydrateOperations(),
+        hydrateRolls(),
+        hydrateCampaignExtras(),
       ])
 
 if (standalone) {

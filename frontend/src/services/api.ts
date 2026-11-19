@@ -20,7 +20,76 @@ export type ReferenceEntry = {
   sortOrder: number
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type CampaignRules = {
+  version: number
+  maxLevel: number
+  subclassLevel: number
+  startingXp: number
+  shopBudgetCopper: number
+  updatedAt: string
+}
+type BoardCard = {
+  id: string
+  kind: 'mystery' | 'mission' | 'place' | 'pending' | 'npc'
+  title: string
+  status: 'confirmed' | 'proposed' | 'pending'
+  detail: string
+  owner: string
+  priority: 'baixa' | 'media' | 'alta'
+}
+type CampaignBackup = {
+  profiles?: unknown[]
+  sessions?: unknown[]
+  handouts?: unknown[]
+  wallets?: Record<string, { gold?: number; silver?: number; copper?: number }>
+}
+type BackupReport = {
+  wrote: boolean
+  profiles: number
+  characters: number
+  inventoryItems: number
+  sessions: number
+  handouts: number
+  wallets: number
+  gold: number
+  silver: number
+  copper: number
+  imageReferences: number
+  storageManifest?: string[]
+  storageNote: string
+}
+
+async function refreshAccessToken() {
+  const raw = localStorage.getItem('beladona-auth')
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as {
+      state?: { session?: { refreshToken?: string; accessToken?: string; expiresAt?: number } }
+    }
+    const refreshToken = parsed.state?.session?.refreshToken
+    if (!refreshToken || !parsed.state?.session) return null
+    const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { accessToken?: string; refreshToken?: string; expiresAt?: number }
+    if (!body.accessToken) return null
+    parsed.state.session = {
+      ...parsed.state.session,
+      accessToken: body.accessToken,
+      refreshToken: body.refreshToken ?? refreshToken,
+      expiresAt: body.expiresAt,
+    }
+    localStorage.setItem('beladona-auth', JSON.stringify(parsed))
+    return body.accessToken
+  } catch {
+    return null
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && init?.body) {
     headers.set('Content-Type', 'application/json')
@@ -47,6 +116,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ? 'A API local não respondeu. Confira se o servidor em localhost:4000 está no ar.'
         : 'Não foi possível falar com o servidor.',
     )
+  }
+  if (res.status === 401 && !retried && !path.startsWith('/api/v1/auth/')) {
+    const renewed = await refreshAccessToken()
+    if (renewed) return request<T>(path, init, true)
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
@@ -76,6 +149,89 @@ export const api = {
   getNotifications: () => request<import('../types/notifications').AppNotification[]>('/api/v1/notifications'),
   markNotificationsRead: (body: { ids?: string[]; all?: boolean }) =>
     request<{ count: number }>('/api/v1/notifications/mark-read', { method: 'POST', body: JSON.stringify(body) }),
+  adminDownloadBackup: () => request<CampaignBackup>('/api/v1/admin/chronicle/backup'),
+  adminDrillBackup: (backup: unknown) =>
+    request<BackupReport>('/api/v1/admin/chronicle/backup/drill', { method: 'POST', body: JSON.stringify(backup) }),
+  adminRestoreBackup: (backup: unknown) =>
+    request<BackupReport>('/api/v1/admin/chronicle/backup/restore', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'restaurar-copia', backup }),
+    }),
+  adminListBoard: () => request<BoardCard[]>('/api/v1/admin/chronicle/board'),
+  adminAddBoardCard: (body: Omit<BoardCard, 'id'>) =>
+    request<BoardCard>('/api/v1/admin/chronicle/board', { method: 'POST', body: JSON.stringify(body) }),
+  adminRemoveBoardCard: (id: string) =>
+    request<{ ok: true }>(`/api/v1/admin/chronicle/board/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adminGetRules: () => request<CampaignRules>('/api/v1/admin/chronicle/rules'),
+  adminValidateStorage: (paths?: string[]) =>
+    request<{ total: number; reachable: number; needsManualCheck: number; missing: string[]; note: string }>(
+      '/api/v1/admin/chronicle/backup/validate-storage',
+      { method: 'POST', body: JSON.stringify(paths?.length ? { paths } : {}) },
+    ),
+  adminSessionOperations: (sessionId: string) =>
+    request<Array<{ id: string; at: string; kind: string; summary: string; email: string }>>(
+      `/api/v1/admin/chronicle/sessions/${encodeURIComponent(sessionId)}/operations`,
+    ),
+  adminImportEntities: (
+    rows: unknown[],
+    opts?: { fieldMap?: Record<string, string>; preview?: boolean },
+  ) =>
+    request<
+      | { preview: true; create: number; duplicate: number; rejected: number; rejections: Array<{ line: number; message: string }> }
+      | { imported: number; skipped: number }
+    >(`/api/v1/admin/chronicle/entities/import${opts?.preview ? '?preview=1' : ''}`, {
+      method: 'POST',
+      body: JSON.stringify(opts?.fieldMap ? { rows, fieldMap: opts.fieldMap } : rows),
+    }),
+  adminSaveRules: (body: {
+    maxLevel: number
+    subclassLevel: number
+    startingXp?: number
+    shopBudgetCopper?: number
+    decision: 'keep-existing' | 'mark-review'
+  }) =>
+    request<{ rules: CampaignRules; affected: Array<{ name: string; reason: string }> }>('/api/v1/admin/chronicle/rules', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  adminListSecrets: () =>
+    request<Array<{ id: string; sessionId: string; entityId: string; audienceEmail: string | null; text: string }>>(
+      '/api/v1/admin/chronicle/secrets',
+    ),
+  adminAddSecret: (body: { sessionId: string; entityId: string; audienceEmail?: string | null; text: string }) =>
+    request<{ id: string }>('/api/v1/admin/chronicle/secrets', { method: 'POST', body: JSON.stringify(body) }),
+  adminAdvanceTurn: (sessionId: string) =>
+    request<{ changed: number }>(`/api/v1/admin/chronicle/sessions/${encodeURIComponent(sessionId)}/advance-turn`, {
+      method: 'POST',
+    }),
+  getSavedFilters: () =>
+    request<{ shopCategory?: 'gear' | 'consumables' | 'services'; shopQuery?: string; archiveQuery?: string; archiveRarity?: string }>(
+      '/api/v1/me/filters',
+    ),
+  saveFilters: (body: { shopCategory?: 'gear' | 'consumables' | 'services'; shopQuery?: string; archiveQuery?: string; archiveRarity?: string }) =>
+    request<Record<string, string>>('/api/v1/me/filters', { method: 'PUT', body: JSON.stringify(body) }),
+  adminListCharacterReviews: () =>
+    request<
+      Array<{
+        email: string
+        displayName: string
+        characterId: string
+        name: string
+        level: number
+        clan: string | null
+        approval?: 'draft' | 'submitted' | 'changes' | 'approved'
+        reviewNote: string | null
+      }>
+    >('/api/v1/admin/chronicle/character-reviews'),
+  adminReviewCharacter: (
+    email: string,
+    characterId: string,
+    body: { status: 'approved' | 'changes'; note?: string },
+  ) =>
+    request<import('../types/profile').ProfileCharacterSummary>(
+      `/api/v1/admin/chronicle/characters/${encodeURIComponent(email)}/${encodeURIComponent(characterId)}/review`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   adminListNotices: () =>
     request<Array<{ id: string; title: string; message: string; createdAt: string }>>('/api/v1/notifications/sent'),
   adminSendNotice: (body: { title: string; message: string }) =>
@@ -117,10 +273,22 @@ export const api = {
       }>
     >(`/api/v1/catalog/cathedrals${path ? `?path=${path}` : ''}`),
   login: (email: string, password: string) =>
-    request<{ accessToken: string; userId: string; email: string; displayName: string; role: string }>(
-      '/api/v1/auth/login',
-      { method: 'POST', body: JSON.stringify({ email, password }) },
-    ),
+    request<{
+      accessToken: string
+      refreshToken?: string
+      expiresAt?: number
+      userId: string
+      email: string
+      displayName: string
+      role: string
+    }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  requestPasswordRecovery: (email: string) =>
+    request<{ message: string }>('/api/v1/auth/recover', { method: 'POST', body: JSON.stringify({ email }) }),
+  confirmPasswordRecovery: (token: string, password: string) =>
+    request<{ message: string }>('/api/v1/auth/recover/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
   register: async (payload: Record<string, unknown>) => {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     const token = localStorage.getItem('beladona-auth')
@@ -156,6 +324,21 @@ export const api = {
   },
   getMeDashboard: () => request<DashboardPayload>('/api/v1/me/dashboard'),
   getMeProfile: () => request<import('../types/profile').UserProfile>('/api/v1/me/profile'),
+  submitCharacter: (characterId: string) =>
+    request<import('../types/profile').ProfileCharacterSummary>(`/api/v1/me/characters/${encodeURIComponent(characterId)}/submit`, {
+      method: 'POST',
+    }),
+  listMyOperations: () =>
+    request<Array<{ id: string; at: string; summary: string; kind: string }>>('/api/v1/me/operations'),
+  rollAtSession: (sessionId: string, body: { formula: string; characterName?: string; secret?: boolean }) =>
+    request<{ id: string; formula: string; total: number; dice: number[]; secret: boolean }>(
+      `/api/v1/content/sessions/${encodeURIComponent(sessionId)}/rolls`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  listSessionRolls: (sessionId: string) =>
+    request<Array<{ id: string; at: string; characterName: string; formula: string; total: number; secret: boolean }>>(
+      `/api/v1/content/sessions/${encodeURIComponent(sessionId)}/rolls`,
+    ),
   patchMeProfile: (body: { avatarUrl?: string | null; bannerUrl?: string | null }) =>
     request<import('../types/profile').UserProfile>('/api/v1/me/profile', {
       method: 'PATCH',
@@ -277,6 +460,11 @@ export const api = {
     ),
   adminDeleteScheduledSession: (sessionId: string) =>
     request<void>(`/api/v1/admin/chronicle/scheduled-sessions/${sessionId}`, { method: 'DELETE' }),
+  adminRescheduleScheduledSession: (sessionId: string) =>
+    request<import('../types/chronicle').ScheduledSession>(
+      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/reschedule`,
+      { method: 'POST' },
+    ),
   confirmSessionPresence: (sessionId: string) =>
     request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${sessionId}/presence`, {
       method: 'POST',
@@ -396,10 +584,14 @@ export const api = {
 
   getArchiveContent: (category: 'chronicles' | 'relics' | 'rituals') =>
     request<import('../types/chronicle').ChronicleEntity[]>(`/api/v1/content/archive?category=${category}`),
-  getShopContent: (category: 'gear' | 'consumables' | 'services') =>
-    request<import('../types/chronicle').ChronicleEntity[]>(`/api/v1/content/shop?category=${category}`),
-  getBestiaryContent: (tier: 'known' | 'classified' | 'rumors') =>
-    request<import('../types/chronicle').ChronicleEntity[]>(`/api/v1/content/bestiary?tier=${tier}`),
+  getShopContent: (category: 'gear' | 'consumables' | 'services', sessionId?: string) =>
+    request<import('../types/chronicle').ChronicleEntity[]>(
+      `/api/v1/content/shop?category=${category}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+    ),
+  getBestiaryContent: (tier: 'known' | 'classified' | 'rumors', sessionId?: string) =>
+    request<import('../types/chronicle').ChronicleEntity[]>(
+      `/api/v1/content/bestiary?tier=${tier}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+    ),
   getDownloadsContent: (category: 'rules' | 'sheets' | 'handouts') =>
     request<{ files: import('../types/chronicle').ChronicleEntity[]; handouts: import('../types/chronicle').SessionHandout[] }>(
       `/api/v1/content/downloads?category=${category}`,

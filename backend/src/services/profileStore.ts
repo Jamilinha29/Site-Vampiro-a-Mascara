@@ -1,6 +1,9 @@
 import { randomUUID } from 'crypto'
 import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
+import { recordOperation } from './operationLog.js'
 import { computeCharacterBalanceFromSheet } from './characterBalance.js'
+import { readRules } from './rulesState.js'
+import { scheduleProfileSqlMirror } from './profileSqlMirror.js'
 
 export const MAX_CHARACTER_LEVEL = 20
 export const SUBCLASS_CHOICE_LEVEL = 7
@@ -26,6 +29,8 @@ export type CharacterInventoryItem = {
   status?: 'ok' | 'broken' | 'cooldown' | 'drop'
   statsLabel?: string
   durability?: { current: number; max: number }
+  /** Cargas restantes (consumíveis). */
+  charges?: number
 }
 
 export type CharacterIdentity = {
@@ -80,6 +85,8 @@ export type ProfileCharacter = {
   will?: { current: number; max: number }
   xp: { current: number; toNext: number }
   subclass?: string | null
+  approval?: 'draft' | 'submitted' | 'changes' | 'approved'
+  reviewNote?: string | null
   /** Classe escolhida na criação. Filtra as subclasses importadas. */
   characterClass?: string | null
   identity: CharacterIdentity
@@ -88,6 +95,18 @@ export type ProfileCharacter = {
   carryCapacityKg: number
   balanceStats?: Record<string, number> | null
   vitals?: CharacterVitalsMeta | null
+  effects?: ActiveEffect[]
+  sheetRevision?: number
+}
+
+export type ActiveEffect = {
+  id: string
+  itemId: string
+  pausedAt?: string | null
+  name: string
+  startedAt: string
+  remainingTurns: number | null
+  endsAt: string | null
 }
 
 export function defaultIdentity(): CharacterIdentity {
@@ -147,6 +166,7 @@ const profiles = new Map<string, UserProfile>()
 
 function snapshotProfiles() {
   rememberDocument('profiles', [...profiles.values()])
+  scheduleProfileSqlMirror()
 }
 
 export async function hydrateProfiles() {
@@ -156,6 +176,7 @@ export async function hydrateProfiles() {
   for (const profile of doc.body) {
     if (profile?.email) profiles.set(profile.email, profile)
   }
+  scheduleProfileSqlMirror()
 }
 
 function handleFromEmail(email: string) {
@@ -384,19 +405,27 @@ export function patchCharacter(
     }
   }
 
+  const nextInventory = rest.inventory ? mergeOwnedInventory(current.inventory ?? [], rest.inventory) : (current.inventory ?? [])
   p.characters[idx] = {
     ...current,
     ...rest,
     identity,
-    inventory: rest.inventory ?? current.inventory ?? [],
-    createdSkills: rest.createdSkills ?? current.createdSkills ?? [],
+    inventory: nextInventory,
+    createdSkills: guardApprovedSkills(current, rest.createdSkills),
     vitals: current.vitals,
+    effects: effectsAfterUse(current, nextInventory),
+    sheetRevision: (current.sheetRevision ?? 0) + 1,
   }
   snapshotProfiles()
   return p.characters[idx]
 }
 
-export function applyCharacterXp(email: string, characterId: string, amount: number) {
+export function applyCharacterXp(
+  email: string,
+  characterId: string,
+  amount: number,
+  meta?: { actorEmail?: string; sessionId?: string },
+) {
   const p = profiles.get(email)
   if (!p) return null
   const idx = p.characters.findIndex((c) => c.id === characterId)
@@ -407,12 +436,13 @@ export function applyCharacterXp(email: string, characterId: string, amount: num
   let current = (ch.xp?.current ?? 0) + Math.floor(amount)
   let toNext = ch.xp?.toNext ?? xpRequiredToAdvance(level)
 
-  while (level < MAX_CHARACTER_LEVEL && toNext > 0 && current >= toNext) {
+  const levelCap = Math.min(MAX_CHARACTER_LEVEL, readRules().maxLevel)
+  while (level < levelCap && toNext > 0 && current >= toNext) {
     current -= toNext
     level += 1
-    toNext = level >= MAX_CHARACTER_LEVEL ? 0 : xpRequiredToAdvance(level)
+    toNext = level >= levelCap ? 0 : xpRequiredToAdvance(level)
   }
-  if (level >= MAX_CHARACTER_LEVEL) {
+  if (level >= levelCap) {
     current = 0
     toNext = 0
   }
@@ -439,7 +469,54 @@ export function applyCharacterXp(email: string, characterId: string, amount: num
   }
   syncDerivedMetrics(p)
   snapshotProfiles()
+  recordOperation({
+    email,
+    actorEmail: meta?.actorEmail?.trim() || email,
+    kind: 'xp',
+    summary: `XP ${amount >= 0 ? '+' : ''}${amount}`,
+    before: String(previousLevel),
+    after: String(level),
+    sessionId: meta?.sessionId,
+  })
   return p.characters[idx]
+}
+
+export function listProfiles() {
+  return [...profiles.values()]
+}
+
+export function submitCharacter(email: string, characterId: string) {
+  const p = profiles.get(email)
+  const ch = p?.characters.find((item) => item.id === characterId)
+  if (!p || !ch) return null
+  ch.approval = 'submitted'
+  ch.reviewNote = null
+  snapshotProfiles()
+  recordOperation({ email, actorEmail: email, kind: 'approval', summary: `Ficha enviada: ${ch.name}` })
+  return ch
+}
+
+export function reviewCharacter(
+  email: string,
+  characterId: string,
+  status: 'approved' | 'changes',
+  note: string,
+  actorEmail: string,
+) {
+  const p = profiles.get(email)
+  const ch = p?.characters.find((item) => item.id === characterId)
+  if (!p || !ch) return null
+  ch.approval = status
+  ch.reviewNote = note.trim() || null
+  snapshotProfiles()
+  recordOperation({
+    email,
+    actorEmail,
+    kind: 'approval',
+    summary: status === 'approved' ? `Ficha aprovada: ${ch.name}` : `Ajustes pedidos: ${ch.name}`,
+    after: note.trim() || undefined,
+  })
+  return ch
 }
 
 /** Localiza personagem em qualquer perfil (ADM concede XP na mesa). */
@@ -488,7 +565,7 @@ export function upsertCharacter(
     blood: character.blood,
     mana: character.mana,
     will: character.will,
-    xp: character.xp ?? { current: STARTING_CHARACTER_XP, toNext },
+    xp: character.xp ?? { current: readRules().startingXp ?? STARTING_CHARACTER_XP, toNext },
     subclass: character.subclass ?? null,
     characterClass: character.characterClass ?? null,
     identity: character.identity ?? defaultIdentity(),
@@ -503,6 +580,49 @@ export function upsertCharacter(
   syncDerivedMetrics(p)
   snapshotProfiles()
   return row
+}
+
+function skillPower(skill: CreatedSkill) {
+  return [skill.name, skill.die, skill.attribute, skill.attributeMod, skill.howItWorks, skill.manaCost ?? 0].join('|')
+}
+
+function guardApprovedSkills(current: ProfileCharacter, incoming: CreatedSkill[] | undefined) {
+  const existing = current.createdSkills ?? []
+  if (!incoming) return existing
+  if (current.approval === 'approved') {
+    const same =
+      incoming.length === existing.length &&
+      incoming.every((skill) => {
+        const previous = existing.find((item) => item.id === skill.id)
+        return previous && skillPower(previous) === skillPower(skill)
+      })
+    if (!same) {
+      throw new Error('Habilidade aprovada não pode ser trocada. Peça revisão ao mestre.')
+    }
+    return incoming
+  }
+  const cap = Math.max(existing.length, 8 + Math.max(1, current.level))
+  return incoming.slice(0, cap)
+}
+
+function mergeOwnedInventory(
+  current: CharacterInventoryItem[],
+  incoming: CharacterInventoryItem[],
+) {
+  const byId = new Map(current.map((item) => [item.id, item]))
+  return incoming.flatMap((item) => {
+    const previous = byId.get(item.id)
+    if (!previous) return []
+    return [
+      {
+        ...previous,
+        equipped: item.equipped ?? previous.equipped,
+        slot: item.slot === undefined ? previous.slot : item.slot,
+        status: item.status ?? previous.status,
+        durability: item.durability ?? previous.durability,
+      },
+    ]
+  })
 }
 
 function pDisplayName(email: string) {
@@ -534,6 +654,136 @@ export function getCharacterBalanceStats(email: string, characterId: string) {
     axes: computed.axes,
     balancePercent: computed.balancePercent,
   }
+}
+
+function durationOf(item: CharacterInventoryItem) {
+  const text = `${item.statsLabel ?? ''} ${item.description ?? ''}`
+  const turns = /turnos?\s*[:=]?\s*(\d{1,3})/i.exec(text) ?? /(\d{1,3})\s*turnos?/i.exec(text)
+  const minutes = /minutos?\s*[:=]?\s*(\d{1,4})/i.exec(text) ?? /(\d{1,4})\s*minutos?/i.exec(text)
+  return {
+    turns: turns ? Number(turns[1]) : null,
+    minutes: minutes ? Number(minutes[1]) : null,
+  }
+}
+
+function liveEffects(effects: ActiveEffect[] | undefined, now = Date.now()) {
+  return (effects ?? []).filter((effect) => {
+    if (effect.endsAt && Date.parse(effect.endsAt) <= now) return false
+    if (effect.remainingTurns != null && effect.remainingTurns <= 0) return false
+    return true
+  })
+}
+
+function effectsAfterUse(current: ProfileCharacter, inventory: CharacterInventoryItem[]) {
+  const kept = liveEffects(current.effects)
+  const owned = new Set(inventory.map((item) => item.id))
+  for (const item of current.inventory ?? []) {
+    if (owned.has(item.id) || kept.some((effect) => effect.itemId === item.id)) continue
+    const duration = durationOf(item)
+    if (!duration.turns && !duration.minutes) continue
+    kept.push({
+      id: randomUUID(),
+      itemId: item.id,
+      name: item.name,
+      startedAt: new Date().toISOString(),
+      remainingTurns: duration.turns,
+      endsAt: duration.minutes ? new Date(Date.now() + duration.minutes * 60_000).toISOString() : null,
+    })
+  }
+  return kept
+}
+
+export function refreshEffects(email: string) {
+  const profile = profiles.get(email)
+  if (!profile) return
+  let changed = false
+  for (const character of profile.characters) {
+    const next = liveEffects(character.effects)
+    if (next.length !== (character.effects ?? []).length) {
+      character.effects = next
+      changed = true
+    }
+  }
+  if (changed) snapshotProfiles()
+}
+
+export function advanceTurnEffects(targets: Array<{ email: string; characterId: string }>) {
+  let changed = 0
+  for (const target of targets) {
+    const character = profiles.get(target.email)?.characters.find((item) => item.id === target.characterId)
+    if (!character?.effects?.length) continue
+    character.effects = character.effects.flatMap((effect) => {
+      if (effect.pausedAt) return [effect]
+      if (effect.remainingTurns == null) return [effect]
+      changed += 1
+      const remainingTurns = effect.remainingTurns - 1
+      return remainingTurns > 0 ? [{ ...effect, remainingTurns }] : []
+    })
+  }
+  if (changed > 0) snapshotProfiles()
+  return changed
+}
+
+export function pauseEffectsForSeats(
+  seats: Array<{ email: string; characterId: string; leftAt?: string | null }>,
+) {
+  const stamp = new Date().toISOString()
+  let changed = 0
+  for (const seat of seats) {
+    if (seat.leftAt) continue
+    const profile = profiles.get(seat.email)
+    const character = profile?.characters.find((item) => item.id === seat.characterId)
+    if (!character?.effects?.length) continue
+    for (const effect of character.effects) {
+      if (!effect.pausedAt) {
+        effect.pausedAt = stamp
+        changed += 1
+      }
+    }
+  }
+  if (changed > 0) snapshotProfiles()
+  return changed
+}
+
+export function charactersOutsideRules(maxLevel: number, subclassLevel: number) {
+  const rows: Array<{ email: string; characterId: string; name: string; reason: string }> = []
+  for (const profile of profiles.values()) {
+    for (const character of profile.characters) {
+      if (character.level > maxLevel) {
+        rows.push({
+          email: profile.email,
+          characterId: character.id,
+          name: character.name,
+          reason: `Nível ${character.level} passa do máximo ${maxLevel}.`,
+        })
+      }
+      if (character.subclass && character.level < subclassLevel) {
+        rows.push({
+          email: profile.email,
+          characterId: character.id,
+          name: character.name,
+          reason: `Subclasse escolhida antes do nível ${subclassLevel}.`,
+        })
+      }
+    }
+  }
+  return rows
+}
+
+export function noteRuleChange(email: string, characterId: string, note: string) {
+  const character = profiles.get(email)?.characters.find((item) => item.id === characterId)
+  if (!character) return
+  character.reviewNote = note
+  if (character.approval === 'approved') character.approval = 'changes'
+  snapshotProfiles()
+}
+
+export function replaceProfiles(rows: UserProfile[]) {
+  profiles.clear()
+  for (const profile of rows) {
+    if (profile?.email) profiles.set(profile.email, profile)
+  }
+  snapshotProfiles()
 }
 
 function labelForAxis(key: string) {

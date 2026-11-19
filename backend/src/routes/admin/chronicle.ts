@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { Router } from 'express'
 import { z } from 'zod'
-import { catalogImageFolder, storeCatalogImage } from '../../services/mediaStorage.js'
+import { catalogImageFolder, catalogImageIsPrivate, storeCatalogImage, withReadableImages } from '../../services/mediaStorage.js'
 import { requireUser } from '../../middlewares/optionalUser.js'
 import { requireNarrator } from '../../middlewares/requireNarrator.js'
 import {
@@ -21,6 +21,7 @@ import {
   createScheduledSession,
   updateScheduledSession,
   deleteScheduledSession,
+  rescheduleSameTable,
   getScheduledSession,
   openScheduledSession,
   closeScheduledSession,
@@ -40,8 +41,29 @@ import {
 import {
   adminPlayerCharactersByUser,
   applyCharacterXp,
+  listProfiles,
   listRegisteredPlayers,
+  reviewCharacter,
+  advanceTurnEffects,
 } from '../../services/profileStore.js'
+import {
+  addBoardCard,
+  addSecret,
+  campaignSnapshot,
+  collectStorageManifest,
+  drillBackup,
+  listBoard,
+  listSecrets,
+  proposeRules,
+  removeBoardCard,
+  removeSecret,
+  restoreBackup,
+  validateStorageManifest,
+  forgetSecretsForSession,
+} from '../../services/campaignExtras.js'
+import { listOperationsForSession } from '../../services/operationLog.js'
+import { forgetRollsForSession } from '../../services/sessionRolls.js'
+import { openSeats } from '../../services/chronicleStore.js'
 
 export const adminChronicleRouter = Router()
 adminChronicleRouter.use(requireUser, requireNarrator)
@@ -103,20 +125,38 @@ const entitySchema = z.object({
     })
     .optional(),
   passiveTraits: z.array(z.string().max(200)).max(12).optional(),
+  chronicleScope: z.string().max(160).nullable().optional(),
+  narratorScope: z.string().email().nullable().optional(),
 })
+
+function mapImportRow(row: unknown, fieldMap?: Record<string, string>) {
+  if (!row || typeof row !== 'object' || !fieldMap) return row
+  const source = row as Record<string, unknown>
+  const out: Record<string, unknown> = { ...source }
+  for (const [from, to] of Object.entries(fieldMap)) {
+    if (from in source) out[to] = source[from]
+  }
+  return out
+}
 
 adminChronicleRouter.get('/entities', async (req, res) => {
   await refreshEntitiesFromDatabase()
   const kind = req.query.kind as string | undefined
   const parsed = z.enum(['npc', 'monster', 'equipment', 'consumable', 'archive', 'download']).optional().safeParse(kind)
-  res.json(listEntities(parsed.success ? { kind: parsed.data } : undefined))
+  const rows = listEntities(parsed.success ? { kind: parsed.data } : undefined)
+  res.json(await withReadableImages(rows))
 })
 
 adminChronicleRouter.post('/entities', async (req, res, next) => {
   try {
     const body = entitySchema.parse(req.body)
     const id = randomUUID()
-    const imageUrl = await storeCatalogImage(catalogImageFolder(body), id, body.imageUrl)
+    const imageUrl = await storeCatalogImage(
+      catalogImageFolder(body),
+      id,
+      body.imageUrl,
+      catalogImageIsPrivate(body) ? 'private' : 'public',
+    )
     res.status(201).json(await createEntity({ ...body, id, imageUrl, visibility: 'draft' }))
   } catch (e) {
     next(e)
@@ -126,12 +166,77 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
 /** Importação em lote (planilha/JSON) — sempre rascunho até publicar no site. */
 adminChronicleRouter.post('/entities/import', async (req, res, next) => {
   try {
-    const rows = z.array(entitySchema).max(500).parse(req.body)
+    const envelope = z
+      .union([
+        z.array(z.unknown()).max(500),
+        z.object({ rows: z.array(z.unknown()).max(500), fieldMap: z.record(z.string(), z.string()).optional() }),
+      ])
+      .parse(req.body)
+    const raw = Array.isArray(envelope) ? envelope : envelope.rows
+    const fieldMap = Array.isArray(envelope) ? undefined : envelope.fieldMap
+    const rows: z.infer<typeof entitySchema>[] = []
+    const rejected: Array<{ line: number; name?: string; message: string }> = []
+    for (let index = 0; index < raw.length; index += 1) {
+      const mapped = mapImportRow(raw[index], fieldMap)
+      const parsed = entitySchema.safeParse(mapped)
+      if (!parsed.success) {
+        const name =
+          raw[index] && typeof raw[index] === 'object' && 'name' in (raw[index] as object)
+            ? String((raw[index] as { name?: unknown }).name ?? '')
+            : undefined
+        rejected.push({
+          line: index + 1,
+          name: name || undefined,
+          message: parsed.error.issues[0]?.message ?? 'Linha inválida',
+        })
+        continue
+      }
+      rows.push(parsed.data)
+    }
+    if (req.query.preview === '1') {
+      const names = new Set(listEntities().map((item) => `${item.kind}:${item.name.trim().toLowerCase()}`))
+      let create = 0
+      let duplicate = 0
+      for (const row of rows) {
+        const key = `${row.kind}:${row.name.trim().toLowerCase()}`
+        if (names.has(key)) duplicate += 1
+        else {
+          create += 1
+          names.add(key)
+        }
+      }
+      res.json({
+        preview: true,
+        create,
+        duplicate,
+        rejected: rejected.length,
+        rejections: rejected,
+        total: raw.length,
+      })
+      return
+    }
+    if (rejected.length) {
+      res.status(400).json({
+        error: {
+          message: 'Há linhas inválidas na importação. Use ?preview=1 antes de confirmar.',
+        },
+        rejected,
+      })
+      return
+    }
+    const names = new Set(listEntities().map((item) => `${item.kind}:${item.name.trim().toLowerCase()}`))
     const created = []
+    let skipped = 0
     for (const row of rows) {
+      const key = `${row.kind}:${row.name.trim().toLowerCase()}`
+      if (names.has(key)) {
+        skipped += 1
+        continue
+      }
+      names.add(key)
       created.push(await createEntity({ ...row, visibility: 'draft' }))
     }
-    res.status(201).json({ imported: created.length, items: created })
+    res.status(201).json({ imported: created.length, skipped, items: created })
   } catch (e) {
     next(e)
   }
@@ -156,10 +261,12 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
     }
     const patch = { ...body }
     if (body.imageUrl !== undefined) {
+      const nextKind = { ...current, ...body }
       patch.imageUrl = await storeCatalogImage(
-        catalogImageFolder({ ...current, ...body }),
+        catalogImageFolder(nextKind),
         current.id,
         body.imageUrl,
+        catalogImageIsPrivate(nextKind) ? 'private' : 'public',
       )
     }
     const updated = await updateEntity(req.params.id, patch)
@@ -398,15 +505,36 @@ adminChronicleRouter.delete('/scheduled-sessions/:sessionId', (req, res) => {
     })
     return
   }
+  forgetSecretsForSession(req.params.sessionId)
+  forgetRollsForSession(req.params.sessionId)
   res.status(204).end()
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/reschedule', (req, res) => {
+  const result = rescheduleSameTable(req.params.sessionId, req.user!.email)
+  if (!result.ok) {
+    const message =
+      result.reason === 'forbidden'
+        ? 'Sem permissão nesta mesa'
+        : result.reason === 'not_closed'
+          ? 'Só uma mesa encerrada pode ser remarcada.'
+          : 'Mesa não encontrada'
+    res.status(result.reason === 'forbidden' ? 403 : result.reason === 'not_closed' ? 409 : 404).json({ error: { message } })
+    return
+  }
+  res.status(201).json(result.session)
 })
 
 adminChronicleRouter.post('/scheduled-sessions/:sessionId/open', (req, res) => {
   const result = openScheduledSession(req.params.sessionId, req.user!.email)
   if (!result.ok) {
-    res.status(result.reason === 'forbidden' ? 403 : 404).json({
-      error: { message: result.reason === 'forbidden' ? 'Sem permissão nesta mesa' : 'Mesa não encontrada' },
-    })
+    const message =
+      result.reason === 'forbidden'
+        ? 'Sem permissão nesta mesa'
+        : result.reason === 'closed'
+          ? 'Mesa encerrada. Remarque uma nova sessão nesta mesa.'
+          : 'Mesa não encontrada'
+    res.status(result.reason === 'forbidden' ? 403 : result.reason === 'closed' ? 409 : 404).json({ error: { message } })
     return
   }
   res.json(result.session)
@@ -613,7 +741,10 @@ adminChronicleRouter.post('/award-xp', (req, res, next) => {
       return
     }
 
-    const updated = applyCharacterXp(seat.email, seat.characterId, body.amount)
+    const updated = applyCharacterXp(seat.email, seat.characterId, body.amount, {
+      actorEmail: req.user!.email,
+      sessionId: body.sessionId,
+    })
     if (!updated) {
       res.status(404).json({ error: { message: 'Personagem do participante não encontrado' } })
       return
@@ -655,6 +786,197 @@ adminChronicleRouter.post('/award-xp', (req, res, next) => {
   }
 })
 
+adminChronicleRouter.get('/character-reviews', (_req, res) => {
+  const rows = listProfiles().flatMap((profile) =>
+    profile.characters
+      .filter((character) => character.approval)
+      .map((character) => ({
+        email: profile.email,
+        displayName: profile.displayName,
+        characterId: character.id,
+        name: character.name,
+        level: character.level,
+        clan: character.clan ?? null,
+        approval: character.approval,
+        reviewNote: character.reviewNote ?? null,
+      })),
+  )
+  rows.sort((a, b) => {
+    const rank = (status: string | undefined) => (status === 'submitted' ? 0 : status === 'changes' ? 1 : 2)
+    return rank(a.approval) - rank(b.approval) || a.displayName.localeCompare(b.displayName)
+  })
+  res.json(rows)
+})
+
+adminChronicleRouter.post('/characters/:email/:characterId/review', (req, res, next) => {
+  try {
+    const body = z
+      .object({ status: z.enum(['approved', 'changes']), note: z.string().max(500).optional() })
+      .parse(req.body)
+    const updated = reviewCharacter(
+      req.params.email,
+      req.params.characterId,
+      body.status,
+      body.note ?? '',
+      req.user!.email,
+    )
+    if (!updated) {
+      res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+      return
+    }
+    res.json(updated)
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.get('/backup', (_req, res) => {
+  res.json(campaignSnapshot())
+})
+
+adminChronicleRouter.post('/backup/drill', (req, res, next) => {
+  try {
+    res.json(drillBackup(req.body ?? {}))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/backup/validate-storage', (req, res, next) => {
+  try {
+    const body = z
+      .object({ paths: z.array(z.string()).max(2000).optional() })
+      .parse(req.body ?? {})
+    const paths = body.paths?.length ? body.paths : collectStorageManifest()
+    res.json(validateStorageManifest(paths))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/backup/restore', (req, res, next) => {
+  try {
+    const body = z.object({ confirm: z.literal('restaurar-copia'), backup: z.record(z.string(), z.unknown()) }).parse(req.body)
+    res.json(restoreBackup(body.backup as Parameters<typeof restoreBackup>[0]))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.get('/board', (_req, res) => {
+  res.json(listBoard())
+})
+
+adminChronicleRouter.post('/board', (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        kind: z.enum(['mystery', 'mission', 'place', 'pending', 'npc']),
+        title: z.string().min(1).max(160),
+        status: z.enum(['confirmed', 'proposed', 'pending']),
+        detail: z.string().max(2000).optional(),
+        owner: z.string().max(120).optional(),
+        priority: z.enum(['baixa', 'media', 'alta']).optional(),
+      })
+      .parse(req.body)
+    res.status(201).json(
+      addBoardCard({
+        kind: body.kind,
+        title: body.title,
+        status: body.status,
+        detail: body.detail ?? '',
+        owner: body.owner ?? '',
+        priority: body.priority ?? 'media',
+      }),
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.delete('/board/:id', (req, res) => {
+  if (!removeBoardCard(req.params.id)) {
+    res.status(404).json({ error: { message: 'Cartão não encontrado' } })
+    return
+  }
+  res.json({ ok: true })
+})
+
+adminChronicleRouter.get('/rules', (_req, res) => {
+  res.json(campaignSnapshot().rules)
+})
+
+adminChronicleRouter.post('/rules', (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        maxLevel: z.number().int().min(1).max(20),
+        subclassLevel: z.number().int().min(1).max(20),
+        startingXp: z.number().int().min(0).max(10_000).optional(),
+        shopBudgetCopper: z.number().int().min(0).max(1_000_000).optional(),
+        decision: z.enum(['keep-existing', 'mark-review']),
+      })
+      .parse(req.body)
+    res.json(
+      proposeRules(
+        {
+          maxLevel: body.maxLevel,
+          subclassLevel: body.subclassLevel,
+          startingXp: body.startingXp ?? 0,
+          shopBudgetCopper: body.shopBudgetCopper ?? 0,
+        },
+        body.decision,
+      ),
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.get('/secrets', (req, res) => {
+  const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined
+  res.json(listSecrets(sessionId))
+})
+
+adminChronicleRouter.post('/secrets', (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        sessionId: z.string().min(1),
+        entityId: z.string().min(1),
+        audienceEmail: z.string().email().nullable().optional(),
+        text: z.string().min(1).max(2000),
+      })
+      .parse(req.body)
+    res.status(201).json(
+      addSecret({
+        sessionId: body.sessionId,
+        entityId: body.entityId,
+        audienceEmail: body.audienceEmail ?? null,
+        text: body.text,
+      }),
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.delete('/secrets/:id', (req, res) => {
+  if (!removeSecret(req.params.id)) {
+    res.status(404).json({ error: { message: 'Segredo não encontrado' } })
+    return
+  }
+  res.json({ ok: true })
+})
+
+adminChronicleRouter.post('/sessions/:sessionId/advance-turn', (req, res) => {
+  const targets = openSeats(req.params.sessionId).map((seat) => ({
+    email: seat.email,
+    characterId: seat.characterId,
+  }))
+  res.json({ changed: advanceTurnEffects(targets) })
+})
+
 adminChronicleRouter.get('/analytics/session-line', (_req, res) => {
   res.json(sessionActivityLineSeries())
 })
@@ -665,6 +987,10 @@ adminChronicleRouter.get('/analytics/mesa-activity', (_req, res) => {
 
 adminChronicleRouter.get('/analytics/player-characters', (_req, res) => {
   res.json(adminPlayerCharactersByUser())
+})
+
+adminChronicleRouter.get('/sessions/:sessionId/operations', (req, res) => {
+  res.json(listOperationsForSession(req.params.sessionId))
 })
 
 adminChronicleRouter.get('/registered-players', (_req, res) => {

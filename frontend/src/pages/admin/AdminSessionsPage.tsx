@@ -118,13 +118,24 @@ export default function AdminSessionsPage() {
     onError: (e: Error) => window.alert(e.message || 'Não foi possível excluir a mesa.'),
   })
 
+  const rescheduleMesa = useMutation({
+    mutationFn: (id: string) => api.adminRescheduleScheduledSession(id),
+    onSuccess: (created) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
+      invalidatePlayerPublishedContent(qc)
+      navigate(`/admin/mesa/${created.id}`)
+    },
+    onError: (e: Error) => window.alert(e.message || 'Não foi possível remarcar a mesa.'),
+  })
+
   function confirmDeleteMesa(s: { id: string; status: string }, displayName: string) {
     if (s.status === 'open') {
       window.alert('Encerre a mesa ao vivo antes de excluí-la.')
       return
     }
     const ok = window.confirm(
-      `Excluir permanentemente a mesa “${displayName}”?\n\nO ato vinculado e o histórico desta sessão serão removidos. Esta ação não pode ser desfeita.`,
+      `Excluir de vez a mesa “${displayName}”?\n\nSome a mesa, o ato, as rolagens e os segredos desta sessão. Não dá para desfazer.`,
     )
     if (ok) deleteMesa.mutate(s.id)
   }
@@ -180,9 +191,10 @@ export default function AdminSessionsPage() {
       </section>
 
       <section className="mesa-panel p-5">
-        <h2 className="font-headline-sm text-lg">Todas as mesas</h2>
+        <h2 className="font-headline-sm text-lg">Mesas em andamento</h2>
         <ul className="mt-4 space-y-3 text-sm">
           {[...scheduled]
+            .filter((s) => s.status !== 'closed')
             .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
             .map((s) => (
               <li
@@ -263,8 +275,51 @@ export default function AdminSessionsPage() {
                 </div>
               </li>
             ))}
-          {scheduled.length === 0 ? (
-            <li className="text-on-surface-variant">Nenhuma sessão marcada — use Criar outra mesa acima.</li>
+          {scheduled.filter((s) => s.status !== 'closed').length === 0 ? (
+            <li className="text-on-surface-variant">Nenhuma mesa em andamento — use Criar outra mesa acima.</li>
+          ) : null}
+        </ul>
+      </section>
+
+      <section className="mesa-panel p-5">
+        <h2 className="font-headline-sm text-lg">Mesas encerradas</h2>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Uma mesa encerrada não continua. Para jogar de novo nela, remarque uma nova sessão.
+        </p>
+        <ul className="mt-4 space-y-3 text-sm">
+          {scheduled
+            .filter((s) => s.status === 'closed')
+            .map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-outline-variant/40 px-3 py-3">
+                <div>
+                  <p className="font-serif text-on-surface">{mesaDisplayName(s)}</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    Encerrada
+                    {s.endedAt ? ` · ${new Date(s.endedAt).toLocaleString('pt-BR')}` : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-primary text-xs"
+                    disabled={rescheduleMesa.isPending}
+                    onClick={() => rescheduleMesa.mutate(s.id)}
+                  >
+                    Remarcar nova sessão nesta mesa
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary border-primary/40 text-xs text-primary"
+                    disabled={deleteMesa.isPending}
+                    onClick={() => confirmDeleteMesa(s, mesaDisplayName(s))}
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </li>
+            ))}
+          {scheduled.filter((s) => s.status === 'closed').length === 0 ? (
+            <li className="text-on-surface-variant">Nenhuma mesa encerrada.</li>
           ) : null}
         </ul>
       </section>

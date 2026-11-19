@@ -34,9 +34,11 @@ import { getProfile as loadProfile, listCharacters } from '../services/profileSt
 import {
   ensureHandoutForScheduledSession,
   getEntity,
+  entityMatchesCatalogScope,
   getScheduledSession,
   listEntities,
   listScheduledSessions,
+  resolveCatalogScopeForViewer,
   updateHandout,
 } from '../services/chronicleStore.js'
 
@@ -148,8 +150,12 @@ courtRouter.get('/sessions/:sessionId/ferreiro', (req, res) => {
   }
   const characterId = typeof req.query.characterId === 'string' ? req.query.characterId : undefined
   const level = playerLevel(req.user!.email, characterId)
+  const contexts = resolveCatalogScopeForViewer(req.user!.email, req.params.sessionId)
   const goods = listEntities({ visibility: 'published' }).filter(
-    (e) => (e.kind === 'equipment' || e.kind === 'consumable') && (e.shopCategory === 'gear' || e.shopCategory === 'consumables'),
+    (e) =>
+      (e.kind === 'equipment' || e.kind === 'consumable') &&
+      (e.shopCategory === 'gear' || e.shopCategory === 'consumables') &&
+      entityMatchesCatalogScope(e, contexts),
   )
   res.json({
     level,
@@ -307,6 +313,7 @@ admin.post('/grant-coins', (req, res, next) => {
       body.coin as Coin,
       body.amount,
       `Mesa · ${session.chronicleName ?? session.title}`,
+      { actorEmail: req.user!.email, sessionId: body.sessionId },
     )
     const handout = ensureHandoutForScheduledSession(body.sessionId)
     if (handout) {

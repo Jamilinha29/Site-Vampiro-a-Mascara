@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AdminAchievementsPanel } from '../../components/admin/AdminAchievementsPanel'
+import { AdminCharacterReviews } from '../../components/admin/AdminCharacterReviews'
 import { AdminNoticesPanel } from '../../components/admin/AdminNoticesPanel'
 import { api } from '../../services/api'
+import { useToast } from '../../components/ui/ToastProvider'
 import { useAuthStore } from '../../stores/authStore'
 import { adminQueryKeys } from '../../lib/queryKeys'
 
@@ -15,6 +18,9 @@ function formatMemberSince(iso: string) {
 
 export default function AdminProfilePage() {
   const session = useAuthStore((s) => s.session)
+  const { push } = useToast()
+  const [backupFile, setBackupFile] = useState<Record<string, unknown> | null>(null)
+  const [drill, setDrill] = useState<string | null>(null)
   const { data: profile, isLoading } = useQuery({
     queryKey: ['me-profile'],
     queryFn: () => api.getMeProfile(),
@@ -79,6 +85,79 @@ export default function AdminProfilePage() {
         </div>
       </section>
 
+      <section className="card-surface space-y-3 p-5">
+        <h2 className="font-label-sm text-xs text-secondary uppercase">Cópia da campanha</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => {
+              void api.adminDownloadBackup().then((data) => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = url
+                link.download = 'beladona-backup.json'
+                link.click()
+                URL.revokeObjectURL(url)
+              })
+            }}
+          >
+            Baixar cópia da campanha
+          </button>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => {
+              void api.adminValidateStorage().then((report) => {
+                push(
+                  `Storage: ${report.reachable} referências ok, ${report.needsManualCheck} para checar no painel. ${report.note}`,
+                  'success',
+                )
+              })
+            }}
+          >
+            Validar referências de mídia
+          </button>
+          <label className="btn-secondary cursor-pointer text-xs">
+            Escolher cópia para ensaiar
+            <input
+              className="sr-only"
+              type="file"
+              accept="application/json"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (!file) return
+                void file.text().then((text) => {
+                  const parsed = JSON.parse(text) as Record<string, unknown>
+                  setBackupFile(parsed)
+                  return api.adminDrillBackup(parsed)
+                }).then((report) => {
+                  if (!report) return
+                  setDrill(
+                    `${report.profiles} perfis, ${report.characters} fichas, ${report.inventoryItems} itens, ${report.sessions} mesas, ${report.gold} ouro, ${report.silver} prata, ${report.copper} bronze, ${report.imageReferences} imagens citadas. ${report.storageNote}`,
+                  )
+                }).catch(() => push('A cópia não pôde ser lida.', 'error'))
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            disabled={!backupFile}
+            onClick={() => {
+              if (!backupFile) return
+              void api.adminRestoreBackup(backupFile).then((report) => {
+                push(`Cópia restaurada: ${report.characters} fichas e ${report.wallets} carteiras.`, 'success')
+              }).catch((error: Error) => push(error.message, 'error'))
+            }}
+          >
+            Restaurar esta cópia
+          </button>
+        </div>
+        {drill ? <p className="text-sm text-on-surface">{drill}</p> : null}
+      </section>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Mesas registradas', value: mesasTotal },
@@ -123,6 +202,8 @@ export default function AdminProfilePage() {
           )}
         </section>
       </div>
+
+      <AdminCharacterReviews />
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <AdminNoticesPanel />

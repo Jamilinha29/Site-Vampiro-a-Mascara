@@ -37,6 +37,8 @@ export function AdminShopEditor() {
   const [error, setError] = useState<string | null>(null)
   const [publishOnSave, setPublishOnSave] = useState(true)
   const [vitrineQuery, setVitrineQuery] = useState('')
+  const [chronicleScope, setChronicleScope] = useState('')
+  const [narratorScope, setNarratorScope] = useState('')
 
   const kind: EntityKind = tab === 'services' || tab === 'consumables' ? 'consumable' : 'equipment'
   const shopCategory = tab === 'relic' ? 'gear' : tab === 'gear' ? 'gear' : tab
@@ -138,6 +140,8 @@ export function AdminShopEditor() {
       name: name.trim(),
       description,
       imageUrl,
+      chronicleScope: chronicleScope.trim() || null,
+      narratorScope: narratorScope.trim() || null,
       shopCategory: shopCategory as 'gear' | 'consumables' | 'services',
       ...priceFieldsFromUi(),
       stockTotal,
@@ -177,6 +181,8 @@ export function AdminShopEditor() {
     applyPriceFromEntity(item)
     setStockTotal(item.stockTotal ?? 10)
     setRequiredLevel(shopLevels[item.id] ?? 1)
+    setChronicleScope(item.chronicleScope ?? '')
+    setNarratorScope(item.narratorScope ?? '')
     setError(null)
   }
 
@@ -298,6 +304,28 @@ export function AdminShopEditor() {
               </select>
             </label>
           ) : null}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Escopo da crônica (vazio = global)
+            <input
+              className="input-feudal mt-1 pl-4 normal-case"
+              value={chronicleScope}
+              onChange={(e) => setChronicleScope(e.target.value)}
+              placeholder="Ex.: Queda de Beladona"
+            />
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Narrador dono (e-mail)
+            <input
+              className="input-feudal mt-1 pl-4 normal-case"
+              type="email"
+              value={narratorScope}
+              onChange={(e) => setNarratorScope(e.target.value)}
+              placeholder="narrador@mesa.local"
+            />
+          </label>
         </div>
 
         <label className="block text-xs uppercase text-on-surface-variant">

@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware'
 
 export type AuthSession = {
   accessToken: string
+  refreshToken?: string
+  expiresAt?: number
   userId: string
   email: string
   displayName: string

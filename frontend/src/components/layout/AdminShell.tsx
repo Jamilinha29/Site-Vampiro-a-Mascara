@@ -10,6 +10,7 @@ const adminNavBase = [
   { to: '/admin', label: 'Início', end: true },
   { to: '/admin/characters', label: 'Personagens' },
   { to: '/admin/sessions', label: 'Sessões' },
+  { to: '/admin/campaign', label: 'Campanha' },
   { to: '/admin/shop', label: 'Loja' },
   { to: '/admin/catalog', label: 'Glossário' },
   { to: '/admin/reference', label: 'Catálogos' },

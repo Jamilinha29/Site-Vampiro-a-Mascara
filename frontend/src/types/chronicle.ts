@@ -49,6 +49,9 @@ export type ChronicleEntity = {
   secondaryAttackDesc?: string
   sceneTrigger?: string
   narratorNotes?: string
+  chronicleScope?: string | null
+  narratorScope?: string | null
+  revealed?: string[]
   creatureStats?: { for: number; des: number; vig: number; int: number; sab: number; car: number }
   passiveTraits?: string[]
   createdAt: string
@@ -210,6 +213,8 @@ export type CreateEntityPayload = {
   secondaryAttackDesc?: string
   sceneTrigger?: string
   narratorNotes?: string
+  chronicleScope?: string | null
+  narratorScope?: string | null
   creatureStats?: ChronicleEntity['creatureStats']
   passiveTraits?: string[]
 }

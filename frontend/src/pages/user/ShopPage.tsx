@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CurrencyVault } from '../../components/domain/CurrencyVault'
 import { api } from '../../services/api'
@@ -27,8 +27,25 @@ export default function ShopPage() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const filtersReady = useRef(false)
   const qc = useQueryClient()
   const { push } = useToast()
+
+  useEffect(() => {
+    void api.getSavedFilters().then((saved) => {
+      if (saved.shopCategory) setCategory(saved.shopCategory)
+      if (typeof saved.shopQuery === 'string') setQuery(saved.shopQuery)
+      filtersReady.current = true
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!filtersReady.current) return
+    const timer = window.setTimeout(() => {
+      void api.saveFilters({ shopCategory: category, shopQuery: query })
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [category, query])
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['content-shop', category],
@@ -176,7 +193,7 @@ export default function ShopPage() {
         <nav className="flex flex-wrap items-center justify-center gap-2 pt-2" aria-label="Paginação da loja">
           <button
             type="button"
-            className="btn-secondary text-[10px]"
+            className="btn-secondary text-xs"
             disabled={safePage <= 1}
             onClick={() => setPage(Math.max(1, safePage - 1))}
           >
@@ -186,7 +203,7 @@ export default function ShopPage() {
             <button
               key={n}
               type="button"
-              className={`min-w-8 rounded border px-2 py-1 text-[10px] font-semibold ${
+              className={`min-w-8 rounded border px-2 py-1 text-xs font-semibold ${
                 n === safePage
                   ? 'border-secondary bg-secondary/25 text-secondary'
                   : 'border-secondary/40 text-secondary/80 hover:border-secondary'
@@ -198,7 +215,7 @@ export default function ShopPage() {
           ))}
           <button
             type="button"
-            className="btn-secondary text-[10px]"
+            className="btn-secondary text-xs"
             disabled={safePage >= pageCount}
             onClick={() => setPage(Math.min(pageCount, safePage + 1))}
           >
@@ -244,7 +261,7 @@ function ShopCard({
             <span className="material-symbols-outlined text-4xl text-white/25">swords</span>
           </div>
         )}
-        <span className="absolute top-2 left-2 rounded border border-white/20 bg-black/60 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white/85 uppercase">
+        <span className="absolute top-2 left-2 rounded border border-white/20 bg-black/60 px-1.5 py-0.5 text-xs font-bold tracking-wide text-white/85 uppercase">
           {rarity}
         </span>
       </div>
@@ -258,7 +275,7 @@ function ShopCard({
           {item.description || 'Sem descrição pública.'}
         </p>
         <div className="mt-3 flex items-center justify-between gap-2">
-          <span className={`text-[10px] uppercase ${available ? 'text-emerald-400' : 'text-primary'}`}>
+          <span className={`text-xs uppercase ${available ? 'text-emerald-400' : 'text-primary'}`}>
             {available ? 'Disponível' : 'Esgotado'}
           </span>
           <button
@@ -315,7 +332,7 @@ function PurchasePanel({
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#121212] text-white">
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2">
-        <p className="text-[10px] font-semibold tracking-wider text-secondary uppercase">
+        <p className="text-xs font-semibold tracking-wider text-secondary uppercase">
           {kind} · {type}
         </p>
         <button
@@ -335,7 +352,7 @@ function PurchasePanel({
             <span className="material-symbols-outlined text-5xl text-white/25">swords</span>
           )}
         </div>
-        <span className="absolute top-3 right-3 rounded border border-white/20 bg-black/60 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">
+        <span className="absolute top-3 right-3 rounded border border-white/20 bg-black/60 px-2 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
           {rarity}
         </span>
       </div>
@@ -358,7 +375,7 @@ function PurchasePanel({
         </div>
 
         <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/70">
-          <p className="text-[10px] font-semibold tracking-wider text-secondary uppercase">Compra</p>
+          <p className="text-xs font-semibold tracking-wider text-secondary uppercase">Compra</p>
           <p className="mt-2">
             Entra no personagem sentado na mesa aberta
             {primaryName ? ` (${primaryName} é o ativo nesta conta)` : ''}.
@@ -374,10 +391,13 @@ function PurchasePanel({
           {requirement ? <p className="mt-1">Requisito: {requirement}</p> : null}
         </div>
 
-        <button type="button" className="btn-primary w-full text-[10px]" disabled={!canBuy} onClick={onBuy}>
+        <button type="button" className="btn-primary w-full text-xs" disabled={!canBuy} onClick={onBuy}>
           <span className="material-symbols-outlined text-sm">shopping_cart</span>
           {pending ? 'Comprando…' : soldOut ? 'Esgotado' : 'Confirmar compra'}
         </button>
+        {!canBuy && !pending ? (
+          <p className="text-xs text-primary">Compra bloqueada. Confira o saldo, o estoque e se há uma mesa aberta com você sentado.</p>
+        ) : null}
       </div>
     </div>
   )
@@ -387,7 +407,7 @@ function DetailStat({ icon, label, value }: { icon: string; label: string; value
   return (
     <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
       <span className="material-symbols-outlined text-base text-secondary">{icon}</span>
-      <p className="mt-1 text-[9px] tracking-wider text-white/45 uppercase">{label}</p>
+      <p className="mt-1 text-xs tracking-wider text-white/45 uppercase">{label}</p>
       <p className="mt-0.5 text-[11px] text-white/90">{value}</p>
     </div>
   )

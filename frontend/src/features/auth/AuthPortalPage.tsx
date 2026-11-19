@@ -6,6 +6,26 @@ import { useAuthStore, type AuthSession } from '../../stores/authStore'
 import { useToast } from '../../components/ui/ToastProvider'
 import { BrandLogo } from '../../components/brand/BrandLogo'
 
+function sessionFromLogin(data: {
+  accessToken: string
+  refreshToken?: string
+  expiresAt?: number
+  userId: string
+  email: string
+  displayName: string
+  role: string
+}): AuthSession {
+  return {
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    expiresAt: data.expiresAt,
+    userId: data.userId,
+    email: data.email,
+    displayName: data.displayName,
+    role: data.role as AuthSession['role'],
+  }
+}
+
 type Mode = 'login' | 'register'
 
 type Props = {
@@ -25,14 +45,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) => api.login(email, password),
     onSuccess: (data) => {
-      const session: AuthSession = {
-        accessToken: data.accessToken,
-        userId: data.userId,
-        email: data.email,
-        displayName: data.displayName,
-        role: data.role as AuthSession['role'],
-      }
-      setSession(session)
+      setSession(sessionFromLogin(data))
       push('Santuário aberto. Boa caçada.', 'success')
       const dest = data.role === 'narrator' || data.role === 'admin' ? '/admin' : '/user'
       navigate(dest)
@@ -48,14 +61,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
         push('Este correio não possui selo de narrador. Use narrador@… ou mestre@…', 'error')
         return
       }
-      const session: AuthSession = {
-        accessToken: data.accessToken,
-        userId: data.userId,
-        email: data.email,
-        displayName: data.displayName,
-        role,
-      }
-      setSession(session)
+      setSession(sessionFromLogin({ ...data, role }))
       push('Conclave aberto. Bem-vindo, mestre.', 'success')
       navigate('/admin')
     },
@@ -65,14 +71,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
   const registerMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => api.register(payload),
     onSuccess: (data) => {
-      const session: AuthSession = {
-        accessToken: data.accessToken,
-        userId: data.userId,
-        email: data.email,
-        displayName: data.displayName,
-        role: data.role as AuthSession['role'],
-      }
-      setSession(session)
+      setSession(sessionFromLogin(data))
       push('Linhagem registrada. Boa caçada.', 'success')
       const dest = data.role === 'narrator' || data.role === 'admin' ? '/admin' : '/user'
       navigate(dest)

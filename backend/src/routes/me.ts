@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
+import { listOperationsFor } from '../services/operationLog.js'
 import {
   listScheduledSessions,
   confirmSessionPresence,
@@ -11,8 +12,9 @@ import {
 } from '../services/chronicleStore.js'
 import { storeProfileImage } from '../services/mediaStorage.js'
 import { classFromHouse, listSubclassesForClass } from '../services/subclassCatalog.js'
+import { readRules } from '../services/rulesState.js'
+import { readSavedFilters, writeSavedFilters } from '../services/campaignExtras.js'
 import {
-  SUBCLASS_CHOICE_LEVEL,
   ensureProfile,
   getCharacterBalanceStats,
   updateProfileMedia,
@@ -21,6 +23,8 @@ import {
   upsertCharacter,
   patchCharacter,
   getCharacter,
+  submitCharacter,
+  refreshEffects,
   STARTING_CHARACTER_XP,
   xpRequiredToAdvance,
 } from '../services/profileStore.js'
@@ -32,6 +36,7 @@ meRouter.use(requireUser)
 meRouter.get('/profile', (req, res) => {
   const email = req.user!.email
   const profile = ensureProfile(email, req.user!.displayName, req.user!.role)
+  refreshEffects(email)
   res.json(profile)
 })
 
@@ -44,8 +49,8 @@ meRouter.patch('/profile', async (req, res, next) => {
   try {
     const body = mediaSchema.parse(req.body)
     const email = req.user!.email
-    const avatarUrl = await storeProfileImage(email, 'avatar', body.avatarUrl)
-    const bannerUrl = await storeProfileImage(email, 'banner', body.bannerUrl)
+    const avatarUrl = await storeProfileImage('avatar', body.avatarUrl)
+    const bannerUrl = await storeProfileImage('banner', body.bannerUrl)
     const updated = updateProfileMedia(email, { ...body, avatarUrl, bannerUrl })
     if (!updated) {
       res.status(404).json({ error: { message: 'Perfil não encontrado' } })
@@ -202,9 +207,11 @@ const patchCharacterSchema = z.object({
         status: z.enum(['ok', 'broken', 'cooldown', 'drop']).optional(),
         statsLabel: z.string().optional(),
         durability: z.object({ current: z.number(), max: z.number() }).optional(),
+        charges: z.number().int().min(0).max(999).optional(),
       }),
     )
     .optional(),
+  expectedRevision: z.number().int().min(0).optional(),
   createdSkills: z
     .array(
       z.object({
@@ -224,14 +231,16 @@ const patchCharacterSchema = z.object({
 meRouter.patch('/characters/:characterId', async (req, res, next) => {
   try {
     const body = patchCharacterSchema.parse(req.body)
+    const current = getCharacter(req.user!.email, req.params.characterId)
+    if (!current) {
+      res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+      return
+    }
     if (body.subclass) {
-      const current = getCharacter(req.user!.email, req.params.characterId)
-      if (!current) {
-        res.status(404).json({ error: { message: 'Personagem não encontrado' } })
-        return
-      }
-      if (current.level < SUBCLASS_CHOICE_LEVEL) {
-        res.status(403).json({ error: { message: 'A subclasse só pode ser escolhida a partir do nível 7.' } })
+      if (current.level < readRules().subclassLevel) {
+        res.status(403).json({
+          error: { message: `A subclasse só pode ser escolhida a partir do nível ${readRules().subclassLevel}.` },
+        })
         return
       }
       const className = body.characterClass ?? current.characterClass ?? classFromHouse(current.identity?.house)
@@ -246,6 +255,15 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
         })
         return
       }
+    }
+    if (body.expectedRevision != null && (current.sheetRevision ?? 0) !== body.expectedRevision) {
+      res.status(409).json({
+        error: {
+          message: 'Outra aba ou dispositivo alterou esta ficha. Recarregue e tente de novo.',
+          revision: current.sheetRevision ?? 0,
+        },
+      })
+      return
     }
     const updated = patchCharacter(req.user!.email, req.params.characterId, body)
     if (!updated) {
@@ -265,6 +283,39 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
 })
 
 /** Jogador não concede XP a si mesmo — somente o narrador na mesa. */
+meRouter.post('/characters/:characterId/submit', (req, res) => {
+  const updated = submitCharacter(req.user!.email, req.params.characterId)
+  if (!updated) {
+    res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+    return
+  }
+  res.json(updated)
+})
+
+meRouter.get('/operations', (req, res) => {
+  res.json(listOperationsFor(req.user!.email, req.user!))
+})
+
+meRouter.get('/filters', (req, res) => {
+  res.json(readSavedFilters(req.user!.email))
+})
+
+meRouter.put('/filters', (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        shopCategory: z.enum(['gear', 'consumables', 'services']).optional(),
+        shopQuery: z.string().max(80).optional(),
+        archiveQuery: z.string().max(80).optional(),
+        archiveRarity: z.string().max(40).optional(),
+      })
+      .parse(req.body)
+    res.json(writeSavedFilters(req.user!.email, body))
+  } catch (e) {
+    next(e)
+  }
+})
+
 meRouter.post('/characters/:characterId/xp', (_req, res) => {
   res.status(403).json({
     error: { message: 'Somente o narrador concede XP na mesa da sessão.' },

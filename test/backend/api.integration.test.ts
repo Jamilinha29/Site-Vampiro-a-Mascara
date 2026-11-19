@@ -9,8 +9,7 @@ describe('health', () => {
     const res = await request(app).get('/health')
     expect(res.status).toBe(200)
     expect(res.body.ok).toBe(true)
-    expect(res.body.service).toBe('beladona-api')
-    expect(typeof res.body.uptimeSec).toBe('number')
+    expect(res.body.uptimeSec).toBeUndefined()
   })
 })
 
@@ -74,12 +73,23 @@ describe('character creation', () => {
 
 describe('auth login', () => {
   it('issues session token for valid payload', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: 'jogador@ci.local', password: 'senha1234' })
-    expect(res.status).toBe(200)
-    expect(res.body.accessToken).toMatch(/^dev-/)
-    expect(res.body.role).toBe('player')
+    const previousUrl = process.env.SUPABASE_URL
+    const previousAnon = process.env.SUPABASE_ANON_KEY
+    delete process.env.SUPABASE_URL
+    delete process.env.SUPABASE_ANON_KEY
+    try {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'jogador@ci.local', password: 'senha1234' })
+      expect(res.status).toBe(200)
+      expect(res.body.accessToken).toMatch(/^dev-/)
+      expect(res.body.role).toBe('player')
+    } finally {
+      if (previousUrl === undefined) delete process.env.SUPABASE_URL
+      else process.env.SUPABASE_URL = previousUrl
+      if (previousAnon === undefined) delete process.env.SUPABASE_ANON_KEY
+      else process.env.SUPABASE_ANON_KEY = previousAnon
+    }
   })
 
   it('refuses local tokens when the server is in production without Supabase', async () => {

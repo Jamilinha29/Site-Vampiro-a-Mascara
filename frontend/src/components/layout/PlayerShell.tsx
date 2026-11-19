@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { BrandLogo } from '../brand/BrandLogo'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { NotificationBell } from '../domain/NotificationBell'
@@ -12,8 +13,24 @@ const playerNavClass = ({ isActive }: { isActive: boolean }) =>
   ].join(' ')
 
 export function PlayerShell() {
+  const [offline, setOffline] = useState(!navigator.onLine)
+  useEffect(() => {
+    const markOffline = () => setOffline(true)
+    const markOnline = () => setOffline(false)
+    window.addEventListener('offline', markOffline)
+    window.addEventListener('online', markOnline)
+    return () => {
+      window.removeEventListener('offline', markOffline)
+      window.removeEventListener('online', markOnline)
+    }
+  }, [])
   return (
     <div className="app-shell bg-background">
+      {offline ? (
+        <p role="status" className="bg-primary px-4 py-2 text-center text-sm text-on-primary">
+          Sem conexão. Uma ação só vale depois que o servidor confirmar.
+        </p>
+      ) : null}
       <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
         <div className="app-shell-header-bar">
           <div className="flex min-w-0 flex-1 flex-wrap items-stretch gap-x-4 gap-y-1 lg:gap-x-6">

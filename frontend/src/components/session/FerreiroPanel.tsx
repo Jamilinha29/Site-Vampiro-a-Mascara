@@ -13,10 +13,13 @@ type Props = {
 const coinLabel: Record<CoinCode, string> = { gold: 'ouro', silver: 'prata', copper: 'bronze' }
 
 function priceOf(item: { priceGold: number; priceSilver: number; priceCopper: number }) {
-  if (item.priceGold > 0) return { coin: 'gold' as const, amount: item.priceGold, label: `${item.priceGold} ouro` }
-  if (item.priceSilver > 0) return { coin: 'silver' as const, amount: item.priceSilver, label: `${item.priceSilver} prata` }
-  if (item.priceCopper > 0) return { coin: 'copper' as const, amount: item.priceCopper, label: `${item.priceCopper} bronze` }
-  return { coin: 'silver' as const, amount: 0, label: 'grátis' }
+  const parts = [
+    item.priceGold > 0 ? { coin: 'gold' as const, amount: item.priceGold, label: `${item.priceGold} ouro` } : null,
+    item.priceSilver > 0 ? { coin: 'silver' as const, amount: item.priceSilver, label: `${item.priceSilver} prata` } : null,
+    item.priceCopper > 0 ? { coin: 'copper' as const, amount: item.priceCopper, label: `${item.priceCopper} bronze` } : null,
+  ].filter((part) => part !== null)
+  if (parts.length === 0) return { coin: 'silver' as const, amount: 0, label: 'grátis' }
+  return { coin: parts[0].coin, amount: parts[0].amount, label: parts.map((part) => part.label).join(' + ') }
 }
 
 export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props) {
@@ -94,7 +97,10 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props)
           {(data?.commerce ?? []).map((item) => {
             const price = priceOf(item)
             const locked = level < item.requiredLevel
-            const purse = price.coin === 'gold' ? wallet?.gold ?? 0 : price.coin === 'copper' ? wallet?.copper ?? 0 : wallet?.silver ?? 0
+            const afford =
+              (item.priceGold ?? 0) <= (wallet?.gold ?? 0) &&
+              (item.priceSilver ?? 0) <= (wallet?.silver ?? 0) &&
+              (item.priceCopper ?? 0) <= (wallet?.copper ?? 0)
             return (
               <li key={item.id} className="flex items-center justify-between gap-2 rounded border border-outline-variant/30 px-2 py-2 text-sm">
                 <div className="min-w-0">
@@ -107,7 +113,7 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props)
                 <button
                   type="button"
                   className="btn-secondary shrink-0 text-[10px]"
-                  disabled={locked || buy.isPending || purse < price.amount}
+                  disabled={locked || buy.isPending || !afford}
                   onClick={() => buy.mutate(item.id)}
                 >
                   Comprar

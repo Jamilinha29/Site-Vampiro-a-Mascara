@@ -49,6 +49,7 @@ export type CharacterInventoryItem = {
   status?: 'ok' | 'broken' | 'cooldown' | 'drop'
   statsLabel?: string
   durability?: { current: number; max: number }
+  charges?: number
 }
 
 /** Habilidades criadas pelo jogador (ficha + uso na sessão). */
@@ -105,6 +106,9 @@ export type ProfileCharacterSummary = {
   will?: { current: number; max: number }
   xp?: { current: number; toNext: number }
   subclass?: string | null
+  approval?: 'draft' | 'submitted' | 'changes' | 'approved'
+  reviewNote?: string | null
+  effects?: Array<{ id: string; name: string; remainingTurns: number | null; endsAt: string | null }>
   characterClass?: string | null
   identity?: CharacterIdentity
   inventory?: CharacterInventoryItem[]
@@ -113,6 +117,7 @@ export type ProfileCharacterSummary = {
   vitals?: CharacterVitalsMeta | null
   /** Atributos, habilidades, virtudes, antecedentes (bolinhas da ficha). */
   balanceStats?: Record<string, number> | null
+  sheetRevision?: number
 }
 
 export type BalanceStatsResponse =

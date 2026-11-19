@@ -1,3 +1,4 @@
+import { AdminEntityImportPanel } from '../../components/admin/AdminEntityImportPanel'
 import { AdminGlossaryEditor } from '../../components/admin/AdminGlossaryEditor'
 
 export default function AdminCatalogPage() {
@@ -10,6 +11,7 @@ export default function AdminCatalogPage() {
           jogadores.
         </p>
       </header>
+      <AdminEntityImportPanel />
       <AdminGlossaryEditor />
     </div>
   )

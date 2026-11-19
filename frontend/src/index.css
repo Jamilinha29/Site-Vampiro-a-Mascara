@@ -77,6 +77,15 @@
     @apply m-0 min-h-svh min-h-dvh overflow-x-clip bg-surface-container-lowest text-on-surface font-sans;
   }
 
+  :focus-visible {
+    outline: 2px solid var(--color-secondary);
+    outline-offset: 2px;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
   img,
   video,
   svg,
@@ -290,5 +299,28 @@
   .auth-portal-compact .auth-portal-heading {
     margin-bottom: var(--auth-section-gap);
     padding-bottom: calc(var(--auth-section-gap) * 0.85);
+  }
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+    color: black;
+    margin-bottom: 0.5rem;
+  }
+
+  body {
+    background: white;
+    color: black;
   }
 }

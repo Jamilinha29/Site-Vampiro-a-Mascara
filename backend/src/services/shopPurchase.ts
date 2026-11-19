@@ -1,6 +1,6 @@
 import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
 import { getEntity, listScheduledSessions } from './chronicleStore.js'
-import { creditCoins, debitCoins, entityPrice, shopLevelOf } from './courtStore.js'
+import { creditCoins, debitCoins, entityPriceParts, shopLevelOf } from './courtStore.js'
 import { grantEntityToCharacter } from './itemGrant.js'
 import { getCharacter } from './profileStore.js'
 import { consumeOwnedItem, purchaseItem } from './shopStore.js'
@@ -91,23 +91,30 @@ export function buyAtTable(input: {
     return fail(`Nível ${required} necessário para comprar este item`)
   }
 
-  const price = entityPrice(entity)
-  const total = price.amount * input.quantity
-  if (total > 0) {
-    const paid = debitCoins(email, price.coin, total, `Compra · ${entity.name}`)
-    if (!paid.ok) return fail(paid.error)
+  const parts = entityPriceParts(entity).map((part) => ({ ...part, amount: part.amount * input.quantity }))
+  const charged: typeof parts = []
+  for (const part of parts) {
+    const paid = debitCoins(email, part.coin, part.amount, `Compra · ${entity.name}`, {
+      actorEmail: email,
+      sessionId: seat.sessionId,
+    })
+    if (!paid.ok) {
+      for (const done of charged) creditCoins(email, done.coin, done.amount, `Estorno · ${entity.name}`)
+      return fail(paid.error)
+    }
+    charged.push(part)
   }
 
   const result = purchaseItem(email, input.entityId, input.quantity)
   if (!result.ok) {
-    if (total > 0) creditCoins(email, price.coin, total, `Estorno · ${entity.name}`)
+    for (const done of charged) creditCoins(email, done.coin, done.amount, `Estorno · ${entity.name}`)
     return fail(result.error)
   }
 
   const delivered = grantEntityToCharacter(email, seat.characterId, result.entity, input.quantity)
   if (!delivered) {
     consumeOwnedItem(email, input.entityId, input.quantity)
-    if (total > 0) creditCoins(email, price.coin, total, `Estorno · ${entity.name}`)
+    for (const done of charged) creditCoins(email, done.coin, done.amount, `Estorno · ${entity.name}`)
     return fail('Não foi possível entregar o item. Nada foi cobrado.')
   }
 

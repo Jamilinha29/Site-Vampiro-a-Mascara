@@ -78,7 +78,7 @@ export default function SessionsPage() {
 
   const now = Date.now()
   const sorted = useMemo(
-    () => [...scheduled].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
+    () => [...scheduled].filter((session) => session.status !== 'closed').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
     [scheduled],
   )
   const next =

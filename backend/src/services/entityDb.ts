@@ -73,7 +73,7 @@ export function entityFromDbRow(row: Record<string, unknown>): ChronicleEntity |
     id: firstText(payload.id, row.id),
     kind: kind as ChronicleEntity['kind'],
     name,
-    description: firstText(payload.description, row.description, payload.narratorNotes),
+    description: firstText(payload.description, row.description),
     visibility: visibility === 'draft' ? 'draft' : 'published',
     archiveCategory: placed.archiveCategory,
     bestiaryTier: kind === 'monster' ? payload.bestiaryTier ?? 'known' : payload.bestiaryTier,

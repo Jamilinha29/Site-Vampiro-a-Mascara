@@ -6,7 +6,7 @@ export function isSameCalendarDay(a: Date, b: Date) {
 
 /** Mesa agendada para hoje (mais recente se houver várias). */
 export function findTodayMesaSession(sessions: ScheduledSession[], ref = new Date()) {
-  const today = sessions.filter((s) => isSameCalendarDay(new Date(s.scheduledAt), ref))
+  const today = sessions.filter((s) => s.status !== 'closed' && isSameCalendarDay(new Date(s.scheduledAt), ref))
   if (today.length === 0) return null
   return today.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
 }

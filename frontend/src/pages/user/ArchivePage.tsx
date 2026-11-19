@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { PlayerBestiaryExplorer } from '../../components/content/PlayerBestiaryExplorer'
@@ -57,9 +57,26 @@ export default function ArchivePage() {
   const [tab, setTab] = useState<TabId>('rituals')
   const [query, setQuery] = useState('')
   const [rarity, setRarity] = useState('all')
+  const filtersReady = useRef(false)
   const [sort, setSort] = useState<'recent' | 'name' | 'rarity'>('recent')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    void api.getSavedFilters().then((saved) => {
+      if (typeof saved.archiveQuery === 'string') setQuery(saved.archiveQuery)
+      if (saved.archiveRarity) setRarity(saved.archiveRarity)
+      filtersReady.current = true
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!filtersReady.current) return
+    const timer = window.setTimeout(() => {
+      void api.saveFilters({ archiveQuery: query, archiveRarity: rarity })
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [query, rarity])
 
   useEffect(() => {
     const section = searchParams.get('section')

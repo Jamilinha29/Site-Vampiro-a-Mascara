@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { dbDeleteEntity, dbLoadEntities, dbLoadGrimoireSpells, dbUpsertEntity } from './entityDb.js'
 import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
+import { getProfile, pauseEffectsForSeats } from './profileStore.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
 
 export type EntityKind = 'npc' | 'monster' | 'equipment' | 'consumable' | 'archive' | 'download'
@@ -57,6 +58,10 @@ export type ChronicleEntity = {
   secondaryAttackDesc?: string
   sceneTrigger?: string
   narratorNotes?: string
+  /** Vazio = global. Caso contrário, só nas mesas com a mesma crônica. */
+  chronicleScope?: string | null
+  /** E-mail do narrador dono do item (opcional, combina com crônica). */
+  narratorScope?: string | null
   creatureStats?: { for: number; des: number; vig: number; int: number; sab: number; car: number }
   passiveTraits?: string[]
   createdAt: string
@@ -330,14 +335,58 @@ export async function deleteEntity(id: string) {
   return true
 }
 
+export type CatalogScopeContext = {
+  chronicleName?: string
+  narratorEmail?: string
+}
+
 function forPlayers(rows: ChronicleEntity[]) {
   return rows
     .filter((e) => e.visibility === 'published')
-    .map(({ narratorNotes: _notes, ...rest }) => rest)
+    .map(({ narratorNotes: _notes, sceneTrigger: _trigger, ...rest }) => rest)
 }
 
-export function listPublishedForArchive(category: ArchiveCategory) {
-  return forPlayers(
+export function entityMatchesCatalogScope(entity: ChronicleEntity, contexts: CatalogScopeContext[]) {
+  const chronicle = entity.chronicleScope?.trim()
+  const narrator = entity.narratorScope?.trim().toLowerCase()
+  if (!chronicle && !narrator) return true
+  if (!contexts.length) return false
+  return contexts.some((ctx) => {
+    const chronicleOk = !chronicle || (ctx.chronicleName?.trim() && chronicle === ctx.chronicleName.trim())
+    const narratorOk =
+      !narrator || (ctx.narratorEmail?.trim() && narrator === ctx.narratorEmail.trim().toLowerCase())
+    return Boolean(chronicleOk && narratorOk)
+  })
+}
+
+export function resolveCatalogScopeForViewer(email?: string, sessionId?: string): CatalogScopeContext[] {
+  if (sessionId) {
+    const session = getScheduledSession(sessionId)
+    if (!session) return []
+    return [
+      {
+        chronicleName: session.chronicleName?.trim() || session.title,
+        narratorEmail: session.narratorEmail,
+      },
+    ]
+  }
+  if (!email) return []
+  const key = email.trim().toLowerCase()
+  return [...scheduledSessions.values()]
+    .filter((session) => session.seats?.some((seat) => !seat.leftAt && seat.email.trim().toLowerCase() === key))
+    .map((session) => ({
+      chronicleName: session.chronicleName?.trim() || session.title,
+      narratorEmail: session.narratorEmail,
+    }))
+}
+
+function scopedPublished(rows: ChronicleEntity[], contexts: CatalogScopeContext[]) {
+  return forPlayers(rows.filter((entity) => entityMatchesCatalogScope(entity, contexts)))
+}
+
+export function listPublishedForArchive(category: ArchiveCategory, email?: string, sessionId?: string) {
+  const contexts = resolveCatalogScopeForViewer(email, sessionId)
+  return scopedPublished(
     listEntities().filter(
       (e) =>
         e.kind === 'archive' ||
@@ -349,20 +398,25 @@ export function listPublishedForArchive(category: ArchiveCategory) {
       if (e.archiveCategory === category) return true
       return false
     }),
+    contexts,
   )
 }
 
-export function listPublishedForShop(category: ShopCategory) {
-  return forPlayers(
+export function listPublishedForShop(category: ShopCategory, email?: string, sessionId?: string) {
+  const contexts = resolveCatalogScopeForViewer(email, sessionId)
+  return scopedPublished(
     listEntities().filter(
       (e) => (e.kind === 'equipment' || e.kind === 'consumable') && e.shopCategory === category,
     ),
+    contexts,
   )
 }
 
-export function listPublishedForBestiary(tier: BestiaryTier) {
-  return forPlayers(
+export function listPublishedForBestiary(tier: BestiaryTier, email?: string, sessionId?: string) {
+  const contexts = resolveCatalogScopeForViewer(email, sessionId)
+  return scopedPublished(
     listEntities().filter((e) => e.kind === 'monster' && (e.bestiaryTier ?? 'known') === tier),
+    contexts,
   )
 }
 
@@ -477,7 +531,6 @@ export function ensureHandoutForScheduledSession(sessionId: string) {
   if (!session) return null
   const existing = findHandoutByScheduledSession(sessionId)
   if (existing) {
-    syncHandoutSessionEvents(existing.id)
     const row = handouts.get(existing.id)!
     if (!row.sceneThreats) updateHandout(row.id, { sceneThreats: [] })
     if (!row.sceneNpcs) updateHandout(row.id, { sceneNpcs: [] })
@@ -486,16 +539,15 @@ export function ensureHandoutForScheduledSession(sessionId: string) {
     return handouts.get(existing.id)!
   }
   const chronicleName = session.chronicleName?.trim() || session.title
-  const seeded = continuityPayload(chronicleName)
   return createHandout({
     title: chronicleName,
     narrativeSummary: '',
     scheduledSessionId: sessionId,
     chronicleName,
     npcIds: [],
-    monstersSlain: seeded.monstersSlain,
-    participants: seeded.participants,
-    missions: seeded.missions,
+    monstersSlain: [],
+    participants: [],
+    missions: [],
     sceneThreats: [],
     sceneNpcs: [],
     chronicleAmbience: { ...DEFAULT_CHRONICLE_AMBIENCE },
@@ -546,8 +598,6 @@ async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
     primaryAttackDesc: row.primaryAttackDesc,
     secondaryAttackName: row.secondaryAttackName,
     secondaryAttackDesc: row.secondaryAttackDesc,
-    sceneTrigger: row.sceneTrigger,
-    narratorNotes: row.narratorNotes,
     creatureStats: row.creatureStats,
     passiveTraits: row.passiveTraits,
     attributeMods: row.attributeMods,
@@ -587,6 +637,31 @@ function ensureSessionDefaults(row: ScheduledSession): ScheduledSession {
   return next
 }
 
+export function seatedSessionIds(email: string) {
+  const key = email.trim().toLowerCase()
+  return [...scheduledSessions.values()]
+    .filter((session) => session.seats.some((seat) => !seat.leftAt && seat.email.trim().toLowerCase() === key))
+    .map((session) => session.id)
+}
+
+export function openSeats(sessionId: string) {
+  return (scheduledSessions.get(sessionId)?.seats ?? []).filter((seat) => !seat.leftAt)
+}
+
+export function replaceSessionBundle(sessions: ScheduledSession[], nextHandouts?: SessionHandout[]) {
+  scheduledSessions.clear()
+  for (const session of sessions) {
+    if (session?.id) scheduledSessions.set(session.id, session)
+  }
+  if (nextHandouts) {
+    handouts.clear()
+    for (const handout of nextHandouts) {
+      if (handout?.id) handouts.set(handout.id, handout)
+    }
+  }
+  snapshotSessions()
+}
+
 export function listScheduledSessions() {
   return [...scheduledSessions.values()]
     .map(ensureSessionDefaults)
@@ -596,7 +671,7 @@ export function listScheduledSessions() {
 export function findScheduledSessionByAccessCode(code: string) {
   const key = code.trim().toUpperCase()
   if (!key) return null
-  return listScheduledSessions().find((s) => s.accessCode.toUpperCase() === key) ?? null
+  return listScheduledSessions().find((s) => s.status !== 'closed' && s.accessCode.toUpperCase() === key) ?? null
 }
 
 function generateAccessCode() {
@@ -681,12 +756,13 @@ export function updateScheduledSession(
 export function deleteScheduledSession(sessionId: string, narratorEmail: string) {
   const session = getScheduledSession(sessionId)
   if (!session) return { ok: false as const, reason: 'not_found' as const }
-  if (session.narratorEmail && session.narratorEmail !== narratorEmail) {
+  if (session.narratorEmail && !sameEmail(session.narratorEmail, narratorEmail) && getProfile(narratorEmail)?.role !== 'admin') {
     return { ok: false as const, reason: 'forbidden' as const }
   }
   if (session.status === 'open') return { ok: false as const, reason: 'open' as const }
-  const handout = findHandoutByScheduledSession(sessionId)
-  if (handout) handouts.delete(handout.id)
+  for (const handout of [...handouts.values()]) {
+    if (handout.scheduledSessionId === sessionId) handouts.delete(handout.id)
+  }
   scheduledSessions.delete(sessionId)
   snapshotSessions()
   return { ok: true as const }
@@ -697,6 +773,7 @@ export function openScheduledSession(sessionId: string, narratorEmail: string) {
   if (!access.ok) return access
   const row = getScheduledSession(sessionId)
   if (!row) return { ok: false as const, reason: 'not_found' as const }
+  if (row.status === 'closed') return { ok: false as const, reason: 'closed' as const }
   if (row.status === 'open') return { ok: true as const, session: row }
   const stamp = now()
   const next = updateScheduledSession(sessionId, {
@@ -706,6 +783,39 @@ export function openScheduledSession(sessionId: string, narratorEmail: string) {
     endedAt: undefined,
   })
   return { ok: true as const, session: next! }
+}
+
+export function rescheduleSameTable(sessionId: string, narratorEmail: string) {
+  const access = canManageMesa(sessionId, narratorEmail)
+  if (!access.ok) return access
+  const row = getScheduledSession(sessionId)
+  if (!row) return { ok: false as const, reason: 'not_found' as const }
+  if (row.status !== 'closed') return { ok: false as const, reason: 'not_closed' as const }
+  const start = new Date()
+  start.setHours(20, 0, 0, 0)
+  if (start.getTime() <= Date.now()) start.setDate(start.getDate() + 1)
+  const created = createScheduledSession({
+    title: row.tableMeta?.sessionLabel || row.title,
+    scheduledAt: start.toISOString(),
+    chronicleName: row.chronicleName,
+    narratorEmail: row.narratorEmail,
+    tableMeta: row.tableMeta,
+    listing: row.listing,
+  })
+  const previous = findHandoutByScheduledSession(sessionId)
+  const fresh = findHandoutByScheduledSession(created.id)
+  if (previous && fresh) {
+    updateHandout(fresh.id, {
+      participants: previous.participants.map((participant) => ({
+        ...participant,
+        rewards: participant.rewards.map((reward) => ({ ...reward })),
+      })),
+      missions: previous.missions.map((mission) => ({ ...mission })),
+      monstersSlain: previous.monstersSlain.map((monster) => ({ ...monster })),
+      narrativeSummary: '',
+    })
+  }
+  return { ok: true as const, session: created }
 }
 
 export function closeScheduledSession(sessionId: string, narratorEmail: string) {
@@ -728,6 +838,7 @@ export function closeScheduledSession(sessionId: string, narratorEmail: string) 
   if (handout && handout.status !== 'closed') {
     updateHandout(handout.id, { status: 'closed', closedAt: endedAt })
   }
+  pauseEffectsForSeats((row.seats ?? []).filter((seat) => !seat.leftAt))
   return { ok: true as const, session: next! }
 }
 
@@ -808,12 +919,29 @@ function parseVitalsFromStats(statsText?: string) {
   return { hpMax, manaMax }
 }
 
-function canManageMesa(sessionId: string, email: string) {
+function sameEmail(a?: string, b?: string) {
+  return (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+}
+
+export function sessionAccess(sessionId: string, user: { email: string; role?: string }) {
   const session = getScheduledSession(sessionId)
   if (!session) return { ok: false as const, reason: 'not_found' as const }
-  if (session.narratorEmail && session.narratorEmail !== email) {
+  const role = user.role ?? getProfile(user.email)?.role
+  if (role === 'admin') return { ok: true as const, session }
+  if (role === 'narrator') {
+    if (!session.narratorEmail || sameEmail(session.narratorEmail, user.email)) {
+      return { ok: true as const, session }
+    }
     return { ok: false as const, reason: 'forbidden' as const }
   }
+  const seated = (session.seats ?? []).some((seat) => !seat.leftAt && sameEmail(seat.email, user.email))
+  if (!seated) return { ok: false as const, reason: 'forbidden' as const }
+  return { ok: true as const, session }
+}
+
+function canManageMesa(sessionId: string, email: string) {
+  const access = sessionAccess(sessionId, { email, role: getProfile(email)?.role === 'admin' ? 'admin' : 'narrator' })
+  if (!access.ok) return access
   return { ok: true as const }
 }
 
@@ -951,11 +1079,21 @@ export function getSessionLiveBrief(sessionId: string): SessionLiveBrief | null 
   }
 }
 
-export function getSessionBagForPlayer(sessionId: string, displayName: string) {
+export function getSessionBagForPlayer(sessionId: string, email: string) {
+  const session = getScheduledSession(sessionId)
   const handout = findHandoutByScheduledSession(sessionId)
-  if (!handout) return null
-  const key = displayName.trim().toLowerCase()
-  const participant = handout.participants.find((p) => p.displayName.trim().toLowerCase() === key)
+  if (!session || !handout) return null
+  const seat = (session.seats ?? []).find((item) => !item.leftAt && sameEmail(item.email, email))
+  if (!seat) return { rewards: [] }
+  const participant =
+    handout.participants.find(
+      (item) =>
+        item.displayName.trim().toLowerCase() === seat.displayName.trim().toLowerCase() &&
+        item.characterName.trim().toLowerCase() === seat.characterName.trim().toLowerCase(),
+    ) ??
+    handout.participants.find(
+      (item) => item.characterName.trim().toLowerCase() === seat.characterName.trim().toLowerCase(),
+    )
   return { rewards: participant?.rewards ?? [] }
 }
 
@@ -1091,6 +1229,7 @@ export function getPlayerSessionActCanon(sessionId: string): PlayerSessionActCan
 export function listPublishedSessionsForPlayers(viewerEmail?: string) {
   const viewer = viewerEmail?.trim().toLowerCase() ?? ''
   return listScheduledSessions()
+    .filter((s) => s.status !== 'closed')
     .filter((s) => {
       const listing = s.listing ?? 'private'
       if (listing === 'public') return true

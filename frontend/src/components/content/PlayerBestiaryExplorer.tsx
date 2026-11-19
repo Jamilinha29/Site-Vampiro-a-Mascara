@@ -323,8 +323,16 @@ export function BestiaryDetail({
                 </p>
               </div>
             </div>
-            {entity.sceneTrigger ? (
-              <p className="mt-3 text-[11px] text-on-surface-variant">Gatilho de cena: {entity.sceneTrigger}</p>
+            {entity.sceneTrigger && audience === 'narrator' ? (
+              <p className="mt-3 text-xs text-on-surface-variant">Gatilho de cena: {entity.sceneTrigger}</p>
+            ) : null}
+            {audience !== 'narrator' && entity.revealed?.length ? (
+              <div className="mt-3 rounded border border-secondary/40 p-3">
+                <p className="text-xs uppercase text-secondary">Revelado para a sua mesa</p>
+                {entity.revealed.map((note) => (
+                  <p key={note} className="mt-1 text-sm text-on-surface">{note}</p>
+                ))}
+              </div>
             ) : null}
           </div>
 

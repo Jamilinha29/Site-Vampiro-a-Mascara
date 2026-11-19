@@ -121,6 +121,8 @@ export async function loginWithSupabase(email: string, password: string) {
     ok: true as const,
     session: {
       accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at ?? undefined,
       userId: data.user.id,
       email: data.user.email,
       displayName,
@@ -158,6 +160,8 @@ export async function registerWithSupabase(
     ok: true as const,
     session: {
       accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at ?? undefined,
       userId: data.user.id,
       email: data.user.email,
       displayName,

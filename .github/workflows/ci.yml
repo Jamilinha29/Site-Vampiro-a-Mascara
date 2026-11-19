@@ -15,12 +15,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Segredos e dados locais fora do Git
+        run: npm run verify:git
       - run: npm run lint
-      - run: npm run build
+      - run: npm run build -w backend && npm run build
       - run: npm run test:ci
       - name: npm audit (produção, sem --force)
         run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true
 
   docker-test:
     runs-on: ubuntu-latest

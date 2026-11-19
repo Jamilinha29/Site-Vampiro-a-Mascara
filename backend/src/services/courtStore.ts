@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { getEntity, type ChronicleEntity } from './chronicleStore.js'
 import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
+import { recordOperation } from './operationLog.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
 import { grantEntityToCharacter } from './itemGrant.js'
 import { getProfile, listRegisteredPlayers } from './profileStore.js'
@@ -150,20 +151,34 @@ export function listShopLevels() {
   return { ...state.itemLevels }
 }
 
+export function entityPriceParts(entity: Pick<ChronicleEntity, 'priceGold' | 'priceSilver' | 'priceCopper'>) {
+  const parts: { coin: Coin; amount: number }[] = []
+  if ((entity.priceGold ?? 0) > 0) parts.push({ coin: 'gold' as const, amount: entity.priceGold ?? 0 })
+  if ((entity.priceSilver ?? 0) > 0) parts.push({ coin: 'silver' as const, amount: entity.priceSilver ?? 0 })
+  if ((entity.priceCopper ?? 0) > 0) parts.push({ coin: 'copper' as const, amount: entity.priceCopper ?? 0 })
+  return parts
+}
+
 export function entityPrice(entity: Pick<ChronicleEntity, 'priceGold' | 'priceSilver' | 'priceCopper'>): {
   coin: Coin
   amount: number
 } {
-  if ((entity.priceGold ?? 0) > 0) return { coin: 'gold', amount: entity.priceGold ?? 0 }
-  if ((entity.priceSilver ?? 0) > 0) return { coin: 'silver', amount: entity.priceSilver ?? 0 }
-  if ((entity.priceCopper ?? 0) > 0) return { coin: 'copper', amount: entity.priceCopper ?? 0 }
-  return { coin: 'silver', amount: 0 }
+  return entityPriceParts(entity)[0] ?? { coin: 'silver' as const, amount: 0 }
 }
 
 function walletOf(email: string) {
   const key = emailKey(email)
   if (!state.wallets[key]) state.wallets[key] = { gold: 0, silver: 0, copper: 0 }
   return state.wallets[key]
+}
+
+export function listWalletSnapshot() {
+  return state.wallets
+}
+
+export function replaceWalletMap(wallets: CourtFile['wallets']) {
+  state = { ...state, wallets: wallets ?? {} }
+  save()
 }
 
 export function getCourtWallet(email: string) {
@@ -193,23 +208,46 @@ function pushLedger(email: string, kind: 'credit' | 'debit', coin: Coin, amount:
   if (state.ledger.length > 400) state.ledger = state.ledger.slice(-400)
 }
 
-export function creditCoins(email: string, coin: Coin, amount: number, label: string) {
+type CoinMeta = { actorEmail?: string; sessionId?: string }
+
+export function creditCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
   const qty = Math.max(0, Math.round(amount))
   if (qty <= 0) return getCourtWallet(email)
   const w = walletOf(email)
+  const before = String(w[coin])
   w[coin] += qty
   pushLedger(email, 'credit', coin, qty, label)
+  const adjustment = /estorno|compens/i.test(label)
+  recordOperation({
+    email,
+    actorEmail: meta?.actorEmail?.trim() || email,
+    kind: adjustment ? 'adjustment' : 'credit',
+    summary: label,
+    before,
+    after: String(w[coin]),
+    sessionId: meta?.sessionId,
+  })
   save()
   return { ...w }
 }
 
-export function debitCoins(email: string, coin: Coin, amount: number, label: string) {
+export function debitCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
   const qty = Math.max(0, Math.round(amount))
   const w = walletOf(email)
   if (qty === 0) return { ok: true as const, wallet: { ...w } }
   if (w[coin] < qty) return { ok: false as const, error: `Saldo insuficiente de ${COIN_LABEL[coin]}` }
+  const before = String(w[coin])
   w[coin] -= qty
   pushLedger(email, 'debit', coin, qty, label)
+  recordOperation({
+    email,
+    actorEmail: meta?.actorEmail?.trim() || email,
+    kind: 'debit',
+    summary: label,
+    before,
+    after: String(w[coin]),
+    sessionId: meta?.sessionId,
+  })
   save()
   return { ok: true as const, wallet: { ...w } }
 }

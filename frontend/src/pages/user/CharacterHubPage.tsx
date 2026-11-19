@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, NavLink, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { StatBar } from '../../components/domain/StatBar'
@@ -15,6 +15,7 @@ import { resolveSheetKind } from '../../lib/characterSheetKind'
 import { computeArmorClass, sumEquippedBonuses } from '../../lib/equipmentMods'
 import type { CharacterInventoryItem, CreatedSkill, ProfileCharacterSummary } from '../../types/profile'
 import { useAuthStore } from '../../stores/authStore'
+import { useToast } from '../../components/ui/ToastProvider'
 
 const TABS = [
   { id: 'inventario', label: 'Inventário' },
@@ -27,10 +28,13 @@ type TabId = (typeof TABS)[number]['id']
 
 export default function CharacterHubPage() {
   const { characterId = '' } = useParams()
+  const [printStamp, setPrintStamp] = useState<string | null>(null)
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const view = (searchParams.get('view') as TabId) || 'inventario'
   const displayName = useAuthStore((s) => s.session?.displayName)
+  const qc = useQueryClient()
+  const { push } = useToast()
 
   useEffect(() => {
     if (location.pathname.endsWith('/inventory') && searchParams.get('view') !== 'inventario') {
@@ -119,6 +123,11 @@ export default function CharacterHubPage() {
 
   return (
     <div className="space-y-5 pb-8">
+      {printStamp ? (
+        <p className="print-only text-xs text-on-surface" aria-hidden>
+          Exportado em {printStamp} · ficha {character.name} · revisão {character.sheetRevision ?? 0}
+        </p>
+      ) : null}
       <input
         ref={portrait.inputRef}
         type="file"
@@ -144,10 +153,10 @@ export default function CharacterHubPage() {
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
                 <span className="material-symbols-outlined text-3xl text-outline-variant">add_a_photo</span>
-                <span className="text-[10px] text-on-surface-variant">Adicionar retrato</span>
+                <span className="text-xs text-on-surface-variant">Adicionar retrato</span>
               </div>
             )}
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 py-1 text-center text-[9px] tracking-wide text-white uppercase opacity-0 transition group-hover:opacity-100">
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 py-1 text-center text-xs tracking-wide text-white uppercase opacity-0 transition group-hover:opacity-100">
               {portrait.saving ? 'Salvando…' : 'Trocar retrato'}
             </span>
           </button>
@@ -156,12 +165,26 @@ export default function CharacterHubPage() {
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-label-sm text-[0.65rem] text-secondary uppercase">Nível {progression.level}</p>
               {progression.needsSubclassChoice ? (
-                <span className="rounded border border-secondary/50 bg-secondary/15 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-secondary uppercase">
+                <span className="rounded border border-secondary/50 bg-secondary/15 px-2 py-0.5 text-xs font-semibold tracking-wide text-secondary uppercase">
                   Escolha a subclasse
                 </span>
               ) : null}
             </div>
             <h1 className="font-headline-lg text-2xl text-on-surface">{character.name}</h1>
+            {character.reviewNote ? (
+              <p className="mt-1 text-sm text-secondary">Mestre: {character.reviewNote}</p>
+            ) : null}
+            {character.effects?.length ? (
+              <ul className="mt-2 space-y-1 text-sm text-on-surface">
+                {character.effects.map((effect) => (
+                  <li key={effect.id}>
+                    {effect.name}
+                    {effect.remainingTurns != null ? ` · ${effect.remainingTurns} turno(s)` : ''}
+                    {effect.endsAt ? ` · até ${new Date(effect.endsAt).toLocaleTimeString('pt-BR')}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <p className="mt-1 text-sm text-on-surface-variant">
               {character.species}
               {character.clan ? ` · ${character.clan}` : ''}
@@ -175,7 +198,34 @@ export default function CharacterHubPage() {
             <button type="button" className="btn-secondary text-xs" onClick={openEdit}>
               Editar dados
             </button>
-            <Link to={`/user/characters/${characterId}?view=ficha`} className="btn-primary text-xs">
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              disabled={character.approval === 'submitted' || character.approval === 'approved'}
+              onClick={() => {
+                void api.submitCharacter(character.id).then(() => {
+                  push('Ficha enviada ao mestre.', 'success')
+                  void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+                })
+              }}
+            >
+              {character.approval === 'approved'
+                ? 'Ficha aprovada'
+                : character.approval === 'submitted'
+                  ? 'Aguardando mestre'
+                  : 'Enviar ao mestre'}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary text-xs no-print"
+              onClick={() => {
+                setPrintStamp(new Date().toLocaleString('pt-BR'))
+                window.setTimeout(() => window.print(), 40)
+              }}
+            >
+              Imprimir ficha
+            </button>
+            <Link to={`/user/characters/${characterId}?view=ficha`} className="btn-primary text-xs no-print">
               Ficha
             </Link>
           </div>
@@ -223,7 +273,7 @@ export default function CharacterHubPage() {
                 Crie e edite habilidades aqui. Na ficha aparece só o nome e os atributos (somente leitura).
               </p>
               <div className="rounded border border-outline-variant/35 bg-surface-container-lowest/30 p-4">
-                <h3 className="mb-3 font-label-sm text-[10px] tracking-wider text-secondary uppercase">
+                <h3 className="mb-3 font-label-sm text-xs tracking-wider text-secondary uppercase">
                   Habilidades criadas
                 </h3>
                 <CreatedSkillsPanel
@@ -251,14 +301,14 @@ export default function CharacterHubPage() {
               />
             </label>
             <div className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 px-3 py-2">
-              <p className="text-[10px] uppercase text-on-surface-variant">Fé</p>
+              <p className="text-xs uppercase text-on-surface-variant">Fé</p>
               <p className="mt-1 text-sm text-on-surface">{character.identity?.faith || '—'}</p>
-              <p className="mt-1 text-[10px] text-on-surface-variant">
+              <p className="mt-1 text-xs text-on-surface-variant">
                 A fé só muda quando o narrador altera na sessão.
               </p>
             </div>
             <div className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 px-3 py-2">
-              <p className="text-[10px] uppercase text-on-surface-variant">
+              <p className="text-xs uppercase text-on-surface-variant">
                 {isMortal ? 'Clã / ordem mortal' : 'Clã'}
               </p>
               <p className="mt-1 text-sm text-on-surface">{draft.clan || '—'}</p>
