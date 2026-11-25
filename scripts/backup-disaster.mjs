@@ -5,15 +5,35 @@ import zlib from 'node:zlib'
 import { createClient } from '@supabase/supabase-js'
 
 const TABLES = [
-  'DocumentosCampanha',
+  'Linhagens',
+  'PerfisJogadores',
+  'Personagens',
+  'SubclassesPersonagem',
+  'ItensPersonagem',
+  'HabilidadesPersonagem',
   'EntidadesCronica',
   'CatalogoReferencia',
-  'Personagens',
-  'Usuarios',
+  'DocumentosCampanha',
+  'SessoesAgendadas',
+  'PresencaSessao',
+  'AssentosSessao',
+  'MateriaisSessao',
+  'ParticipantesMaterial',
+  'RecompensasMaterial',
+  'AmeacasCena',
+  'NpcsCena',
+  'Carteiras',
+  'ExtratoCarteira',
+  'ComprasLoja',
+  'NotificacoesPublicas',
+  'LeiturasNotificacao',
+  'Inscricoes',
+  'EntregasEmail',
   'OperacoesIdempotentes',
   'AuditoriaOperacoes',
   'RevisoesPersonagem',
   'AcoesSessao',
+  'TentativasCodigoMesa',
   'MetadadosBackup',
 ]
 
@@ -42,7 +62,7 @@ function encryptPayload(plainGz, secret) {
 async function runExport() {
   const sb = getSupabase()
   if (!sb) {
-    console.error('[backup] SUPABASE_URL e SUPABASE_SECRET_KEY são obrigatórios para exportação externa.')
+    console.error('[backup] SUPABASE_URL e SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY) são obrigatórios para exportação externa.')
     process.exitCode = 1
     return
   }

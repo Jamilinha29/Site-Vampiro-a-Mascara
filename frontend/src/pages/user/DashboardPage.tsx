@@ -48,6 +48,24 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 pb-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="font-label-sm text-[11px] font-semibold tracking-[0.18em] text-secondary uppercase">
+            Sua história continua
+          </p>
+          <h1 className="font-headline-lg mt-1 text-2xl text-on-surface sm:text-3xl">
+            Bem-vindo, {session?.displayName ?? 'jogador'}.
+          </h1>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Seus personagens, seus vínculos e o próximo capítulo da crônica.
+          </p>
+        </div>
+        <Link to="/user/characters/new/lineage" className="btn-secondary rounded-md px-4 py-2 text-xs">
+          <span className="material-symbols-outlined text-base text-secondary">person_add</span>
+          Novo personagem
+        </Link>
+      </div>
+
       <header className="mesa-panel overflow-hidden">
         <div className="border-b border-outline-variant/30 bg-surface-container-low/60 px-4 py-4 sm:px-6">
           <p className="font-label-sm text-[0.65rem] text-secondary uppercase tracking-[0.2em]">{chronicleTitle}</p>
@@ -89,7 +107,13 @@ export default function DashboardPage() {
         <section className="mesa-panel p-5 xl:col-span-8">
           {active ? (
             <div className="flex flex-col gap-5 sm:flex-row">
-              <div className="mx-auto h-40 w-32 shrink-0 rounded border-2 border-secondary/40 bg-surface-container-high sm:mx-0" />
+              <div className="mx-auto flex h-40 w-32 shrink-0 items-center justify-center overflow-hidden rounded border border-secondary/35 bg-surface-container-high sm:mx-0">
+                {activeFull?.portraitUrl ? (
+                  <img src={activeFull.portraitUrl} alt={active.name} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-4xl text-outline">person</span>
+                )}
+              </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-secondary uppercase">
                   Nível {active.level ?? activeFull?.level ?? 1}
@@ -199,7 +223,7 @@ export default function DashboardPage() {
             className="mesa-panel flex min-h-[8rem] flex-col items-center justify-center border-dashed p-4 text-on-surface-variant hover:border-secondary/50"
           >
             <span className="material-symbols-outlined text-3xl">add</span>
-            <span className="mt-2 text-center text-xs">+ mostra novos personagem</span>
+            <span className="mt-2 text-center text-xs">Criar novo personagem</span>
           </button>
         </div>
       </section>

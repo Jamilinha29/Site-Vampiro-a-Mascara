@@ -119,30 +119,33 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
           />
         </label>
       </div>
-      <div className="mt-2 flex flex-wrap items-end gap-2">
+      <div className="mt-3 grid items-end gap-2 sm:grid-cols-3 md:max-w-lg">
         <label className="text-xs uppercase text-on-surface-variant">
           Lance do NPC
           <input
             type="number"
             min={1}
-            className="input-feudal mt-1 block w-24 py-1 pl-2 text-sm normal-case"
+            className="input-feudal mt-1 py-2 pl-3 text-sm normal-case"
             value={npcAmount}
             onChange={(e) => setNpcAmount(Number(e.target.value) || 1)}
           />
         </label>
-        <select
-          className="input-feudal py-1 pl-2 text-sm normal-case"
-          value={npcCoin}
-          onChange={(e) => setNpcCoin(e.target.value as CoinCode)}
-          aria-label="Moeda do NPC"
-        >
-          <option value="gold">Ouro</option>
-          <option value="silver">Prata</option>
-          <option value="copper">Bronze</option>
-        </select>
+        <label className="text-xs uppercase text-on-surface-variant">
+          Moeda
+          <select
+            className="input-feudal mt-1 py-2 pl-3 text-sm normal-case"
+            value={npcCoin}
+            onChange={(e) => setNpcCoin(e.target.value as CoinCode)}
+            aria-label="Moeda do NPC"
+          >
+            <option value="gold">Ouro</option>
+            <option value="silver">Prata</option>
+            <option value="copper">Bronze</option>
+          </select>
+        </label>
         <button
           type="button"
-          className="btn-primary text-xs"
+          className="btn-primary h-[2.375rem] text-xs"
           disabled={!live || !entityId || release.isPending}
           onClick={() => release.mutate()}
         >

@@ -1,12 +1,17 @@
-name: CI
+name: CI & Deploy Pipeline
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: beladona-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,18 +22,84 @@ jobs:
       - run: npm ci
       - name: Segredos e dados locais fora do Git
         run: npm run verify:git
-      - run: npm run lint
-      - run: npm run build -w backend && npm run build
-      - name: Verificar ausência de segredos no bundle frontend
-        run: npm run verify:bundle
-      - run: npm run test:ci
       - name: npm audit (produção, sem --force)
         run: npm audit --omit=dev --audit-level=high
 
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint -w frontend
+      - run: npm run build -w frontend
+      - name: Verificar ausência de segredos no bundle frontend
+        run: npm run verify:bundle
+      - run: npx vitest run --config test/vitest.config.ts --project frontend
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint -w backend
+      - run: npm run build -w backend
+      - run: npx vitest run --config test/vitest.config.ts --project backend
+
   docker-test:
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [verify, frontend, backend]
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f compose.test.yaml build
       - run: docker compose -f compose.test.yaml run --rm tests
+
+  supabase-migrate:
+    runs-on: ubuntu-latest
+    needs: [verify, frontend, backend]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Commit alterou supabase/migrations?
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff-tree --no-commit-id --name-only -r "${{ github.sha }}" | grep -q '^supabase/migrations/'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nenhuma migração neste commit — passo ignorado."
+          fi
+
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          version: latest
+
+      - name: Aplicar migrações no projeto remoto
+        if: steps.gate.outputs.run == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_DB_PASSWORD" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "Secrets SUPABASE_* não configurados no GitHub Actions."
+            exit 1
+          fi
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
+          supabase db push --remote --yes --password "$SUPABASE_DB_PASSWORD"

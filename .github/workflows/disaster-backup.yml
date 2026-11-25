@@ -15,7 +15,7 @@ jobs:
         id: gate
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BELADONA_BACKUP_KEY: ${{ secrets.BELADONA_BACKUP_KEY }}
         run: |
           if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SECRET_KEY" ] && [ -n "$BELADONA_BACKUP_KEY" ]; then
@@ -38,7 +38,7 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BELADONA_BACKUP_KEY: ${{ secrets.BELADONA_BACKUP_KEY }}
           BELADONA_EXTERNAL_BACKUP_TARGET: ${{ secrets.BELADONA_EXTERNAL_BACKUP_TARGET }}
           BELADONA_BACKUP_DIR: ${{ runner.temp }}/beladona-backups

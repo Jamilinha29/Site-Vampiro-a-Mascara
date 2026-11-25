@@ -10,9 +10,9 @@ Recursos versionados no Git que descrevem **como** o app sobe em produção ou e
 | SPA + API serverless (opção A) | `vercel.json`, `api/index.ts` | Vercel (root = **raiz do monorepo**) |
 | API Docker 24/7 (opção B) | `infrastructure/render.yaml`, `docker/Dockerfile.backend.prod` | Render Web Service `beladona-api` |
 | Stack local | `compose.yaml`, `compose.prod.yaml`, `docker/*` | `npm run docker:dev` / `docker:prod` |
-| CI testes + imagem API | `.github/workflows/ci.yml`, `cd.yml` | GitHub Actions (não publica na internet) |
-| Migrações automáticas | `.github/workflows/supabase-migrate.yml` | Secrets `SUPABASE_*` no GitHub |
-| Monitor uptime | `.github/workflows/monitor.yml` | Secrets `HEALTH_URL`, `SITE_URL` |
+| CI testes + migrações + Docker | `.github/workflows/ci.yml` | GitHub Actions (não publica na internet) |
+| Monitoramento & keepalive | `.github/workflows/ops.yml` | Secrets `HEALTH_URL`, `READY_URL`, `SITE_URL`, `SUPABASE_*` |
+| Backup criptografado | `.github/workflows/disaster-backup.yml` | Secrets `SUPABASE_*`, `BELADONA_BACKUP_KEY` |
 
 Guia operacional completo: [`docs/DEPLOY.md`](../docs/DEPLOY.md).
 
@@ -49,7 +49,7 @@ Variáveis: `.env` na raiz ou `env_file` nos compose.
 ## Ordem sugerida (ambiente novo)
 
 1. Supabase + migrações + URLs de Auth.
-2. GitHub Secrets (migrate, keepalive, monitor).
+2. GitHub Secrets (`ci.yml`, `ops.yml`, `disaster-backup.yml`).
 3. Vercel (opção A ou B).
 4. Render somente se opção B.
 5. Resend quando precisar de e-mail transacional da API.

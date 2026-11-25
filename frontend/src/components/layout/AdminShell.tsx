@@ -1,30 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, NavLink, Outlet } from 'react-router-dom'
-import { BrandLogo } from '../brand/BrandLogo'
 import { UserProfileMenu } from '../domain/UserProfileMenu'
 import { api } from '../../services/api'
 import { adminQueryKeys } from '../../lib/queryKeys'
 import { findTodayMesaSession } from '../../lib/mesaSession'
-
-const adminNavBase = [
-  { to: '/admin', label: 'Início', end: true },
-  { to: '/admin/characters', label: 'Personagens' },
-  { to: '/admin/sessions', label: 'Sessões' },
-  { to: '/admin/campaign', label: 'Campanha' },
-  { to: '/admin/shop', label: 'Loja' },
-  { to: '/admin/catalog', label: 'Glossário' },
-  { to: '/admin/reference', label: 'Catálogos' },
-  { to: '/admin/downloads', label: 'Downloads' },
-  { to: '/admin/users', label: 'Amigos' },
-] as const
-
-const adminNavClass = ({ isActive }: { isActive: boolean }) =>
-  [
-    'inline-flex shrink-0 items-center self-stretch border-b-2 text-sm whitespace-nowrap transition-colors duration-200',
-    isActive
-      ? 'border-primary font-bold text-primary'
-      : 'border-transparent text-on-surface-variant hover:text-primary',
-  ].join(' ')
+import { AppSidebarShell, type SidebarNavItem } from './AppSidebarShell'
 
 export function AdminShell() {
   const { data: scheduled = [] } = useQuery({
@@ -32,51 +11,35 @@ export function AdminShell() {
     queryFn: () => api.adminListScheduledSessions(),
   })
   const todayMesa = findTodayMesaSession(scheduled)
-  const adminNav = todayMesa
-    ? [
-        adminNavBase[0],
-        adminNavBase[1],
-        adminNavBase[2],
-        { to: `/admin/mesa/${todayMesa.id}`, label: 'Mesa' as const, end: false },
-        ...adminNavBase.slice(3),
-      ]
-    : [...adminNavBase]
+
+  const adminNav: SidebarNavItem[] = [
+    { to: '/admin', label: 'Início', icon: 'home', end: true },
+    { to: '/admin/characters', label: 'Personagens', icon: 'badge' },
+    { to: '/admin/sessions', label: 'Sessões', icon: 'calendar_month' },
+    { to: todayMesa ? `/admin/mesa/${todayMesa.id}` : '/admin/mesa', label: 'Mesa ao vivo', icon: 'casino' },
+    { to: '/admin/campaign', label: 'Campanha', icon: 'flag' },
+    { to: '/admin/shop', label: 'Loja', icon: 'storefront' },
+    { to: '/admin/catalog', label: 'Glossário', icon: 'menu_book' },
+    { to: '/admin/reference', label: 'Catálogos', icon: 'category' },
+    { to: '/admin/bestiary', label: 'Bestiário', icon: 'pets' },
+    { to: '/admin/downloads', label: 'Downloads', icon: 'folder' },
+    { to: '/admin/users', label: 'Amigos e jogadores', icon: 'group' },
+    { to: '/admin/rewards', label: 'Recompensas', icon: 'workspace_premium' },
+    { to: '/admin/profile', label: 'Meu perfil', icon: 'account_circle' },
+    { to: '/admin/settings', label: 'Configurações', icon: 'tune' },
+  ]
 
   return (
-    <div className="app-shell bg-background">
-      <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface/95 shadow-md backdrop-blur-md">
-        <div className="app-shell-header-bar">
-          <div className="flex min-w-0 flex-1 flex-wrap items-stretch gap-x-4 gap-y-1 lg:gap-x-6">
-            <Link to="/admin" className="flex shrink-0 items-center self-center focus:outline-none">
-              <BrandLogo size="xs" className="h-9 w-9" />
-            </Link>
-
-            <nav className="hidden min-w-0 flex-1 flex-wrap items-stretch gap-x-5 gap-y-1 lg:flex xl:gap-x-6">
-              {adminNav.map((item) => (
-                <NavLink key={item.to} to={item.to} end={'end' in item ? item.end : false} className={adminNavClass}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-
-          <div className="flex min-w-0 items-center self-center">
-            <UserProfileMenu context="admin" />
-          </div>
-        </div>
-
-        <nav className="app-shell-nav-mobile" aria-label="Navegação do mestre">
-          {adminNav.map((item) => (
-            <NavLink key={item.to} to={item.to} end={'end' in item ? item.end : false} className={adminNavClass}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
-
-      <main className="app-shell-main">
-        <Outlet />
-      </main>
-    </div>
+    <AppSidebarShell
+      context="admin"
+      sectionLabel="Gestão da crônica"
+      navItems={adminNav}
+      breadcrumbRoot="Narrador"
+      routeLabels={{
+        '/admin/achievements': 'Conquistas',
+        '/admin/mesa': 'Mesa ao vivo',
+      }}
+      headerRight={<UserProfileMenu context="admin" />}
+    />
   )
 }

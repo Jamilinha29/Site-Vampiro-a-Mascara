@@ -49,6 +49,8 @@ export function AdminCharacterPieChart({ series }: { series: Slice[] }) {
           <title>Personagens criados por conta de jogador</title>
           {total === 0 ? (
             <circle cx={cx} cy={cy} r={r} className="fill-surface-container stroke-outline-variant/40" strokeWidth={1} />
+          ) : arcs.length === 1 ? (
+            <circle cx={cx} cy={cy} r={r} className={arcs[0].className} stroke="currentColor" strokeWidth={0.5} />
           ) : (
             arcs.map(({ slice, path, className }) => (
               <path key={slice.label} d={path} className={className} stroke="currentColor" strokeWidth={0.5} />

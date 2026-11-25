@@ -87,7 +87,7 @@ Usou Render blueprint render.yaml?
   └─ API só no Render; VITE_API_URL na Vercel = URL do Render
 ```
 
-**GitHub Actions** (`ci.yml`, `cd.yml`) **não publicam** a API na internet — só testam/buildam. O deploy “vivo” é **Vercel** (conexão Git) e/ou **Render** (blueprint manual).
+**GitHub Actions** (`ci.yml`) **não publica** a API na internet — só testa, valida Docker e aplica migrações. O deploy “vivo” é **Vercel** (conexão Git) e/ou **Render** (blueprint manual).
 
 ## Mapa rápido (onde fazer cada coisa)
 
@@ -98,9 +98,9 @@ Usou Render blueprint render.yaml?
 | Env **só** da API (opção B) | [Render](https://dashboard.render.com) → serviço `beladona-api` → **Environment** |
 | Front em produção (opção B) | Ainda **Vercel** — só variáveis `VITE_*`; API não roda na Vercel |
 | Segredos para GitHub Actions | GitHub → repositório → **Settings** → **Secrets and variables** → **Actions** → **New repository secret** |
-| Migrações automáticas (CI) | Workflow `.github/workflows/supabase-migrate.yml` (dispara no push ao `main`) |
-| Keepalive Supabase free | Workflow `.github/workflows/supabase-keepalive.yml` + secrets no GitHub |
-| Monitor site/API | Workflow `.github/workflows/monitor.yml` + secrets no GitHub |
+| Migrações automáticas (CI) | Job `supabase-migrate` em `.github/workflows/ci.yml` (dispara no push ao `main`) |
+| Keepalive + monitor site/API | Workflow `.github/workflows/ops.yml` + secrets no GitHub (`cron: 0 */6 * * *`) |
+| Backup criptografado | Workflow `.github/workflows/disaster-backup.yml` + `BELADONA_BACKUP_KEY` |
 | E-mail transacional (opcional) | [Resend](https://resend.com) → API Key → Vercel/Render `RESEND_*` |
 | CI (testes no push/PR) | GitHub → **Actions** → workflow **CI** (sem secrets) |
 | Desenvolvimento local | Pasta do projeto → arquivo `.env` (copiar de `.env.example`) |
@@ -228,13 +228,13 @@ Crie **um secret por linha**:
 **Onde:** GitHub → repositório → aba **Actions**
 
 1. Se pedir, clique **I understand my workflows, go ahead and enable them**.
-2. Confirme que o arquivo `.github/workflows/supabase-migrate.yml` está no branch que você usa (ex.: `main`).
+2. Confirme que o arquivo `.github/workflows/ci.yml` está no branch que você usa (ex.: `main`).
 
 #### Passo 4 — Disparar migração
 
 **Opção A — automático:** faça merge/push para `main` alterando algo em `supabase/migrations/**`.
 
-**Opção B — manual:** **Actions** → workflow **Supabase migrate** → **Run workflow** → branch `main` → **Run workflow**.
+**Opção B — manual:** **Actions** → workflow **CI & Deploy Pipeline** → **Run workflow** → branch `main` → **Run workflow**.
 
 #### Passo 5 — Verificar
 
@@ -343,10 +343,10 @@ Use **apenas** se escolheu a **opção B** da tabela acima (API fora da Vercel).
 
 ## 5) Keepalive Supabase (plano free — evitar pausa)
 
-Projetos **free** do Supabase podem **pausar** após período sem uso (~7 dias sem atividade no projeto). O repositório já inclui o workflow **Supabase keepalive**, que faz um **ping leve** na API REST a cada **3 dias** (meio-dia UTC).
+Projetos **free** do Supabase podem **pausar** após período sem uso (~7 dias sem atividade no projeto). O repositório já inclui o workflow **Ops & Keepalive**, que verifica saúde da API/site e faz um **ping leve** na API REST a cada **6 horas**.
 
-**Arquivo:** `.github/workflows/supabase-keepalive.yml`  
-**Cron:** `0 12 */3 * *` (dia 1, 4, 7… às 12:00 UTC)
+**Arquivo:** `.github/workflows/ops.yml`  
+**Cron:** `0 */6 * * *` (a cada 6 horas, UTC)
 
 ### 5.1) O que você precisa configurar (só GitHub)
 
@@ -365,9 +365,9 @@ Projetos **free** do Supabase podem **pausar** após período sem uso (~7 dias s
 
 **Onde:** GitHub → **Actions**
 
-1. Na lista à esquerda, clique **Supabase keepalive**.
+1. Na lista à esquerda, clique **Ops & Keepalive**.
 2. **Run workflow** → escolha branch `main` → **Run workflow**.
-3. Abra a execução → step **REST ping (anon key)**:
+3. Abra a execução → step **Supabase Free keepalive**:
    - Verde = ping aceito (códigos HTTP 200, 401 ou 404 são considerados OK — significa que o projeto respondeu e **não está pausado**).
    - Amarelo com mensagem “Defina SUPABASE_URL…” = faltam secrets.
 
@@ -399,7 +399,7 @@ Authorization: Bearer SUA_ANON_KEY
 
 ## 6) Monitor — site e API no ar
 
-Workflow: `.github/workflows/monitor.yml` (a cada **5 minutos**).
+Workflow: `.github/workflows/ops.yml` (a cada **6 horas**).
 
 ### 6.1) Secrets
 
@@ -408,13 +408,14 @@ Workflow: `.github/workflows/monitor.yml` (a cada **5 minutos**).
 | Secret | Exemplo de valor |
 |--------|-------------------|
 | `HEALTH_URL` | `https://seu-app.vercel.app/health` |
+| `READY_URL` | `https://seu-app.vercel.app/ready` |
 | `SITE_URL` | `https://seu-app.vercel.app/` |
 
 Se a API estiver só no Render: `HEALTH_URL=https://beladona-api.onrender.com/health` e `SITE_URL` continua sendo a Vercel.
 
 ### 6.2) Testar
 
-**Onde:** GitHub → **Actions** → **Monitor** → **Run workflow**.
+**Onde:** GitHub → **Actions** → **Ops & Keepalive** → **Run workflow**.
 
 - Falha vermelha em **API health** → site fora ou JSON sem `"ok":true`.
 - “não configurado — passo ignorado” → secret vazio (workflow não falha de propósito).
@@ -455,10 +456,10 @@ Valores aceitos pela API: `admin`, `narrator`, `player`.
 
 **Nunca** coloque senhas no Git, no `DEPLOY.md` nem no `.env` commitado. Use um gerenciador de senhas.
 
-| Conta | E-mail (login) | Papel | Uso |
-|-------|----------------|-------|-----|
-| **ADM produção** | `Adm@gmail.com` | `admin` | Conclave / rotas `/admin` no dia a dia |
-| **Teste sistema** | `testeuserAdm@gmail.com` | `admin` (recomendado) | Reproduzir bug/erro em **jogador e mesa** com uma só conta (`/user` e `/admin`) |
+| Conta | E-mail (exemplo) | Papel | Uso |
+|-------|------------------|-------|-----|
+| **ADM produção** | `admin@seudominio.com` | `admin` | Conclave / rotas `/admin` no dia a dia |
+| **Teste sistema** | `teste-adm@seudominio.com` | `admin` (recomendado) | Reproduzir bug/erro em **jogador e mesa** com uma só conta (`/user` e `/admin`) |
 
 **Onde criar (produção / staging com Supabase Auth):**
 
@@ -513,13 +514,11 @@ Sem `RESEND_API_KEY`, a API simplesmente não envia esses e-mails (não quebra l
 
 | Workflow | Quando | Secrets? | O que faz |
 |----------|--------|----------|-----------|
-| **CI** (`ci.yml`) | Push/PR em `main` | Não | `npm ci`, lint, build, `test:ci`, audit (não bloqueia), Docker test |
-| **CD** (`cd.yml`) | Push em `main` | Não | Build front + valida `Dockerfile.backend.prod` |
-| **Supabase migrate** | Push em migrações | Sim (seção 2.B) | `db push` |
-| **Supabase keepalive** | Cron 3 dias | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Anti-pausa |
-| **Monitor** | Cron 5 min | `HEALTH_URL`, `SITE_URL` opcionais | Disponibilidade |
+| **CI** (`ci.yml`) | Push/PR em `main` | Só p/ `supabase-migrate` | `verify`, `frontend`, `backend`, `docker-test` e `supabase-migrate` |
+| **Ops & Keepalive** (`ops.yml`) | Cron 6h | `SUPABASE_*`, `HEALTH_URL`, `READY_URL`, `SITE_URL` opcionais | Saúde + anti-pausa |
+| **Disaster Backup** (`disaster-backup.yml`) | Cron diário | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BELADONA_BACKUP_KEY` | Exportação criptografada |
 
-**Vercel:** deploy do site/API ao conectar o repo (não passa pelo `cd.yml`).
+**Vercel:** deploy do site/API ao conectar o repo (automático via integração Git da Vercel).
 
 Antes do primeiro deploy, rode localmente o mesmo que o CI:
 
@@ -595,12 +594,10 @@ Variáveis vêm do `.env` na raiz ou do `compose` — mesmas chaves `SUPABASE_*`
 | `infrastructure/render.yaml` | Blueprint API Docker (`RUN_STANDALONE=true`) |
 | `docker/Dockerfile.backend.prod` | API produção Render/Docker (`npm run start -w backend`) |
 | `compose.yaml` / `compose.prod.yaml` | API + front em Docker local |
-| `docker/nginx.conf` | SPA estática; **`/api/` → 404** (sem reverse proxy) |
-| `.github/workflows/supabase-migrate.yml` | `db push` no `main` |
-| `.github/workflows/supabase-keepalive.yml` | Ping anti-pausa Supabase |
-| `.github/workflows/monitor.yml` | Health + site |
-| `.github/workflows/ci.yml` | Lint, build, testes, Docker test |
-| `.github/workflows/cd.yml` | Build + imagem API (sanity) |
+| `docker/nginx.conf` | SPA estática com proxy `/api/`, `/health` e `/ready` → `api:4000` |
+| `.github/workflows/ci.yml` | Lint, build, testes, Docker test e `supabase-migrate` no `main` |
+| `.github/workflows/ops.yml` | Saúde (`HEALTH_URL`/`READY_URL`/`SITE_URL`) + ping anti-pausa Supabase |
+| `.github/workflows/disaster-backup.yml` | Exportação criptografada (`AES-256-GCM`) e artifact |
 | `supabase/migrations/` | SQL versionado (Postgres) |
 | `compose.prod.yaml`, `docker/*` | Docker produção |
 | `.env.example` | Modelo local |

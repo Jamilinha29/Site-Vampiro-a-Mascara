@@ -150,13 +150,13 @@ function AuthHeader() {
           className="flex min-w-0 items-center gap-2.5 rounded-sm transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary sm:gap-3.5"
         >
           <BrandLogo size="xs" withGlow className="shrink-0" />
-          <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2.5">
-            <span className="truncate font-label-md text-[10px] font-bold tracking-widest uppercase sm:text-xs">
-              Vampiro: A Idade das Trevas
-            </span>
-            <span className="hidden text-xs text-outline-variant sm:inline">•</span>
-            <span className="truncate font-serif text-[10px] tracking-wider text-secondary italic sm:text-xs">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate font-serif text-sm font-semibold text-on-surface sm:text-base">
               As Crônicas de Beladona
+            </span>
+            <span className="hidden text-xs text-outline-variant sm:inline">·</span>
+            <span className="hidden truncate font-serif text-xs text-secondary italic sm:inline">
+              Plataforma da crônica
             </span>
           </div>
         </Link>
@@ -199,7 +199,7 @@ function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void
           }`}
         >
           <span className="material-symbols-outlined text-base">history_edu</span>
-          Forjar
+          Criar conta
         </button>
       </div>
     </div>
@@ -265,11 +265,11 @@ function LoginColumn({
               <div className="flex min-w-0 items-center gap-2">
                 <span className="material-symbols-outlined shrink-0 text-xl text-primary">vpn_key</span>
                 <div className="min-w-0">
-                  <h2 className="font-headline-sm text-sm font-bold tracking-wider text-primary uppercase md:text-base">
-                    Entrar nas Trevas
+                  <h2 className="font-headline-sm text-base font-semibold text-on-surface md:text-lg">
+                    Boas-vindas à sua crônica
                   </h2>
-                  <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
-                    Identificação nobiliárquica sob a Máscara
+                  <p className="auth-portal-subtitle text-xs text-on-surface-variant">
+                    Entre para continuar a sua história.
                   </p>
                 </div>
               </div>
@@ -281,7 +281,7 @@ function LoginColumn({
                 onSubmit(email, password, remember)
               }}
             >
-              <Field label="Correio Feudal ou Nome de Guerra" required hint="ex: valerius@corte-noturna.org" id={emailId}>
+              <Field label="E-mail ou nome de usuário" required hint="ex: valerius@corte-noturna.org" id={emailId}>
                 <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">shield_person</span>
                 <input
                   id={emailId}
@@ -292,7 +292,7 @@ function LoginColumn({
                   autoComplete="username"
                 />
               </Field>
-              <Field label="Selo Secreto (Senha)" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline">Esqueci o Selo</Link>}>
+              <Field label="Senha" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline">Esqueci minha senha</Link>}>
                 <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
                 <input
                   id={passId}
@@ -314,11 +314,11 @@ function LoginColumn({
                   onChange={(e) => setRemember(e.target.checked)}
                   className="h-4 w-4 rounded border-outline-variant text-primary-container focus:ring-primary-container"
                 />
-                Manter Vigília Ativa (Lembrar sessão)
+                Lembrar sessão
               </label>
-              <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
+              <button type="submit" className="btn-primary w-full py-2 text-sm normal-case tracking-normal" disabled={loading}>
                 <span className="material-symbols-outlined text-lg">meeting_room</span>
-                {loading ? 'Abrindo…' : 'Adentrar o Santuário'}
+                {loading ? 'Abrindo…' : 'Entrar na crônica'}
               </button>
             </form>
             <AuthSocialExtras googleContext="login" compact onOpenAdmin={() => setAdminMode(true)} />
@@ -508,11 +508,11 @@ function RegisterColumn({
           <div className="flex min-w-0 items-center gap-2">
             <span className="material-symbols-outlined shrink-0 text-xl text-secondary">history_edu</span>
             <div className="min-w-0">
-              <h2 className="font-headline-sm text-sm font-bold tracking-wider text-secondary uppercase md:text-base">
-                Forjar Linhagem
+              <h2 className="font-headline-sm text-base font-semibold text-on-surface md:text-lg">
+                Criar conta
               </h2>
-              <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
-                Pacto eterno nas Crônicas de Beladona
+              <p className="auth-portal-subtitle text-xs text-on-surface-variant">
+                Seu próximo capítulo começa aqui.
               </p>
             </div>
           </div>
@@ -530,17 +530,17 @@ function RegisterColumn({
             })
           }}
         >
-          <Field label="Título Nobiliárquico" required>
+          <Field label="Nome de exibição" required>
             <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">assignment_ind</span>
             <input className="input-feudal" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required placeholder="Preencha com seu nome" />
           </Field>
-          <Field label="Correio Feudal" required>
+          <Field label="E-mail" required>
             <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">mail</span>
             <input type="email" className="input-feudal" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </Field>
-          <Field label="Selo Secreto" required>
+          <Field label="Senha" required>
             <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
-            <input type="password" className="input-feudal" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Mínimo 8 runas" />
+            <input type="password" className="input-feudal" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Mínimo de 8 caracteres" />
           </Field>
           <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-on-surface-variant">
             <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} required className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary-container" />
@@ -550,9 +550,9 @@ function RegisterColumn({
             <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary-container" />
             Desejo receber avisos da crônica por corvo mensageiro.
           </label>
-          <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
+          <button type="submit" className="btn-primary w-full py-2 text-sm normal-case tracking-normal" disabled={loading}>
             <span className="material-symbols-outlined text-lg">history_edu</span>
-            {loading ? 'Forjando…' : 'Forjar Linhagem'}
+            {loading ? 'Criando…' : 'Criar conta'}
           </button>
         </form>
       </div>
@@ -603,8 +603,8 @@ function GoogleIcon() {
 function SliderPanel({ mode }: { mode: Mode }) {
   const quote =
     mode === 'login'
-      ? '"Apresentai vosso juramento de sangue para transpor as muralhas de Bizâncio e adentrar o santuário sob os eternos auspícios do Códice e da Noite."'
-      : '"A noite pertence àqueles que ousam forjar seu próprio destino nas trevas eternas de Beladona."'
+      ? '"Toda escolha deixa uma marca. Toda história guarda um segredo."'
+      : '"Há histórias que só começam quando os caminhos se encontram."'
 
   return (
     <>
@@ -612,7 +612,7 @@ function SliderPanel({ mode }: { mode: Mode }) {
       <div className="relative z-10 flex w-full items-center justify-between border-b border-outline-variant/30 pb-2 text-[10px] tracking-widest uppercase">
         <span className="flex items-center gap-1.5 text-secondary">
           <span className="material-symbols-outlined text-sm text-primary">token</span>
-          Ordinis Sanguinis
+          Um universo compartilhado
         </span>
         <span className="text-outline">Beladona</span>
       </div>
@@ -626,16 +626,16 @@ function SliderPanel({ mode }: { mode: Mode }) {
           <div className="pointer-events-none absolute inset-3 rounded-full border border-secondary/25" />
           <BrandLogo size="lg" withGlow className="relative z-10" />
         </Link>
-        <p className="mt-1.5 line-clamp-3 max-w-xs px-2 text-center font-serif text-xs leading-snug text-on-surface-variant italic">{quote}</p>
+        <p className="mt-2 line-clamp-3 max-w-xs px-2 text-center font-serif text-xs leading-snug text-on-surface-variant italic">{quote}</p>
       </div>
       <div className="relative z-10 flex w-full items-center justify-between border-t border-outline-variant/30 pt-2 text-[11px] text-outline">
         <span className="flex items-center gap-1 text-on-surface-variant">
           <span className="material-symbols-outlined text-xs text-primary">verified_user</span>
-          Selo Imperial Ativo
+          Fichas · Sessões · Acervo
         </span>
         <span className="flex items-center gap-1 text-secondary">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary" />
-          Transmissão Sob a Máscara
+          Sua história continua
         </span>
       </div>
     </>

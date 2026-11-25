@@ -1,237 +1,119 @@
 # As Crônicas de Beladona — Sanguis & Shadow
 
-Monorepo de **mesa virtual (VTT)** para a campanha **Beladona**, em tom feudal-sombrio inspirado em crônicas vampíricas. Jogadores criam fichas, entram na sessão ao vivo e navegam loja, acervo e bestiário; narradores administram mesas, conteúdo publicado e progressão da crônica.
+> **Mesa virtual (VTT) e gerenciador de crônica vampírica** — frontend **React 19**, API **Node/Express**, persistência e autenticação no **Supabase** e deploy serverless na **Vercel**.
 
-> **Escopo:** ferramenta de jogo e organização de mesa. Regras e materiais oficiais de terceiros permanecem sob licença dos respectivos titulares.
+[![Aplicação Online](https://img.shields.io/badge/Demo-Vercel-000000?style=flat-square&logo=vercel)](https://site-vampiro-a-mascara.vercel.app)
+[![React 19](https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5%2F7-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
+[![Express](https://img.shields.io/badge/Express-4-303030?style=flat-square&logo=express)](https://expressjs.com)
+[![Supabase](https://img.shields.io/badge/Supabase-Auth%20%7C%20DB%20%7C%20Storage-3ecf8e?style=flat-square&logo=supabase)](https://supabase.com)
+[![CI](https://github.com/Jamilinha29/Site-Vampiro-a-Mascara/actions/workflows/ci.yml/badge.svg)](https://github.com/Jamilinha29/Site-Vampiro-a-Mascara/actions/workflows/ci.yml)
+[![Licença MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
-## Visão geral
+**Aplicação publicada:** [site-vampiro-a-mascara.vercel.app](https://site-vampiro-a-mascara.vercel.app)
 
-| Papel | Área | Principais funções |
-|-------|------|--------------------|
-| Jogador | `/user/*` | Personagens, ficha por espécie, sessões com código, sala ao vivo, inventário, loja, acervo, downloads |
-| Narrador | `/admin/*` | Agendar mesas, painel ao vivo, NPCs/ameaças, XP, handouts, loja/acervo/bestiário, usuários |
-| Público | `/`, `/auth/*` | Home, login/cadastro, recuperação de senha |
+---
 
-A interface usa **React 19 + Vite + Tailwind v4**, paleta escura (carmim, ouro relicário, azul ritual) e tipografia **Noto Serif** (títulos) + **Inter** (dados e formulários). Tokens em `frontend/src/index.css`.
+## Sobre o projeto
 
-### Interface adaptativa
+**As Crônicas de Beladona** resolve a dispersão típica de campanhas de RPG de mesa — planilhas soltas, anotações isoladas e controle manual de sessão — reunindo criação de fichas, sala de jogo ao vivo, loja da crônica, acervo, bestiário e administração do narrador em uma única interface web responsiva (*mobile-first*).
 
-O frontend é **mobile-first** (breakpoints Tailwind `sm` / `md` / `lg` / `xl`):
+### Principais funcionalidades
 
-- Navegação jogador/mestre: menu completo no desktop; **faixa rolável** no mobile.
-- **Safe-area** (`viewport-fit=cover`) em headers, shells e portal de auth (notch / gesture bar).
-- Altura de viewport com **`dvh`/`svh`**; conteúdo com `min-w-0` para não estourar largura.
-- Portal `/auth/*`: scroll só na área central se a tela for baixa; login ADM em **modal** abaixo de `1024px`.
+| Área | Destaques |
+| :--- | :--- |
+| **Jogador (`/user`)** | Wizard de criação em 6 etapas, ficha adaptativa por espécie (mortal, vampiro/cainita e variações), progressão **0–10** com subclasses nos níveis **5** e **7**, inventário com bônus automáticos e entrada em sessão por código |
+| **Narrador (`/admin`)** | Criação/gestão de mesas, painel ao vivo (ameaças em cena, NPCs, modo descanso, rotação de código, concessão de XP e recompensas), editores de loja/acervo/bestiário e auditoria de revisões |
+| **Acervo & Conteúdo** | Loja com carteira e extrato, glossário, bestiário de criaturas e downloads privados liberados pós-sessão |
+| **Autenticação (`/auth`)** | Login/cadastro com confirmação de e-mail, recuperação `/auth/recover`, papéis validados no servidor (`player`, `narrator`, `admin`) e modo dev local isolado |
 
-Detalhes de deploy e env vars: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+---
 
-## Funcionalidades
+## Diferenciais de engenharia
 
-### Jogador
+- **Integridade e concorrência:** salvamento de documentos com revisão monotônica (*Compare-And-Swap* via RPC PostgreSQL), operações financeiras idempotentes (`OperacoesIdempotentes`) e rate limit compartilhado em banco (`beladona_check_rate_limit`).
+- **Segurança aplicada:** verificação de JWT Supabase no servidor, validação de uploads por *magic bytes*, armazenamento privado com URLs assinadas (`revelacoes`), headers via Helmet/CORS e bloqueio automatizado contra vazamento de segredos no Git e no bundle Vite (`verify:git` e `verify:bundle`).
+- **Operação & DevOps:** pipeline CI em DAG no GitHub Actions (checks paralelos de segurança, frontend e backend → `docker-test` + `supabase-migrate`), monitoramento contínuo e exportação criptografada (`AES-256-GCM`) do banco e manifestos de Storage.
 
-- Wizard de criação em **6 etapas** (linhagem → identidade → arquétipo → atributos/virtudes → habilidades → resumo)
-- **Ficha** adaptada por espécie (mortal: HP + mana; vampiro: sangue + vontade; outras espécies modulares)
-- **XP** com barra por nível; jogador não concede XP (apenas ADM na mesa)
-- **Sessões**: entrada por código, ficha na mesa, habilidades com custo de mana, dano/morte na sessão, bônus de equipamento
-- Conteúdo publicado: loja, arquivos, bestiário, downloads (handouts após publicação)
+---
 
-### Narrador
-
-- **Criar mesa** com ficha da sessão (RPG, campanha, arco, missão, grupo, duração, nível recomendado) — visível no ADM e na sala do jogador
-- Abrir/encerrar mesa, **excluir** mesas antigas (agendadas ou encerradas; não ao vivo)
-- Centro de comando: clima da crônica, ameaças/NPCs em cena, modo descanso, concessão de XP
-- Editores de entidades (equipamento, consumíveis, monstros, NPCs, grimórios, downloads)
-- Métricas no dashboard (linha de sessões, personagens, atividade da mesa)
-
-### API (`/api/v1`)
-
-- Auth: **Supabase** (JWT) em produção; tokens `dev-*` só local/`ALLOW_DEV_AUTH` — ver [`docs/DEPLOY.md`](docs/DEPLOY.md)
-- Cadastro com confirmação de e-mail no Supabase retorna **202**; o front orienta a confirmar o corvo antes do login
-- Crônica: entidades, handouts, sessões agendadas, cena ao vivo, catálogos
-- Catálogo e perfis em **Supabase** quando as chaves estão configuradas; parte da mesa ainda em memória na instância da API
-
-## Tecnologias
-
-| Camada | Stack |
-|--------|--------|
-| Frontend | React 19, Vite 8, TypeScript, Tailwind CSS v4, React Router 7, TanStack Query, Zustand, Zod |
-| Backend | Node.js, Express, TypeScript, Zod, Vitest |
-| Dados (prod.) | Supabase (Postgres, Auth, Storage) |
-| E-mail (opc.) | Resend (transacional; Auth continua no Supabase) |
-| Deploy típico | **A:** Vercel (SPA + `api/index.ts`) · **B:** Vercel (SPA) + Render (`infrastructure/render.yaml`) — [`docs/DEPLOY.md`](docs/DEPLOY.md) |
+## Arquitetura & Stack
 
 ```text
-Browser :5173  ──proxy /api──►  Express :4000  ──►  Supabase (prod.) / dev auth (local)
+Browser (React 19 + Vite) ──► /api/v1/* (Express :4000 / Vercel Serverless) ──► Supabase (Auth · Postgres + RPC · Storage)
+                                                                            └──► Resend (e-mail transacional opcional)
 ```
+
+| Camada | Tecnologias |
+| :--- | :--- |
+| **Frontend** | React 19, TypeScript, Vite 8, Tailwind CSS v4, React Router 7, TanStack Query v5, Zustand, Zod |
+| **Backend** | Node.js 22, Express 4, TypeScript (`tsx` / `tsc`), Helmet, CORS, `express-rate-limit`, `serverless-http` |
+| **Dados & Cloud** | Supabase (PostgreSQL, Auth, Storage), Resend, Vercel (SPA + Serverless) |
+| **Qualidade & Infra** | Vitest (14 suítes / 50 testes), Supertest, Oxlint, Docker Compose (`dev` / `prod` / `test`), GitHub Actions |
+
+---
 
 ## Estrutura do repositório
 
 ```text
-Vampiro a mascara/
-├── package.json              # workspaces: frontend + backend
-├── .env.example
-├── vercel.json               # build SPA + rewrites /api e /health
-├── api/index.ts              # entrada serverless Vercel
-├── compose.yaml              # Docker dev (npm run docker:dev)
-├── compose.prod.yaml
-├── compose.test.yaml
-├── infrastructure/
-│   └── render.yaml           # blueprint API Docker (opção B)
-├── docker/                   # Dockerfiles backend/frontend
-├── supabase/migrations/      # schema oficial (CI db push)
-├── docs/DEPLOY.md
-├── test/                     # Vitest unificado (ver test/README.md)
-├── frontend/
-│   └── src/
-│       ├── app/              # router, guards
-│       ├── components/       # UI, admin, sessão, layout (app-shell)
-│       ├── features/auth/    # portal login/cadastro
-│       ├── pages/            # public, user, admin, wizard
-│       ├── services/         # cliente API (VITE_API_URL)
-│       └── stores/
-└── backend/src/
-    ├── index.ts
-    ├── routes/
-    └── services/             # supabaseAuth, chronicleStore, resendClient, …
+Site-Vampiro-a-Mascara/
+├── api/index.ts               # Adaptador serverless Vercel
+├── backend/src/               # API Express, rotas (/api/v1), middlewares e serviços
+├── frontend/src/              # SPA React (pages, components, features, stores, services)
+├── supabase/migrations/       # Schema PostgreSQL, RLS, buckets e RPCs atômicas
+├── test/                      # Suíte Vitest unificada (backend + frontend)
+├── docker/                    # Dockerfiles (dev, prod, test) e Nginx
+├── scripts/                   # Higiene de segredos e backup criptografado
+├── docs/                      # Guias de deploy e recuperação de desastres
+└── .github/workflows/         # CI em DAG (ci.yml), monitoramento (ops.yml) e backup (disaster-backup.yml)
 ```
 
-## Início rápido
+---
 
-### Pré-requisitos
+## Como executar localmente
 
-- **Node.js 20+** e npm
-- (Produção) projeto Supabase; Vercel e/ou Render conforme [`docs/DEPLOY.md`](docs/DEPLOY.md)
-
-### Instalação
-
-Na raiz do monorepo:
+**Pré-requisitos:** Node.js `22.x` (`>=22 <25`), npm e projeto Supabase *(opcional em dev local via `ALLOW_DEV_AUTH=true`)*.
 
 ```bash
+# 1. Clonar o repositório e instalar dependências (npm workspaces)
+git clone <url-do-repositorio>
+cd Site-Vampiro-a-Mascara
 npm install
+
+# 2. Configurar variáveis de ambiente (preencher com suas chaves locais)
 cp .env.example .env
-```
 
-Windows (CMD): `copy .env.example .env`  
-Se o PowerShell bloquear `npm`, use **`npm.cmd`**.
-
-### Variáveis de ambiente (local)
-
-Copie de [`.env.example`](.env.example). Mínimo para dev com Supabase:
-
-```env
-VITE_API_URL=http://localhost:4000
-PORT=4000
-CORS_ORIGIN=http://localhost:5173
-SUPABASE_URL=https://SEU_REF.supabase.co
-SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-ALLOW_DEV_AUTH=true
-RUN_STANDALONE=true
-```
-
-Sem Supabase: API usa login de desenvolvimento (`ALLOW_DEV_AUTH` ou omitir chaves).
-
-### Executar em desenvolvimento
-
-**Um comando (API + web):**
-
-```bash
+# 3. Subir backend (:4000) e frontend (:5173) juntos
 npm run dev:all
 ```
 
-**Ou dois terminais:**
+> No Windows PowerShell, se a política bloquear `npm.ps1`, utilize `npm.cmd` (ex.: `npm.cmd run dev:all`).
 
-| Comando | URL |
-|---------|-----|
-| `npm run dev:api` | http://localhost:4000 |
-| `npm run dev` | http://localhost:5173 (proxy `/api` → `:4000`) |
-
-### Auth de desenvolvimento
-
-- **Jogador:** e-mail válido + senha com 8+ caracteres em `/auth/register` ou `/auth/login`
-- **Narrador/ADM:** painel ADM (desktop inline; mobile modal) com e-mails `narrador@…`, `mestre@…` ou `admin@…`
-
-### Scripts na raiz
-
-| Comando | Ação |
-|---------|------|
-| `npm run dev` | Frontend (Vite) |
-| `npm run dev:api` | Backend (tsx watch) |
-| `npm run dev:all` | API + frontend juntos |
-| `npm run build` | Build do frontend |
-| `npm run test:ci` | Testes em `test/` |
-| `npm run lint` | Lint do frontend |
-| `npm run docker:dev` | `compose.yaml` |
-| `npm run docker:prod` | `compose.prod.yaml` |
-| `npm run docker:test` | `compose.test.yaml` |
-
-Mais detalhes de container: [`infrastructure/README.md`](infrastructure/README.md).
-
-## Rotas principais
-
-| Rota | Descrição |
-|------|-----------|
-| `/` | Home |
-| `/auth/login`, `/auth/register`, `/auth/recover` | Portal de autenticação |
-| `/user` | Dashboard do jogador |
-| `/user/characters`, `/user/characters/:id` | Lista e hub da ficha |
-| `/user/characters/new/*` | Wizard (6 etapas) |
-| `/user/sessions`, `/user/sessions/:id/table` | Agenda e sala ao vivo |
-| `/user/shop`, `/user/archive`, `/user/bestiary`, `/user/downloads` | Conteúdo publicado |
-| `/admin` | Dashboard do narrador |
-| `/admin/sessions` | Criar/listar/excluir mesas |
-| `/admin/mesa/:sessionId` | Painel da mesa ao vivo |
-
-Redirect legado: `/app/*` → `/user/*`.
-
-## Regras de jogo (implementadas)
-
-### Progressão (XP e nível)
-
-| Regra | Detalhe |
-|-------|---------|
-| Níveis | 1 a **20** |
-| Subida | Automática quando a barra do nível atual enche |
-| Fórmula | XP para sair do nível `L`: `50 × L × (L + 1) / 2` |
-| Concessão | Apenas narrador (`award-xp` na mesa) |
-
-### Ficha por espécie
-
-| Espécie | Recursos (hub) | Foco da ficha |
-|---------|----------------|---------------|
-| Mortal / caçador | Vitalidade, mana, XP | Atributos, perícias, habilidades criadas, inventário |
-| Vampiro / cainita | Vitalidade, sangue, vontade, XP | Linhagem, disciplinas, trilha |
-| Outras espécies | Conforme perfil | Painéis modulares |
-
-## Deploy (resumo)
-
-Guia completo: **[`docs/DEPLOY.md`](docs/DEPLOY.md)**.
-
-| Opção | Front | API | `VITE_API_URL` (Vercel) |
-|-------|--------|-----|-------------------------|
-| **A (recomendada)** | Vercel, raiz do monorepo | `api/index.ts` na mesma URL | **vazio** |
-| **B** | Vercel (só SPA) | Render `beladona-api` | URL pública do Render (tipo **Config**, não Sensitive) |
-
-Também: migrações `supabase/migrations/` (GitHub Actions), monitor (`HEALTH_URL` / `SITE_URL`), Resend opcional só nas env da API.
-
-## Qualidade e contribuição
-
-Antes de abrir PR:
+### Execução com Docker e testes
 
 ```bash
-npm run test:ci
-npm run lint
-npm run build
+npm run docker:dev     # Ambiente local em containers (API :4000 + Vite :5173)
+npm run docker:prod    # Build de produção local com Nginx (:8080) e .env
+npm run test:ci        # Suíte completa (14 arquivos / 50 testes)
+npm run lint           # Type-check backend + Oxlint frontend
 ```
 
-1. Branch a partir da linha principal.
-2. Alinhe tipos entre `frontend/src/types` e contratos da API.
-3. Teste em pelo menos **mobile (~375px)** e **desktop (~1280px)** nas telas que alterou.
+---
 
-Testes: [`test/README.md`](test/README.md). Frontend: [`frontend/README.md`](frontend/README.md).
+## Documentação complementar
 
-## Licença e contato
+| Guia | Conteúdo |
+| :--- | :--- |
+| [`.env.example`](.env.example) | Modelo completo das variáveis de frontend, backend, papéis e e-mail |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Passo a passo de deploy na Vercel, Render, Supabase Auth e GitHub Secrets |
+| [`docs/BACKUP_RECOVERY.md`](docs/BACKUP_RECOVERY.md) | Rotina de backup criptografado (`AES-256-GCM`), restore e verificação |
+| [`infrastructure/README.md`](infrastructure/README.md) | Arquitetura de containers e opções de hospedagem |
+| [`test/README.md`](test/README.md) | Matriz de testes e contratos de segurança/durabilidade |
 
-Projeto de crônica / VTT — uso conforme combinado com a mesa Beladona. Materiais de terceiros permanecem com seus titulares.
+---
 
-Para suporte técnico, abra uma issue com erro do terminal, URL afetada e sistema operacional.
+## Autor & Licença
+
+Desenvolvido por **[Jamili Gabriela](https://github.com/Jamilinha29)** · **[Licença MIT](LICENSE)**
+
+> Projeto autoral de mesa virtual para a crônica **Beladona**. Marcas, regras e propriedades intelectuais de terceiros permanecem sob licença de seus respectivos titulares.
