@@ -8,15 +8,34 @@ on:
 jobs:
   encrypted-export:
     runs-on: ubuntu-latest
-    if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SECRET_KEY != '' && secrets.BELADONA_BACKUP_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check required backup secrets
+        id: gate
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BELADONA_BACKUP_KEY: ${{ secrets.BELADONA_BACKUP_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SECRET_KEY" ] && [ -n "$BELADONA_BACKUP_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Secrets de backup externo ainda não configurados — passo ignorado."
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+
+      - if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
       - name: Export encrypted backup
+        if: steps.gate.outputs.ready == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -24,7 +43,9 @@ jobs:
           BELADONA_EXTERNAL_BACKUP_TARGET: ${{ secrets.BELADONA_EXTERNAL_BACKUP_TARGET }}
           BELADONA_BACKUP_DIR: ${{ runner.temp }}/beladona-backups
         run: npm run backup:export
+
       - name: Upload encrypted backup artifact
+        if: steps.gate.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: beladona-encrypted-backup

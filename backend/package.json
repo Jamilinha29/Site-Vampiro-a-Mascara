@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "test": "vitest run --config ../test/vitest.config.ts --project backend",
     "test:watch": "vitest --config ../test/vitest.config.ts --project backend",
-    "lint": "eslint src --ext .ts"
+    "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

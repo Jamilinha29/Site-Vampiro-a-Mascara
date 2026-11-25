@@ -1,16 +1,17 @@
-name: Monitor
+name: Ops & Keepalive
 
+# Unifica monitoramento de saúde (Vercel) e keepalive do Supabase Free sem excesso de execuções.
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: beladona-monitor
+  group: beladona-ops
   cancel-in-progress: false
 
 jobs:
-  health:
+  health-and-keepalive:
     runs-on: ubuntu-latest
     steps:
       - name: API health
@@ -38,3 +39,18 @@ jobs:
           if [ -z "$SITE_URL" ]; then echo "SITE_URL não configurado — passo ignorado."; exit 0; fi
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$SITE_URL")
           test "$code" = "200"
+
+      - name: Supabase Free keepalive
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "SUPABASE_URL/SUPABASE_ANON_KEY não configurados — passo ignorado."
+            exit 0
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/")
+          test "$code" = "200" -o "$code" = "401" -o "$code" = "404"

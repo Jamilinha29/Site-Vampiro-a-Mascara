@@ -7,4 +7,6 @@ RUN npm ci
 COPY backend backend
 COPY frontend frontend
 COPY test test
+COPY docker/nginx.conf docker/nginx.conf
+COPY vercel.json ./
 CMD ["npm", "run", "test:ci"]
