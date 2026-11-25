@@ -1,5 +1,6 @@
-import { randomUUID } from 'crypto'
-import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
+import { createHash, randomUUID } from 'node:crypto'
+import { z } from 'zod'
+import { commitDocument, documentWeight, loadDocument, runExclusive } from './campaignDocuments.js'
 import {
   listEntities,
   listHandouts,
@@ -7,6 +8,8 @@ import {
   openSeats,
   replaceSessionBundle,
   seatedSessionIds,
+  type ScheduledSession,
+  type SessionHandout,
 } from './chronicleStore.js'
 import { listWalletSnapshot, replaceWalletMap } from './courtStore.js'
 import {
@@ -16,8 +19,14 @@ import {
   replaceProfiles,
   type UserProfile,
 } from './profileStore.js'
+import {
+  MAX_CHARACTER_LEVEL,
+  SECOND_SUBCLASS_CHOICE_LEVEL,
+} from './progressionRules.js'
 import { readRules, writeRules, type CampaignRules } from './rulesState.js'
-import type { ScheduledSession, SessionHandout } from './chronicleStore.js'
+import { recordOperationStrict } from './operationLog.js'
+import { ValidationError } from './errors.js'
+import { getSupabaseAdmin } from './supabaseClient.js'
 
 export type BoardCard = {
   id: string
@@ -45,33 +54,46 @@ type SavedFilter = {
   archiveRarity?: string
 }
 
+export type BackupMetadataEntry = {
+  id: string
+  createdAt: string
+  scope: string
+  schemaVersion: string
+  status: 'verified' | 'completed_unverified' | 'pending_external_destination' | 'failed'
+  recordCounts: Record<string, number>
+  checksumSha256: string
+  externalRef: string | null
+  verifiedAt: string | null
+  operatorEmail: string
+  notes: string | null
+}
+
 type BackupFile = {
+  schemaVersion?: string
+  exportedAt?: string
   profiles?: UserProfile[]
   sessions?: ScheduledSession[]
   handouts?: SessionHandout[]
   wallets?: ReturnType<typeof listWalletSnapshot>
 }
 
+const SCHEMA_VERSION = '2026-11-24'
 const board: BoardCard[] = []
 const secrets: TableSecret[] = []
 const filters = new Map<string, SavedFilter>()
+const backupMetadata: BackupMetadataEntry[] = []
 
-function rememberBoard() {
-  rememberDocument('campaign-board', board)
-}
-function rememberSecrets() {
-  rememberDocument('mesa-secrets', secrets)
-}
-function rememberFilters() {
-  rememberDocument('player-filters', Object.fromEntries(filters))
+function clone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T
 }
 
 export async function hydrateCampaignExtras() {
-  const [boardDoc, secretDoc, filterDoc, rulesDoc] = await Promise.all([
+  const [boardDoc, secretDoc, filterDoc, rulesDoc, backupMetaDoc] = await Promise.all([
     loadDocument<BoardCard[]>('campaign-board'),
     loadDocument<TableSecret[]>('mesa-secrets'),
     loadDocument<Record<string, SavedFilter>>('player-filters'),
     loadDocument<CampaignRules>('campaign-rules'),
+    loadDocument<BackupMetadataEntry[]>('backup-metadata'),
   ])
   if (boardDoc && documentWeight(boardDoc.body) > 0) {
     board.splice(0, board.length, ...boardDoc.body)
@@ -87,78 +109,151 @@ export async function hydrateCampaignExtras() {
     writeRules({
       ...readRules(),
       ...rulesDoc.body,
+      maxLevel: Math.min(MAX_CHARACTER_LEVEL, rulesDoc.body.maxLevel),
+      subclassLevel: Math.min(MAX_CHARACTER_LEVEL, rulesDoc.body.subclassLevel),
+      secondarySubclassLevel: Math.min(
+        MAX_CHARACTER_LEVEL,
+        rulesDoc.body.secondarySubclassLevel ?? SECOND_SUBCLASS_CHOICE_LEVEL,
+      ),
       startingXp: rulesDoc.body.startingXp ?? 0,
       shopBudgetCopper: rulesDoc.body.shopBudgetCopper ?? 0,
     })
   }
+  if (backupMetaDoc && documentWeight(backupMetaDoc.body) > 0) {
+    backupMetadata.splice(0, backupMetadata.length, ...backupMetaDoc.body.slice(-100))
+  }
+}
+
+export function resetCampaignExtrasForTests() {
+  board.length = 0
+  secrets.length = 0
+  filters.clear()
+  backupMetadata.length = 0
 }
 
 export function listBoard() {
   return [...board]
 }
 
-export function addBoardCard(card: Omit<BoardCard, 'id'>) {
-  const row = { ...card, id: randomUUID() }
-  board.unshift(row)
-  rememberBoard()
-  return row
+export async function addBoardCard(card: Omit<BoardCard, 'id'>) {
+  return runExclusive('store:board', async () => {
+    const row = { ...card, id: randomUUID() }
+    const backup = [...board]
+    board.unshift(row)
+    try {
+      await commitDocument('campaign-board', board)
+      return row
+    } catch (err) {
+      board.splice(0, board.length, ...backup)
+      throw err
+    }
+  })
 }
 
-export function removeBoardCard(id: string) {
-  const index = board.findIndex((card) => card.id === id)
-  if (index < 0) return false
-  board.splice(index, 1)
-  rememberBoard()
-  return true
+export async function removeBoardCard(id: string) {
+  return runExclusive('store:board', async () => {
+    const index = board.findIndex((card) => card.id === id)
+    if (index < 0) return false
+    const backup = [...board]
+    board.splice(index, 1)
+    try {
+      await commitDocument('campaign-board', board)
+      return true
+    } catch (err) {
+      board.splice(0, board.length, ...backup)
+      throw err
+    }
+  })
 }
 
-export function proposeRules(
-  next: Pick<CampaignRules, 'maxLevel' | 'subclassLevel' | 'startingXp' | 'shopBudgetCopper'>,
+export async function proposeRules(
+  next: Pick<CampaignRules, 'maxLevel' | 'subclassLevel' | 'startingXp' | 'shopBudgetCopper'> & {
+    secondarySubclassLevel?: number
+  },
   decision: 'keep-existing' | 'mark-review',
 ) {
-  const affected = charactersOutsideRules(next.maxLevel, next.subclassLevel)
-  const saved: CampaignRules = {
-    version: readRules().version + 1,
-    maxLevel: next.maxLevel,
-    subclassLevel: next.subclassLevel,
-    startingXp: Math.max(0, Math.floor(next.startingXp ?? readRules().startingXp ?? 0)),
-    shopBudgetCopper: Math.max(0, Math.floor(next.shopBudgetCopper ?? readRules().shopBudgetCopper ?? 0)),
-    updatedAt: new Date().toISOString(),
-  }
-  writeRules(saved)
-  rememberDocument('campaign-rules', saved)
-  if (decision === 'mark-review') {
-    for (const row of affected) {
-      noteRuleChange(row.email, row.characterId, `A regra mudou para a versão ${saved.version}. ${row.reason}`)
+  return runExclusive('store:rules', async () => {
+    const maxLevel = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, next.maxLevel))
+    const subclassLevel = Math.min(maxLevel, Math.max(1, next.subclassLevel))
+    const secondarySubclassLevel = Math.min(
+      maxLevel,
+      Math.max(subclassLevel, next.secondarySubclassLevel ?? SECOND_SUBCLASS_CHOICE_LEVEL),
+    )
+    const affected = charactersOutsideRules(maxLevel, subclassLevel, secondarySubclassLevel)
+    const prevRules = readRules()
+    const saved: CampaignRules = {
+      version: prevRules.version + 1,
+      maxLevel,
+      subclassLevel,
+      secondarySubclassLevel,
+      startingXp: Math.max(0, Math.floor(next.startingXp ?? prevRules.startingXp ?? 0)),
+      shopBudgetCopper: Math.max(0, Math.floor(next.shopBudgetCopper ?? prevRules.shopBudgetCopper ?? 0)),
+      updatedAt: new Date().toISOString(),
     }
-  }
-  return { rules: saved, decision, affected }
+    writeRules(saved)
+    try {
+      await commitDocument('campaign-rules', saved)
+    } catch (err) {
+      writeRules(prevRules)
+      throw err
+    }
+    if (decision === 'mark-review') {
+      for (const row of affected) {
+        await noteRuleChange(row.email, row.characterId, `A regra mudou para a versão ${saved.version}. ${row.reason}`)
+      }
+    }
+    return { rules: saved, decision, affected }
+  })
 }
 
 export function listSecrets(sessionId?: string) {
   return secrets.filter((row) => !sessionId || row.sessionId === sessionId)
 }
 
-export function addSecret(input: Omit<TableSecret, 'id' | 'createdAt'>) {
-  const row: TableSecret = { ...input, id: randomUUID(), createdAt: new Date().toISOString() }
-  secrets.unshift(row)
-  rememberSecrets()
-  return row
+export async function addSecret(input: Omit<TableSecret, 'id' | 'createdAt'>) {
+  return runExclusive('store:secrets', async () => {
+    const row: TableSecret = { ...input, id: randomUUID(), createdAt: new Date().toISOString() }
+    const backup = [...secrets]
+    secrets.unshift(row)
+    try {
+      await commitDocument('mesa-secrets', secrets)
+      return row
+    } catch (err) {
+      secrets.splice(0, secrets.length, ...backup)
+      throw err
+    }
+  })
 }
 
-export function removeSecret(id: string) {
-  const index = secrets.findIndex((row) => row.id === id)
-  if (index < 0) return false
-  secrets.splice(index, 1)
-  rememberSecrets()
-  return true
+export async function removeSecret(id: string) {
+  return runExclusive('store:secrets', async () => {
+    const index = secrets.findIndex((row) => row.id === id)
+    if (index < 0) return false
+    const backup = [...secrets]
+    secrets.splice(index, 1)
+    try {
+      await commitDocument('mesa-secrets', secrets)
+      return true
+    } catch (err) {
+      secrets.splice(0, secrets.length, ...backup)
+      throw err
+    }
+  })
 }
 
-export function forgetSecretsForSession(sessionId: string) {
-  const next = secrets.filter((row) => row.sessionId !== sessionId)
-  if (next.length === secrets.length) return
-  secrets.splice(0, secrets.length, ...next)
-  rememberSecrets()
+export async function forgetSecretsForSession(sessionId: string) {
+  return runExclusive('store:secrets', async () => {
+    const next = secrets.filter((row) => row.sessionId !== sessionId)
+    if (next.length === secrets.length) return
+    const backup = [...secrets]
+    secrets.splice(0, secrets.length, ...next)
+    try {
+      await commitDocument('mesa-secrets', secrets)
+    } catch (err) {
+      secrets.splice(0, secrets.length, ...backup)
+      throw err
+    }
+  })
 }
 
 export function withTableSecrets<T extends { id: string }>(rows: T[], email?: string) {
@@ -189,12 +284,21 @@ export function readSavedFilters(email: string) {
   return filters.get(email.trim().toLowerCase()) ?? {}
 }
 
-export function writeSavedFilters(email: string, patch: SavedFilter) {
-  const key = email.trim().toLowerCase()
-  const next = { ...filters.get(key), ...patch }
-  filters.set(key, next)
-  rememberFilters()
-  return next
+export async function writeSavedFilters(email: string, patch: SavedFilter) {
+  return runExclusive('store:filters', async () => {
+    const key = email.trim().toLowerCase()
+    const prev = filters.get(key)
+    const next = { ...prev, ...patch }
+    filters.set(key, next)
+    try {
+      await commitDocument('player-filters', Object.fromEntries(filters))
+      return next
+    } catch (err) {
+      if (prev) filters.set(key, prev)
+      else filters.delete(key)
+      throw err
+    }
+  })
 }
 
 export function collectStorageManifest() {
@@ -235,15 +339,92 @@ export function validateStorageManifest(paths: string[]) {
     reachable: ok.length,
     needsManualCheck: missing.length,
     missing,
-    note: 'URLs públicas e data URLs contam como referência. Arquivos no Storage exigem credencial no painel.',
+    note: 'URLs públicas e data URLs contam como referência. Arquivos privados no Storage exigem cópia externa separada.',
   }
 }
 
-export function drillBackup(file: BackupFile) {
+const backupProfileSchema = z.object({
+  email: z.string().email(),
+  displayName: z.string().min(1),
+  characters: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      species: z.string().min(1),
+      level: z.number().int().min(0).max(20),
+      hp: z.object({ current: z.number(), max: z.number() }),
+    }).passthrough(),
+  ),
+}).passthrough()
+
+const backupSessionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  scheduledAt: z.string().min(1),
+  status: z.enum(['scheduled', 'open', 'closed']).optional(),
+}).passthrough()
+
+const backupWalletSchema = z.object({
+  gold: z.number().int().min(0),
+  silver: z.number().int().min(0),
+  copper: z.number().int().min(0),
+})
+
+const backupPayloadSchema = z
+  .object({
+    schemaVersion: z.string().optional(),
+    exportedAt: z.string().optional(),
+    profiles: z.array(backupProfileSchema).optional(),
+    sessions: z.array(backupSessionSchema).optional(),
+    handouts: z.array(z.object({ id: z.string().min(1) }).passthrough()).optional(),
+    wallets: z.record(z.string(), backupWalletSchema).optional(),
+  })
+  .refine(
+    (obj) =>
+      Boolean(
+        obj.profiles !== undefined ||
+          obj.sessions !== undefined ||
+          obj.handouts !== undefined ||
+          obj.wallets !== undefined,
+      ),
+    { message: 'Arquivo de backup vazio ou sem seções reconhecidas.' },
+  )
+
+export function validateBackupPayload(raw: unknown): BackupFile {
+  const parsed = backupPayloadSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new ValidationError(
+      parsed.error.issues[0]?.message ?? 'Estrutura de backup inválida.',
+      parsed.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
+    )
+  }
+  const file = parsed.data as BackupFile
+  const seenEmails = new Set<string>()
+  const seenChars = new Set<string>()
+  for (const p of file.profiles ?? []) {
+    const email = p.email.trim().toLowerCase()
+    if (seenEmails.has(email)) throw new ValidationError(`E-mail duplicado no backup: ${email}`)
+    seenEmails.add(email)
+    for (const c of p.characters ?? []) {
+      if (seenChars.has(c.id)) throw new ValidationError(`ID de personagem duplicado no backup: ${c.id}`)
+      seenChars.add(c.id)
+    }
+  }
+  const seenSessions = new Set<string>()
+  for (const s of file.sessions ?? []) {
+    if (seenSessions.has(s.id)) throw new ValidationError(`ID de sessão duplicado no backup: ${s.id}`)
+    seenSessions.add(s.id)
+  }
+  return file
+}
+
+export function drillBackup(raw: unknown) {
+  const file = validateBackupPayload(raw)
   const profiles = file.profiles ?? []
   const characters = profiles.reduce((sum, profile) => sum + (profile.characters?.length ?? 0), 0)
   const items = profiles.reduce(
-    (sum, profile) => sum + profile.characters.reduce((inner, character) => inner + (character.inventory?.length ?? 0), 0),
+    (sum, profile) =>
+      sum + profile.characters.reduce((inner, character) => inner + (character.inventory?.length ?? 0), 0),
     0,
   )
   const wallets = Object.values(file.wallets ?? {})
@@ -253,6 +434,7 @@ export function drillBackup(file: BackupFile) {
   }, 0)
   return {
     wrote: false,
+    schemaVersion: file.schemaVersion ?? 'legacy',
     profiles: profiles.length,
     characters,
     inventoryItems: items,
@@ -264,30 +446,127 @@ export function drillBackup(file: BackupFile) {
     copper: wallets.reduce((sum, wallet) => sum + (wallet.copper ?? 0), 0),
     imageReferences: images,
     storageManifest: collectStorageManifest(),
-    storageNote: 'A cópia guarda o endereço da imagem. O arquivo em si continua no Storage.',
+    storageNote: 'A cópia guarda referências. Os arquivos binários do Storage devem ter cópia externa separada.',
   }
 }
 
-export function restoreBackup(file: BackupFile) {
-  const report = drillBackup(file)
-  if (file.profiles) replaceProfiles(file.profiles)
-  if (file.sessions) replaceSessionBundle(file.sessions, file.handouts)
-  if (file.wallets) replaceWalletMap(file.wallets)
-  return { ...report, wrote: true, current: campaignSnapshot() }
+export async function recordBackupMetadata(input: Omit<BackupMetadataEntry, 'id' | 'createdAt'>) {
+  return runExclusive('store:backup-meta', async () => {
+    const row: BackupMetadataEntry = {
+      ...input,
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+    }
+    const sb = getSupabaseAdmin()
+    if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+      const { error } = await sb.from('MetadadosBackup').insert({
+        id: row.id,
+        created_at: row.createdAt,
+        scope: row.scope,
+        schema_version: row.schemaVersion,
+        status: row.status,
+        record_counts: row.recordCounts,
+        checksum_sha256: row.checksumSha256,
+        external_ref: row.externalRef,
+        verified_at: row.verifiedAt,
+        operator_email: row.operatorEmail,
+        notes: row.notes,
+      })
+      if (error && !/MetadadosBackup|schema cache|does not exist/i.test(error.message)) {
+        console.warn('[backup] Falha ao gravar MetadadosBackup:', error.message)
+      }
+    }
+    const prev = [...backupMetadata]
+    backupMetadata.push(row)
+    if (backupMetadata.length > 100) backupMetadata.splice(0, backupMetadata.length - 100)
+    try {
+      await commitDocument('backup-metadata', backupMetadata)
+      return row
+    } catch (err) {
+      backupMetadata.splice(0, backupMetadata.length, ...prev)
+      throw err
+    }
+  })
 }
 
-export function campaignSnapshot() {
-  const profiles = listProfiles()
+export function listBackupMetadata() {
+  return [...backupMetadata].reverse()
+}
+
+/** Restaura backup com validação prévia, confirmação e rollback atômico (T19). */
+export async function restoreBackup(raw: unknown, operatorEmail = 'system') {
+  return runExclusive('store:restore', async () => {
+    const file = validateBackupPayload(raw)
+    const report = drillBackup(file)
+    const prevProfiles = clone(listProfiles())
+    const prevSessions = clone(listScheduledSessions())
+    const prevHandouts = clone(listHandouts(true))
+    const prevWallets = clone(listWalletSnapshot())
+
+    try {
+      if (file.profiles) await replaceProfiles(file.profiles)
+      if (file.sessions) await replaceSessionBundle(file.sessions, file.handouts)
+      if (file.wallets) await replaceWalletMap(file.wallets)
+
+      const checksum = createHash('sha256').update(JSON.stringify(file)).digest('hex')
+      await recordBackupMetadata({
+        scope: 'logical_restore',
+        schemaVersion: file.schemaVersion ?? SCHEMA_VERSION,
+        status: 'verified',
+        recordCounts: {
+          profiles: report.profiles,
+          characters: report.characters,
+          sessions: report.sessions,
+          wallets: report.wallets,
+        },
+        checksumSha256: checksum,
+        externalRef: null,
+        verifiedAt: new Date().toISOString(),
+        operatorEmail,
+        notes: 'Restauração lógica validada.',
+      })
+      await recordOperationStrict({
+        email: operatorEmail,
+        actorEmail: operatorEmail,
+        kind: 'restore',
+        summary: `Backup restaurado (${report.characters} fichas, ${report.sessions} mesas)`,
+      })
+      return { ...report, wrote: true, current: campaignSnapshot() }
+    } catch (err) {
+      await replaceProfiles(prevProfiles).catch(() => undefined)
+      await replaceSessionBundle(prevSessions, prevHandouts).catch(() => undefined)
+      await replaceWalletMap(prevWallets).catch(() => undefined)
+      throw err
+    }
+  })
+}
+
+export function campaignSnapshot(user?: { email: string; role: string }) {
+  const allProfiles = listProfiles()
+  const allSessions = listScheduledSessions()
+  const allHandouts = listHandouts(true)
+  const scopedSessions =
+    user && user.role !== 'admin'
+      ? allSessions.filter((s) => s.narratorEmail && s.narratorEmail.toLowerCase() === user.email.toLowerCase())
+      : allSessions
+  const scopedSessionIds = new Set(scopedSessions.map((s) => s.id))
+  const scopedHandouts =
+    user && user.role !== 'admin'
+      ? allHandouts.filter((h) => h.scheduledSessionId && scopedSessionIds.has(h.scheduledSessionId))
+      : allHandouts
+
   return {
+    schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     rules: readRules(),
     board: listBoard(),
-    profiles,
-    sessions: listScheduledSessions(),
-    handouts: listHandouts(true),
-    wallets: listWalletSnapshot(),
+    profiles: user && user.role !== 'admin' ? [] : allProfiles,
+    sessions: scopedSessions,
+    handouts: scopedHandouts,
+    wallets: user && user.role !== 'admin' ? {} : listWalletSnapshot(),
     storageManifest: collectStorageManifest(),
-    openSeats: listScheduledSessions()
+    backupHistory: listBackupMetadata().slice(0, 10),
+    openSeats: scopedSessions
       .filter((session) => session.status === 'open')
       .map((session) => ({ id: session.id, title: session.title, seats: openSeats(session.id).length })),
   }

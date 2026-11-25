@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type CoinCode } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
@@ -38,9 +38,23 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props)
     queryFn: () => api.getActiveWallet(),
   })
 
+  const buyOpRef = useRef<{ entityId: string; operationId: string } | null>(null)
+
   const buy = useMutation({
-    mutationFn: (entityId: string) => api.buyShopItem({ entityId, characterId, sessionId, quantity: 1 }),
+    mutationFn: (entityId: string) => {
+      if (!buyOpRef.current || buyOpRef.current.entityId !== entityId) {
+        buyOpRef.current = { entityId, operationId: crypto.randomUUID() }
+      }
+      return api.buyShopItem({
+        entityId,
+        characterId,
+        sessionId,
+        quantity: 1,
+        operationId: buyOpRef.current.operationId,
+      })
+    },
     onSuccess: (res) => {
+      buyOpRef.current = null
       push(`${res.itemName} comprado no ferreiro.`, 'success')
       void qc.invalidateQueries({ queryKey: ['wallet', 'active'] })
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })

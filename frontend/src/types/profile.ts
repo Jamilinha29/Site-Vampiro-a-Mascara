@@ -1,5 +1,6 @@
 export type UserProfile = {
   userId: string
+  publicId?: string
   email: string
   displayName: string
   handle: string
@@ -106,6 +107,9 @@ export type ProfileCharacterSummary = {
   will?: { current: number; max: number }
   xp?: { current: number; toNext: number }
   subclass?: string | null
+  secondarySubclass?: string | null
+  needsRuleReview?: boolean
+  ruleReviewNote?: string | null
   approval?: 'draft' | 'submitted' | 'changes' | 'approved'
   reviewNote?: string | null
   effects?: Array<{ id: string; name: string; remainingTurns: number | null; endsAt: string | null }>

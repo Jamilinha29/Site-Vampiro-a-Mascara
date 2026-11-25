@@ -19,6 +19,8 @@ jobs:
         run: npm run verify:git
       - run: npm run lint
       - run: npm run build -w backend && npm run build
+      - name: Verificar ausência de segredos no bundle frontend
+        run: npm run verify:bundle
       - run: npm run test:ci
       - name: npm audit (produção, sem --force)
         run: npm audit --omit=dev --audit-level=high

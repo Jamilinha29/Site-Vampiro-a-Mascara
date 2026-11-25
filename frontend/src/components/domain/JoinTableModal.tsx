@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/api'
@@ -11,8 +11,19 @@ type Props = {
 
 export function JoinTableModal({ open, onClose }: Props) {
   const [code, setCode] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const { push } = useToast()
+
+  useEffect(() => {
+    if (!open) return
+    inputRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   const join = useMutation({
     mutationFn: (roomCode: string) => api.joinSessionByCode(roomCode),
@@ -34,8 +45,9 @@ export function JoinTableModal({ open, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="join-table-title"
+      onClick={onClose}
     >
-      <div className="card-surface w-full max-w-md p-6">
+      <div className="card-surface w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 id="join-table-title" className="font-headline-sm text-lg text-secondary">
@@ -53,6 +65,7 @@ export function JoinTableModal({ open, onClose }: Props) {
           Código da sala
         </label>
         <input
+          ref={inputRef}
           id="room-code"
           className="input-feudal mt-1 pl-4"
           placeholder="Ex: VTM-1204-CONST"

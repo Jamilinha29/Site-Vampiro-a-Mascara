@@ -87,13 +87,21 @@ export default function ShopPage() {
     enabled: !!selected,
   })
 
+  const opRef = useRef<{ entityId: string; operationId: string } | null>(null)
+
   const buy = useMutation({
-    mutationFn: () =>
-      api.buyShopItem({
+    mutationFn: () => {
+      if (!opRef.current || opRef.current.entityId !== selected!.id) {
+        opRef.current = { entityId: selected!.id, operationId: crypto.randomUUID() }
+      }
+      return api.buyShopItem({
         entityId: selected!.id,
         quantity: 1,
-      }),
+        operationId: opRef.current.operationId,
+      })
+    },
     onSuccess: (res) => {
+      opRef.current = null
       push(`${res.itemName} entrou no inventário.`, 'success')
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       void qc.invalidateQueries({ queryKey: ['shop-stock'] })
@@ -102,9 +110,10 @@ export default function ShopPage() {
     onError: (e: Error) => push(e.message, 'error'),
   })
 
-  const costSilver = (selected?.priceSilver ?? 0) + (selected?.priceGold ?? 0) * 10
-  const balanceSilver = (wallet?.silver ?? 0) + (wallet?.gold ?? 0) * 10
-  const remaining = balanceSilver - costSilver
+  const costCopper = (selected?.priceGold ?? 0) * 100 + (selected?.priceSilver ?? 0) * 10 + (selected?.priceCopper ?? 0)
+  const balanceCopper = (wallet?.gold ?? 0) * 100 + (wallet?.silver ?? 0) * 10 + (wallet?.copper ?? 0)
+  const costSilver = Math.ceil(costCopper / 10)
+  const remaining = Math.floor((balanceCopper - costCopper) / 10)
   const soldOut =
     (stock?.remaining != null && stock.remaining <= 0) ||
     (selected != null &&

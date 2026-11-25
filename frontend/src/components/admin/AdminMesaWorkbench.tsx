@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ChronicleAmbience, ScheduledSession } from '../../types/chronicle'
 import { useMesaHandout } from '../../hooks/useMesaHandout'
 import { useAuthStore } from '../../stores/authStore'
@@ -41,12 +41,32 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
   const narrator = useAuthStore((s) => s.session?.displayName ?? 'Mestre')
   const mesa = useMesaHandout(session.id)
   const [round, setRound] = useState(1)
+  const [activeTurnIdx, setActiveTurnIdx] = useState(0)
   const [audit, setAudit] = useState<string[]>([])
   const [whisper, setWhisper] = useState('')
+  const whisperSyncRef = useRef<string | null>(null)
   const [grantParticipant, setGrantParticipant] = useState('')
   const [grantXp, setGrantXp] = useState(10)
+  const xpOpRef = useRef<string | null>(null)
   const [editTableMeta, setEditTableMeta] = useState(false)
   const [tableMetaDraft, setTableMetaDraft] = useState<SessionTableMeta>(() => resolveSessionTableMeta(session))
+
+  const sessionActions = useQuery({
+    queryKey: ['admin-session-actions', session.id],
+    queryFn: () => api.adminGetSessionActions(session.id),
+    refetchInterval: 4000,
+  })
+
+  useEffect(() => {
+    if (mesa.handout?.narratorWhisper !== undefined && whisperSyncRef.current !== session.id) {
+      setWhisper(mesa.handout.narratorWhisper ?? '')
+      whisperSyncRef.current = session.id
+    }
+  }, [mesa.handout?.narratorWhisper, session.id])
+
+  useEffect(() => {
+    xpOpRef.current = null
+  }, [session.id, grantParticipant, grantXp])
 
   useEffect(() => {
     if (audit.length === 0) {
@@ -69,6 +89,22 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
     mutationFn: (patch: Partial<ChronicleAmbience>) => api.adminPatchMesaAmbience(session.id, patch),
     onSuccess: (handout) => {
       qc.setQueryData(adminQueryKeys.mesaHandout(session.id), handout)
+    },
+  })
+
+  const whisperMutation = useMutation({
+    mutationFn: (text: string) => api.adminPatchMesaWhisper(session.id, text),
+    onSuccess: (handout) => {
+      qc.setQueryData(adminQueryKeys.mesaHandout(session.id), handout)
+      setAudit((prev) => [`${new Date().toLocaleTimeString('pt-BR')} — Sussurro do narrador salvo`, ...prev].slice(0, 20))
+    },
+  })
+
+  const rotateCodeMutation = useMutation({
+    mutationFn: () => api.adminRotateSessionCode(session.id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      setAudit((prev) => [`${new Date().toLocaleTimeString('pt-BR')} — Código de acesso rotacionado`, ...prev].slice(0, 20))
     },
   })
 
@@ -152,13 +188,16 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
   function grantXpToParticipant() {
     if (!grantParticipant) return
     const amount = Math.min(250, Math.max(1, Math.round(grantXp)))
+    xpOpRef.current ??= crypto.randomUUID()
     void api
       .adminAwardCharacterXp({
         sessionId: session.id,
         participantDisplayName: grantParticipant,
         amount,
+        operationId: xpOpRef.current,
       })
       .then(() => {
+        xpOpRef.current = null
         logAudit(`Concedido +${amount} XP para ${grantParticipant} (aplicado na ficha)`)
         void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaHandout(session.id) })
       })
@@ -181,10 +220,20 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
               Narrador · <span className="text-secondary">{narrator}</span>
             </p>
             {session.accessCode ? (
-              <p className="mt-1 text-sm text-on-surface-variant">
-                Código da mesa ·{' '}
-                <span className="font-semibold tracking-widest text-secondary">{session.accessCode}</span>
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-on-surface-variant">
+                <span>
+                  Código da mesa ·{' '}
+                  <span className="font-semibold tracking-widest text-secondary">{session.accessCode}</span>
+                </span>
+                <button
+                  type="button"
+                  className="btn-secondary px-2 py-0.5 text-[10px]"
+                  disabled={rotateCodeMutation.isPending}
+                  onClick={() => rotateCodeMutation.mutate()}
+                >
+                  {rotateCodeMutation.isPending ? 'Girando…' : 'Girar código'}
+                </button>
+              </div>
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -301,36 +350,66 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <section className="mesa-panel flex h-full flex-col p-4 sm:p-6">
-          <label className="flex min-h-0 flex-1 flex-col rounded border border-secondary/40 bg-secondary/5 p-3 text-xs">
-            <span className="font-semibold text-secondary uppercase">Sussurro do narrador</span>
+          <div className="flex min-h-0 flex-1 flex-col rounded border border-secondary/40 bg-secondary/5 p-3 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-secondary uppercase">Sussurro do narrador</span>
+              <button
+                type="button"
+                className="btn-secondary text-[10px]"
+                disabled={whisperMutation.isPending}
+                onClick={() => whisperMutation.mutate(whisper)}
+              >
+                {whisperMutation.isPending ? 'Salvando…' : 'Salvar notas'}
+              </button>
+            </div>
             <textarea
               className="input-feudal mt-2 min-h-[8rem] flex-1 w-full pl-3 text-sm normal-case lg:min-h-[10rem]"
               placeholder="Notas secretas, corrupção interna, gatilhos…"
               value={whisper}
               onChange={(e) => setWhisper(e.target.value)}
             />
-          </label>
+          </div>
         </section>
 
         <section className="mesa-panel flex h-full flex-col p-4 sm:p-5">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Iniciativa & ordem de turnos</h2>
           <p className="mt-1 text-xs text-on-surface-variant">
-            Rodada {round} · arraste mental: personagens e NPCs colocados em cena.
+            Rodada {round} · personagens e ameaças colocados em cena.
           </p>
           <div className="mt-4 flex min-h-[8rem] flex-1 gap-3 overflow-x-auto pb-2 lg:min-h-[10rem]">
             {handout.participants.map((p, i) => (
-              <InitiativeCard key={p.characterName} order={i + 1} name={p.characterName} subtitle={p.displayName} active={i === 0} />
-            ))}
-            {threats.map((t, i) => (
               <InitiativeCard
-                key={t.id}
-                order={handout.participants.length + i + 1}
-                name={t.name}
-                subtitle="Monstro"
-                hp={t.hpCurrent}
-                hpMax={t.hpMax}
+                key={p.characterName}
+                order={i + 1}
+                name={p.characterName}
+                subtitle={p.displayName}
+                active={activeTurnIdx === i}
+                onAdvance={() => {
+                  const total = Math.max(1, handout.participants.length + threats.length)
+                  setActiveTurnIdx((i + 1) % total)
+                  logAudit(`Turno passado por ${p.characterName}`)
+                }}
               />
             ))}
+            {threats.map((t, i) => {
+              const idx = handout.participants.length + i
+              return (
+                <InitiativeCard
+                  key={t.id}
+                  order={idx + 1}
+                  name={t.name}
+                  subtitle="Monstro"
+                  hp={t.hpCurrent}
+                  hpMax={t.hpMax}
+                  active={activeTurnIdx === idx}
+                  onAdvance={() => {
+                    const total = Math.max(1, handout.participants.length + threats.length)
+                    setActiveTurnIdx((idx + 1) % total)
+                    logAudit(`Turno passado por ${t.name}`)
+                  }}
+                />
+              )
+            })}
             {handout.participants.length === 0 && threats.length === 0 ? (
               <p className="text-sm text-on-surface-variant">Adicione jogadores ao registro e ameaças na mesa.</p>
             ) : null}
@@ -486,7 +565,9 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
               type="button"
               className="btn-primary text-xs"
               onClick={() => {
+                void api.adminAdvanceTurn(session.id).catch(() => {})
                 setRound((r) => r + 1)
+                setActiveTurnIdx(0)
                 logAudit(`Rodada ${round + 1} iniciada`)
               }}
             >
@@ -509,11 +590,43 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
       <section className="mesa-panel p-4 sm:p-5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Auditoria da crônica</h2>
-          <button type="button" className="btn-secondary text-xs" onClick={() => logAudit('Exportação de turno (em breve)')}>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => {
+              const actions = (sessionActions.data ?? []).map(
+                (a) => `- [${new Date(a.createdAt).toLocaleTimeString('pt-BR')}] ${a.actorName}: ${a.summary}`,
+              )
+              const report = [
+                `Crônica: ${chronicle}`,
+                `Rodada atual: ${round}`,
+                `Data da exportação: ${new Date().toLocaleString('pt-BR')}`,
+                '',
+                '--- Ações da mesa ---',
+                ...(actions.length ? actions : ['Sem ações persistidas ainda.']),
+                '',
+                '--- Log do narrador ---',
+                ...audit,
+              ].join('\n')
+              const blob = new Blob([report], { type: 'text/plain;charset=utf-8' })
+              const url = URL.createObjectURL(blob)
+              const link = document.createElement('a')
+              link.href = url
+              link.download = `mesa-${session.id}-rodada-${round}.txt`
+              link.click()
+              URL.revokeObjectURL(url)
+              logAudit(`Turno da rodada ${round} exportado`)
+            }}
+          >
             Exportar turno
           </button>
         </div>
         <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto text-xs text-on-surface-variant">
+          {(sessionActions.data ?? []).map((act) => (
+            <li key={act.id} className="text-on-surface">
+              {new Date(act.createdAt).toLocaleTimeString('pt-BR')} — {act.actorName}: {act.summary}
+            </li>
+          ))}
           {audit.map((line, i) => (
             <li key={`${line}-${i}`}>{line}</li>
           ))}
@@ -540,6 +653,7 @@ function InitiativeCard({
   active,
   hp,
   hpMax,
+  onAdvance,
 }: {
   order: number
   name: string
@@ -547,6 +661,7 @@ function InitiativeCard({
   active?: boolean
   hp?: number
   hpMax?: number
+  onAdvance?: () => void
 }) {
   return (
     <div
@@ -562,7 +677,7 @@ function InitiativeCard({
           <StatBar label="HP" current={hp} max={hpMax} />
         </div>
       ) : null}
-      <button type="button" className="btn-secondary mt-2 w-full text-[10px]">
+      <button type="button" className="btn-secondary mt-2 w-full text-[10px]" onClick={onAdvance}>
         Passar vez
       </button>
     </div>

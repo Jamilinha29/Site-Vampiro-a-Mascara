@@ -1,57 +1,16 @@
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { z } from 'zod'
-import { catalogImageFolder, catalogImageIsPrivate, storeCatalogImage, withReadableImages } from '../../services/mediaStorage.js'
 import { requireUser } from '../../middlewares/optionalUser.js'
-import { requireNarrator } from '../../middlewares/requireNarrator.js'
-import {
-  createEntity,
-  hydrateEntitiesFromDatabase,
-  refreshEntitiesFromDatabase,
-  createHandout,
-  deleteEntity,
-  getEntity,
-  getHandout,
-  listEntities,
-  listHandouts,
-  publishEntity,
-  updateEntity,
-  updateHandout,
-  listScheduledSessions,
-  createScheduledSession,
-  updateScheduledSession,
-  deleteScheduledSession,
-  rescheduleSameTable,
-  getScheduledSession,
-  openScheduledSession,
-  closeScheduledSession,
-  sessionActivityLineSeries,
-  adminMesaActivityStats,
-  ensureHandoutForScheduledSession,
-  patchMesaHandoutNarrative,
-  addSceneThreat,
-  applySceneThreatDelta,
-  removeSceneThreat,
-  addSceneNpc,
-  removeSceneNpc,
-  patchMesaAmbience,
-  setMesaRestMode,
-  listSceneThreatsForSession,
-} from '../../services/chronicleStore.js'
-import {
-  adminPlayerCharactersByUser,
-  applyCharacterXp,
-  listProfiles,
-  listRegisteredPlayers,
-  reviewCharacter,
-  advanceTurnEffects,
-} from '../../services/profileStore.js'
+import { requireAdmin, requireNarrator } from '../../middlewares/requireNarrator.js'
 import {
   addBoardCard,
   addSecret,
   campaignSnapshot,
   collectStorageManifest,
   drillBackup,
+  forgetSecretsForSession,
+  listBackupMetadata,
   listBoard,
   listSecrets,
   proposeRules,
@@ -59,14 +18,95 @@ import {
   removeSecret,
   restoreBackup,
   validateStorageManifest,
-  forgetSecretsForSession,
 } from '../../services/campaignExtras.js'
+import {
+  addSceneNpc,
+  addSceneThreat,
+  adminMesaActivityStats,
+  applySceneThreatDelta,
+  closeScheduledSession,
+  createEntity,
+  createHandout,
+  createScheduledSession,
+  deleteEntity,
+  deleteScheduledSession,
+  ensureHandoutForScheduledSession,
+  getEntity,
+  getHandout,
+  getScheduledSession,
+  hydrateEntitiesFromDatabase,
+  listEntities,
+  listHandouts,
+  listScheduledSessionsForManager,
+  listSessionActions,
+  openScheduledSession,
+  openSeats,
+  patchMesaAmbience,
+  patchMesaHandoutNarrative,
+  patchMesaHandoutWhisper,
+  publishEntity,
+  refreshEntitiesFromDatabase,
+  removeSceneNpc,
+  removeSceneThreat,
+  requireSessionManager,
+  rescheduleSameTable,
+  rotateSessionAccessCode,
+  sessionActivityLineSeries,
+  setMesaRestMode,
+  sharesAnyManagedSession,
+  syncSessionsIfStale,
+  toNarratorSessionDTO,
+  updateEntity,
+  updateHandout,
+  updateScheduledSession,
+} from '../../services/chronicleStore.js'
+import { areFriends } from '../../services/courtStore.js'
+import { errorPayload } from '../../services/errors.js'
+import { runIdempotent } from '../../services/idempotencyStore.js'
+import {
+  catalogImageFolder,
+  catalogImageIsPrivate,
+  storeCatalogDownloadFile,
+  storeCatalogImage,
+  withReadableImages,
+} from '../../services/mediaStorage.js'
 import { listOperationsForSession } from '../../services/operationLog.js'
+import {
+  MAX_CHARACTER_LEVEL,
+  adminPlayerCharactersByUser,
+  advanceTurnEffects,
+  applyCharacterXp,
+  listCharacterRevisions,
+  listProfiles,
+  listRegisteredPlayers,
+  publicPlayerId,
+  restoreCharacterRevision,
+  reviewCharacter,
+  syncProfilesIfStale,
+} from '../../services/profileStore.js'
 import { forgetRollsForSession } from '../../services/sessionRolls.js'
-import { openSeats } from '../../services/chronicleStore.js'
 
 export const adminChronicleRouter = Router()
 adminChronicleRouter.use(requireUser, requireNarrator)
+adminChronicleRouter.use((_req, _res, next) => {
+  void Promise.all([syncSessionsIfStale(), syncProfilesIfStale()])
+    .then(() => next())
+    .catch(() => next())
+})
+
+function canManageEntity(entity: { narratorScope?: string | null }, user: { email: string; role: string }) {
+  if (user.role === 'admin') return true
+  if (!entity.narratorScope) return true
+  return entity.narratorScope.trim().toLowerCase() === user.email.trim().toLowerCase()
+}
+
+function canInspectPlayer(narrator: { email: string; role: string }, playerEmail: string) {
+  if (narrator.role === 'admin') return true
+  return (
+    sharesAnyManagedSession(narrator.email, playerEmail) ||
+    areFriends(narrator.email, playerEmail)
+  )
+}
 
 const attributeModSchema = z.object({
   attr: z.string().min(1).max(40),
@@ -139,12 +179,21 @@ function mapImportRow(row: unknown, fieldMap?: Record<string, string>) {
   return out
 }
 
-adminChronicleRouter.get('/entities', async (req, res) => {
-  await refreshEntitiesFromDatabase()
-  const kind = req.query.kind as string | undefined
-  const parsed = z.enum(['npc', 'monster', 'equipment', 'consumable', 'archive', 'download']).optional().safeParse(kind)
-  const rows = listEntities(parsed.success ? { kind: parsed.data } : undefined)
-  res.json(await withReadableImages(rows))
+adminChronicleRouter.get('/entities', async (req, res, next) => {
+  try {
+    await refreshEntitiesFromDatabase()
+    const kind = req.query.kind as string | undefined
+    const parsed = z
+      .enum(['npc', 'monster', 'equipment', 'consumable', 'archive', 'download'])
+      .optional()
+      .safeParse(kind)
+    const rows = listEntities(parsed.success ? { kind: parsed.data } : undefined).filter((row) =>
+      canManageEntity(row, req.user!),
+    )
+    res.json(await withReadableImages(rows))
+  } catch (e) {
+    next(e)
+  }
 })
 
 adminChronicleRouter.post('/entities', async (req, res, next) => {
@@ -157,7 +206,21 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
       body.imageUrl,
       catalogImageIsPrivate(body) ? 'private' : 'public',
     )
-    res.status(201).json(await createEntity({ ...body, id, imageUrl, visibility: 'draft' }))
+    const fileUrl =
+      body.kind === 'download' && body.fileUrl
+        ? await storeCatalogDownloadFile(id, body.fileUrl, body.fileName)
+        : body.fileUrl
+    const narratorScope =
+      req.user!.role === 'admin' ? (body.narratorScope ?? null) : req.user!.email.toLowerCase()
+    const created = await createEntity({
+      ...body,
+      id,
+      imageUrl,
+      fileUrl,
+      narratorScope,
+      visibility: 'draft',
+    })
+    res.status(201).json((await withReadableImages([created]))[0])
   } catch (e) {
     next(e)
   }
@@ -217,9 +280,9 @@ adminChronicleRouter.post('/entities/import', async (req, res, next) => {
     }
     if (rejected.length) {
       res.status(400).json({
-        error: {
-          message: 'Há linhas inválidas na importação. Use ?preview=1 antes de confirmar.',
-        },
+        ...errorPayload('VALIDATION_ERROR', 'Há linhas inválidas na importação. Use ?preview=1 antes de confirmar.', {
+          requestId: req.requestId,
+        }),
         rejected,
       })
       return
@@ -234,7 +297,9 @@ adminChronicleRouter.post('/entities/import', async (req, res, next) => {
         continue
       }
       names.add(key)
-      created.push(await createEntity({ ...row, visibility: 'draft' }))
+      const narratorScope =
+        req.user!.role === 'admin' ? (row.narratorScope ?? null) : req.user!.email.toLowerCase()
+      created.push(await createEntity({ ...row, narratorScope, visibility: 'draft' }))
     }
     res.status(201).json({ imported: created.length, skipped, items: created })
   } catch (e) {
@@ -256,10 +321,14 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
     const body = entitySchema.partial().parse(req.body)
     const current = getEntity(req.params.id)
     if (!current) {
-      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
-    const patch = { ...body }
+    if (!canManageEntity(current, req.user!)) {
+      res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão para alterar este item.', { requestId: req.requestId }))
+      return
+    }
+    const patch: Partial<Omit<typeof current, 'id' | 'createdAt'>> = { ...body }
     if (body.imageUrl !== undefined) {
       const nextKind = { ...current, ...body }
       patch.imageUrl = await storeCatalogImage(
@@ -269,12 +338,15 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
         catalogImageIsPrivate(nextKind) ? 'private' : 'public',
       )
     }
+    if (body.fileUrl !== undefined && (body.kind ?? current.kind) === 'download') {
+      patch.fileUrl = await storeCatalogDownloadFile(current.id, body.fileUrl, body.fileName ?? current.fileName)
+    }
     const updated = await updateEntity(req.params.id, patch)
     if (!updated) {
-      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
-    res.json(updated)
+    res.json((await withReadableImages([updated]))[0])
   } catch (e) {
     next(e)
   }
@@ -282,12 +354,21 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
 
 adminChronicleRouter.post('/entities/:id/publish', async (req, res, next) => {
   try {
-    const updated = await publishEntity(req.params.id)
-    if (!updated) {
-      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+    const current = getEntity(req.params.id)
+    if (!current) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
-    res.json(updated)
+    if (!canManageEntity(current, req.user!)) {
+      res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão para publicar este item.', { requestId: req.requestId }))
+      return
+    }
+    const updated = await publishEntity(req.params.id)
+    if (!updated) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
+      return
+    }
+    res.json((await withReadableImages([updated]))[0])
   } catch (e) {
     next(e)
   }
@@ -295,8 +376,13 @@ adminChronicleRouter.post('/entities/:id/publish', async (req, res, next) => {
 
 adminChronicleRouter.delete('/entities/:id', async (req, res, next) => {
   try {
-    if (!getEntity(req.params.id)) {
-      res.status(404).json({ error: { message: 'Registro não encontrado' } })
+    const current = getEntity(req.params.id)
+    if (!current) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
+      return
+    }
+    if (!canManageEntity(current, req.user!)) {
+      res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão para excluir este item.', { requestId: req.requestId }))
       return
     }
     await deleteEntity(req.params.id)
@@ -347,27 +433,49 @@ const handoutSchema = z.object({
     .default([]),
 })
 
-adminChronicleRouter.get('/handouts', (_req, res) => {
-  res.json(listHandouts(true))
+adminChronicleRouter.get('/handouts', (req, res) => {
+  const rows = listHandouts(true).filter((h) => {
+    if (req.user!.role === 'admin') return true
+    if (!h.scheduledSessionId) return !h.narratorEmail || h.narratorEmail === req.user!.email.toLowerCase()
+    const sess = getScheduledSession(h.scheduledSessionId)
+    return sess ? sess.narratorEmail?.toLowerCase() === req.user!.email.toLowerCase() : false
+  })
+  res.json(rows)
 })
 
-adminChronicleRouter.post('/handouts', (req, res, next) => {
+adminChronicleRouter.post('/handouts', async (req, res, next) => {
   try {
     const body = handoutSchema.parse(req.body)
-    res.status(201).json(createHandout(body))
+    res.status(201).json(await createHandout({ ...body, narratorEmail: req.user!.email }))
   } catch (e) {
     next(e)
   }
 })
 
-adminChronicleRouter.patch('/handouts/:id', (req, res, next) => {
+adminChronicleRouter.patch('/handouts/:id', async (req, res, next) => {
   try {
+    const existing = getHandout(req.params.id)
+    if (!existing) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Handout não encontrado', { requestId: req.requestId }))
+      return
+    }
+    if (existing.scheduledSessionId) {
+      requireSessionManager(existing.scheduledSessionId, req.user!)
+    } else if (
+      req.user!.role !== 'admin' &&
+      existing.narratorEmail &&
+      existing.narratorEmail.toLowerCase() !== req.user!.email.toLowerCase()
+    ) {
+      res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão neste handout.', { requestId: req.requestId }))
+      return
+    }
     const patch = handoutSchema
       .partial()
       .extend({
         status: z.enum(['pending_close', 'closed']).optional(),
         publishedToPlayers: z.boolean().optional(),
         restMode: z.boolean().optional(),
+        narratorWhisper: z.string().max(4000).optional(),
         chronicleAmbience: z
           .object({
             environment: z.string(),
@@ -378,9 +486,9 @@ adminChronicleRouter.patch('/handouts/:id', (req, res, next) => {
           .optional(),
       })
       .parse(req.body)
-    const updated = updateHandout(req.params.id, patch)
+    const updated = await updateHandout(req.params.id, patch)
     if (!updated) {
-      res.status(404).json({ error: { message: 'Handout não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Handout não encontrado', { requestId: req.requestId }))
       return
     }
     res.json(updated)
@@ -392,14 +500,17 @@ adminChronicleRouter.patch('/handouts/:id', (req, res, next) => {
 adminChronicleRouter.get('/handouts/:id', (req, res) => {
   const row = getHandout(req.params.id)
   if (!row) {
-    res.status(404).json({ error: { message: 'Handout não encontrado' } })
+    res.status(404).json(errorPayload('NOT_FOUND', 'Handout não encontrado', { requestId: req.requestId }))
     return
+  }
+  if (row.scheduledSessionId) {
+    requireSessionManager(row.scheduledSessionId, req.user!)
   }
   res.json(row)
 })
 
-adminChronicleRouter.get('/scheduled-sessions', (_req, res) => {
-  res.json(listScheduledSessions())
+adminChronicleRouter.get('/scheduled-sessions', (req, res) => {
+  res.json(listScheduledSessionsForManager(req.user!).map(toNarratorSessionDTO))
 })
 
 const sessionTableMetaSchema = z.object({
@@ -429,7 +540,7 @@ const patchScheduledSchema = z.object({
   listing: z.enum(['public', 'private']).optional(),
 })
 
-adminChronicleRouter.post('/scheduled-sessions', (req, res, next) => {
+adminChronicleRouter.post('/scheduled-sessions', async (req, res, next) => {
   try {
     const body = scheduledSchema.parse(req.body)
     const tableMeta = body.tableMeta
@@ -445,29 +556,24 @@ adminChronicleRouter.post('/scheduled-sessions', (req, res, next) => {
           sessionOrdinal: body.tableMeta.sessionOrdinal,
         }
       : undefined
-    res.status(201).json(
-      createScheduledSession({
-        title: body.title,
-        scheduledAt: body.scheduledAt,
-        chronicleName: body.chronicleName,
-        tableMeta,
-        narratorEmail: req.user!.email,
-        listing: body.listing,
-      }),
-    )
+    const created = await createScheduledSession({
+      title: body.title,
+      scheduledAt: body.scheduledAt,
+      chronicleName: body.chronicleName,
+      tableMeta,
+      narratorEmail: req.user!.email,
+      listing: body.listing,
+    })
+    res.status(201).json(toNarratorSessionDTO(created))
   } catch (e) {
     next(e)
   }
 })
 
-adminChronicleRouter.patch('/scheduled-sessions/:sessionId', (req, res, next) => {
+adminChronicleRouter.patch('/scheduled-sessions/:sessionId', async (req, res, next) => {
   try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const body = patchScheduledSchema.parse(req.body)
-    const row = getScheduledSession(req.params.sessionId)
-    if (!row) {
-      res.status(404).json({ error: { message: 'Mesa não encontrada' } })
-      return
-    }
     const tableMeta = body.tableMeta
       ? {
           rpgTitle: body.tableMeta.rpgTitle,
@@ -481,91 +587,138 @@ adminChronicleRouter.patch('/scheduled-sessions/:sessionId', (req, res, next) =>
           sessionOrdinal: body.tableMeta.sessionOrdinal,
         }
       : undefined
-    const nextRow = updateScheduledSession(req.params.sessionId, {
+    const nextRow = await updateScheduledSession(req.params.sessionId, {
       ...body,
       tableMeta,
     })
-    res.json(nextRow)
+    res.json(nextRow ? toNarratorSessionDTO(nextRow) : null)
   } catch (e) {
     next(e)
   }
 })
 
-adminChronicleRouter.delete('/scheduled-sessions/:sessionId', (req, res) => {
-  const result = deleteScheduledSession(req.params.sessionId, req.user!.email)
-  if (!result.ok) {
-    if (result.reason === 'open') {
-      res.status(409).json({
-        error: { message: 'Encerre a mesa ao vivo antes de excluí-la.' },
-      })
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/rotate-code', async (req, res, next) => {
+  try {
+    const updated = await rotateSessionAccessCode(req.params.sessionId, req.user!)
+    if (!updated) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId: req.requestId }))
       return
     }
-    res.status(result.reason === 'forbidden' ? 403 : 404).json({
-      error: { message: result.reason === 'forbidden' ? 'Sem permissão nesta mesa' : 'Mesa não encontrada' },
-    })
-    return
+    res.json({ accessCode: updated.accessCode, session: toNarratorSessionDTO(updated) })
+  } catch (e) {
+    next(e)
   }
-  forgetSecretsForSession(req.params.sessionId)
-  forgetRollsForSession(req.params.sessionId)
-  res.status(204).end()
 })
 
-adminChronicleRouter.post('/scheduled-sessions/:sessionId/reschedule', (req, res) => {
-  const result = rescheduleSameTable(req.params.sessionId, req.user!.email)
-  if (!result.ok) {
-    const message =
-      result.reason === 'forbidden'
-        ? 'Sem permissão nesta mesa'
-        : result.reason === 'not_closed'
-          ? 'Só uma mesa encerrada pode ser remarcada.'
-          : 'Mesa não encontrada'
-    res.status(result.reason === 'forbidden' ? 403 : result.reason === 'not_closed' ? 409 : 404).json({ error: { message } })
-    return
-  }
-  res.status(201).json(result.session)
-})
-
-adminChronicleRouter.post('/scheduled-sessions/:sessionId/open', (req, res) => {
-  const result = openScheduledSession(req.params.sessionId, req.user!.email)
-  if (!result.ok) {
-    const message =
-      result.reason === 'forbidden'
-        ? 'Sem permissão nesta mesa'
-        : result.reason === 'closed'
-          ? 'Mesa encerrada. Remarque uma nova sessão nesta mesa.'
-          : 'Mesa não encontrada'
-    res.status(result.reason === 'forbidden' ? 403 : result.reason === 'closed' ? 409 : 404).json({ error: { message } })
-    return
-  }
-  res.json(result.session)
-})
-
-adminChronicleRouter.post('/scheduled-sessions/:sessionId/close', (req, res) => {
-  const result = closeScheduledSession(req.params.sessionId, req.user!.email)
-  if (!result.ok) {
-    res.status(result.reason === 'forbidden' ? 403 : 404).json({
-      error: { message: result.reason === 'forbidden' ? 'Sem permissão nesta mesa' : 'Mesa não encontrada' },
-    })
-    return
-  }
-  res.json(result.session)
-})
-
-adminChronicleRouter.get('/scheduled-sessions/:sessionId/handout', (req, res) => {
-  const row = ensureHandoutForScheduledSession(req.params.sessionId)
-  if (!row) {
-    res.status(404).json({ error: { message: 'Mesa não encontrada' } })
-    return
-  }
-  res.json(row)
-})
-
-adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/narrative', (req, res, next) => {
+adminChronicleRouter.delete('/scheduled-sessions/:sessionId', async (req, res, next) => {
   try {
+    const result = await deleteScheduledSession(req.params.sessionId, req.user!)
+    if (!result.ok) {
+      if (result.reason === 'open') {
+        res.status(409).json(
+          errorPayload('CONFLICT', 'Encerre a mesa ao vivo antes de excluí-la.', { requestId: req.requestId }),
+        )
+        return
+      }
+      res.status(result.reason === 'forbidden' ? 403 : 404).json(
+        errorPayload(
+          result.reason === 'forbidden' ? 'FORBIDDEN' : 'NOT_FOUND',
+          result.reason === 'forbidden' ? 'Sem permissão nesta mesa' : 'Mesa não encontrada',
+          { requestId: req.requestId },
+        ),
+      )
+      return
+    }
+    await Promise.all([
+      forgetSecretsForSession(req.params.sessionId),
+      forgetRollsForSession(req.params.sessionId),
+    ])
+    res.status(204).end()
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/reschedule', async (req, res, next) => {
+  try {
+    const result = await rescheduleSameTable(req.params.sessionId, req.user!)
+    if (!result.ok) {
+      const message =
+        result.reason === 'forbidden'
+          ? 'Sem permissão nesta mesa'
+          : result.reason === 'not_closed'
+            ? 'Só uma mesa encerrada pode ser remarcada.'
+            : 'Mesa não encontrada'
+      const status = result.reason === 'forbidden' ? 403 : result.reason === 'not_closed' ? 409 : 404
+      res.status(status).json(errorPayload('CONFLICT', message, { requestId: req.requestId }))
+      return
+    }
+    res.status(201).json(toNarratorSessionDTO(result.session))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/open', async (req, res, next) => {
+  try {
+    const result = await openScheduledSession(req.params.sessionId, req.user!)
+    if (!result.ok) {
+      const message =
+        result.reason === 'forbidden'
+          ? 'Sem permissão nesta mesa'
+          : result.reason === 'closed'
+            ? 'Mesa encerrada. Remarque uma nova sessão nesta mesa.'
+            : 'Mesa não encontrada'
+      const status = result.reason === 'forbidden' ? 403 : result.reason === 'closed' ? 409 : 404
+      res.status(status).json(errorPayload('CONFLICT', message, { requestId: req.requestId }))
+      return
+    }
+    res.json(toNarratorSessionDTO(result.session))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/close', async (req, res, next) => {
+  try {
+    const result = await closeScheduledSession(req.params.sessionId, req.user!)
+    if (!result.ok) {
+      res.status(result.reason === 'forbidden' ? 403 : 404).json(
+        errorPayload(
+          result.reason === 'forbidden' ? 'FORBIDDEN' : 'NOT_FOUND',
+          result.reason === 'forbidden' ? 'Sem permissão nesta mesa' : 'Mesa não encontrada',
+          { requestId: req.requestId },
+        ),
+      )
+      return
+    }
+    res.json(toNarratorSessionDTO(result.session))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.get('/scheduled-sessions/:sessionId/handout', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const row = await ensureHandoutForScheduledSession(req.params.sessionId)
+    if (!row) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId: req.requestId }))
+      return
+    }
+    res.json(row)
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/narrative', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const { narrativeSummary } = z.object({ narrativeSummary: z.string().max(20_000) }).parse(req.body)
-    const updated = patchMesaHandoutNarrative(req.params.sessionId, narrativeSummary)
+    const updated = await patchMesaHandoutNarrative(req.params.sessionId, narrativeSummary)
     if (!updated) {
-      res.status(404).json({ error: { message: 'Handout da mesa não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Handout da mesa não encontrado', { requestId: req.requestId }))
       return
     }
     res.json(updated)
@@ -574,20 +727,52 @@ adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/narrative', (
   }
 })
 
-adminChronicleRouter.post('/scheduled-sessions/:sessionId/scene-threats', (req, res, next) => {
+adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/whisper', async (req, res, next) => {
   try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const { narratorWhisper } = z.object({ narratorWhisper: z.string().max(4000) }).parse(req.body)
+    const updated = await patchMesaHandoutWhisper(req.params.sessionId, narratorWhisper)
+    if (!updated) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Handout da mesa não encontrado', { requestId: req.requestId }))
+      return
+    }
+    res.json(updated)
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.get('/scheduled-sessions/:sessionId/actions', (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const limit = z.coerce.number().int().min(1).max(200).optional().parse(req.query.limit)
+    res.json(listSessionActions(req.params.sessionId, limit ?? 80))
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/scene-threats', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const { entityId } = z.object({ entityId: z.string().min(1) }).parse(req.body)
-    const result = addSceneThreat(req.params.sessionId, entityId, req.user!.email)
+    const result = await addSceneThreat(req.params.sessionId, entityId, req.user!)
     if (!result.ok) {
       if (result.reason === 'forbidden') {
-        res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode adicionar ameaças.' } })
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode adicionar ameaças.', {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
       if (result.reason === 'bad_entity') {
-        res.status(400).json({ error: { message: 'Selecione um monstro válido do bestiário.' } })
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', 'Selecione um monstro válido do bestiário.', { requestId: req.requestId }),
+        )
         return
       }
-      res.status(404).json({ error: { message: 'Mesa não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId: req.requestId }))
       return
     }
     res.status(201).json(result.handout)
@@ -596,21 +781,26 @@ adminChronicleRouter.post('/scheduled-sessions/:sessionId/scene-threats', (req, 
   }
 })
 
-adminChronicleRouter.patch('/scheduled-sessions/:sessionId/scene-threats/:threatId', (req, res, next) => {
+adminChronicleRouter.patch('/scheduled-sessions/:sessionId/scene-threats/:threatId', async (req, res, next) => {
   try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const body = z
       .object({
         hpDelta: z.number().int().optional(),
         manaDelta: z.number().int().optional(),
       })
       .parse(req.body)
-    const result = applySceneThreatDelta(req.params.sessionId, req.params.threatId, req.user!.email, body)
+    const result = await applySceneThreatDelta(req.params.sessionId, req.params.threatId, req.user!, body)
     if (!result.ok) {
       if (result.reason === 'forbidden') {
-        res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode alterar ameaças.' } })
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode alterar ameaças.', {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
-      res.status(404).json({ error: { message: 'Ameaça ou mesa não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Ameaça ou mesa não encontrada', { requestId: req.requestId }))
       return
     }
     res.json(result.handout)
@@ -619,33 +809,49 @@ adminChronicleRouter.patch('/scheduled-sessions/:sessionId/scene-threats/:threat
   }
 })
 
-adminChronicleRouter.delete('/scheduled-sessions/:sessionId/scene-threats/:threatId', (req, res) => {
-  const result = removeSceneThreat(req.params.sessionId, req.params.threatId, req.user!.email)
-  if (!result.ok) {
-    if (result.reason === 'forbidden') {
-      res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode remover ameaças.' } })
-      return
-    }
-    res.status(404).json({ error: { message: 'Ameaça ou mesa não encontrada' } })
-    return
-  }
-  res.json(result.handout)
-})
-
-adminChronicleRouter.post('/scheduled-sessions/:sessionId/scene-npcs', (req, res, next) => {
+adminChronicleRouter.delete('/scheduled-sessions/:sessionId/scene-threats/:threatId', async (req, res, next) => {
   try {
-    const { entityId } = z.object({ entityId: z.string().min(1) }).parse(req.body)
-    const result = addSceneNpc(req.params.sessionId, entityId, req.user!.email)
+    requireSessionManager(req.params.sessionId, req.user!)
+    const result = await removeSceneThreat(req.params.sessionId, req.params.threatId, req.user!)
     if (!result.ok) {
       if (result.reason === 'forbidden') {
-        res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode adicionar NPCs.' } })
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode remover ameaças.', {
+            requestId: req.requestId,
+          }),
+        )
+        return
+      }
+      res.status(404).json(errorPayload('NOT_FOUND', 'Ameaça ou mesa não encontrada', { requestId: req.requestId }))
+      return
+    }
+    res.json(result.handout)
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/scene-npcs', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const { entityId } = z.object({ entityId: z.string().min(1) }).parse(req.body)
+    const result = await addSceneNpc(req.params.sessionId, entityId, req.user!)
+    if (!result.ok) {
+      if (result.reason === 'forbidden') {
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode adicionar NPCs.', {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
       if (result.reason === 'bad_entity') {
-        res.status(400).json({ error: { message: 'Selecione um NPC válido do acervo.' } })
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', 'Selecione um NPC válido do acervo.', { requestId: req.requestId }),
+        )
         return
       }
-      res.status(404).json({ error: { message: 'Mesa não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId: req.requestId }))
       return
     }
     res.status(201).json(result.handout)
@@ -654,21 +860,31 @@ adminChronicleRouter.post('/scheduled-sessions/:sessionId/scene-npcs', (req, res
   }
 })
 
-adminChronicleRouter.delete('/scheduled-sessions/:sessionId/scene-npcs/:npcId', (req, res) => {
-  const result = removeSceneNpc(req.params.sessionId, req.params.npcId, req.user!.email)
-  if (!result.ok) {
-    if (result.reason === 'forbidden') {
-      res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode remover NPCs.' } })
+adminChronicleRouter.delete('/scheduled-sessions/:sessionId/scene-npcs/:npcId', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const result = await removeSceneNpc(req.params.sessionId, req.params.npcId, req.user!)
+    if (!result.ok) {
+      if (result.reason === 'forbidden') {
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode remover NPCs.', {
+            requestId: req.requestId,
+          }),
+        )
+        return
+      }
+      res.status(404).json(errorPayload('NOT_FOUND', 'NPC ou mesa não encontrada', { requestId: req.requestId }))
       return
     }
-    res.status(404).json({ error: { message: 'NPC ou mesa não encontrada' } })
-    return
+    res.json(result.handout)
+  } catch (e) {
+    next(e)
   }
-  res.json(result.handout)
 })
 
-adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/ambience', (req, res, next) => {
+adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/ambience', async (req, res, next) => {
   try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const body = z
       .object({
         environment: z.string().max(120).optional(),
@@ -677,13 +893,17 @@ adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/ambience', (r
         atmosphere: z.string().max(120).optional(),
       })
       .parse(req.body)
-    const result = patchMesaAmbience(req.params.sessionId, body, req.user!.email)
+    const result = await patchMesaAmbience(req.params.sessionId, body, req.user!)
     if (!result.ok) {
       if (result.reason === 'forbidden') {
-        res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode alterar a governança.' } })
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode alterar a governança.', {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
-      res.status(404).json({ error: { message: 'Mesa não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId: req.requestId }))
       return
     }
     res.json(result.handout)
@@ -692,16 +912,21 @@ adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/ambience', (r
   }
 })
 
-adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/rest-mode', (req, res, next) => {
+adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/rest-mode', async (req, res, next) => {
   try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const { restMode } = z.object({ restMode: z.boolean() }).parse(req.body)
-    const result = setMesaRestMode(req.params.sessionId, restMode, req.user!.email)
+    const result = await setMesaRestMode(req.params.sessionId, restMode, req.user!)
     if (!result.ok) {
       if (result.reason === 'forbidden') {
-        res.status(403).json({ error: { message: 'Somente o mestre que abriu esta mesa pode alterar o descanso.' } })
+        res.status(403).json(
+          errorPayload('FORBIDDEN', 'Somente o mestre que abriu esta mesa pode alterar o descanso.', {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
-      res.status(404).json({ error: { message: 'Mesa não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId: req.requestId }))
       return
     }
     res.json(result.handout)
@@ -710,20 +935,23 @@ adminChronicleRouter.patch('/scheduled-sessions/:sessionId/handout/rest-mode', (
   }
 })
 
-/** Concede XP real ao personagem do assento na mesa (+ registro no handout). */
-adminChronicleRouter.post('/award-xp', (req, res, next) => {
+/** Concede XP real ao personagem do assento na mesa (+ registro no handout) de forma idempotente. */
+adminChronicleRouter.post('/award-xp', async (req, res, next) => {
   try {
     const body = z
       .object({
         sessionId: z.string().min(1),
         participantDisplayName: z.string().min(1),
         amount: z.number().int().min(1).max(250),
+        operationId: z.string().trim().min(4).max(160).optional(),
       })
       .parse(req.body)
 
-    const session = getScheduledSession(body.sessionId)
-    if (!session) {
-      res.status(404).json({ error: { message: 'Sessão não encontrada' } })
+    const session = requireSessionManager(body.sessionId, req.user!)
+    if (session.status === 'closed') {
+      res.status(409).json(
+        errorPayload('CONFLICT', 'Não é possível conceder XP em mesa encerrada.', { requestId: req.requestId }),
+      )
       return
     }
 
@@ -735,72 +963,100 @@ adminChronicleRouter.post('/award-xp', (req, res, next) => {
       ) ?? null
 
     if (!seat) {
-      res.status(404).json({
-        error: { message: 'Participante sem assento na mesa. O jogador precisa entrar com personagem.' },
-      })
-      return
-    }
-
-    const updated = applyCharacterXp(seat.email, seat.characterId, body.amount, {
-      actorEmail: req.user!.email,
-      sessionId: body.sessionId,
-    })
-    if (!updated) {
-      res.status(404).json({ error: { message: 'Personagem do participante não encontrado' } })
-      return
-    }
-
-    const handout = ensureHandoutForScheduledSession(body.sessionId)
-    if (handout) {
-      const participants = handout.participants.map((p) => {
-        if (p.displayName.trim().toLowerCase() !== body.participantDisplayName.trim().toLowerCase()) {
-          return p
-        }
-        return {
-          ...p,
-          rewards: [
-            ...p.rewards,
-            { type: 'xp' as const, label: `+${body.amount} XP`, xp: body.amount },
-          ],
-        }
-      })
-      const hasParticipant = participants.some(
-        (p) => p.displayName.trim().toLowerCase() === body.participantDisplayName.trim().toLowerCase(),
+      res.status(404).json(
+        errorPayload('NOT_FOUND', 'Participante sem assento na mesa. O jogador precisa entrar com personagem.', {
+          requestId: req.requestId,
+        }),
       )
-      const nextParticipants = hasParticipant
-        ? participants
-        : [
-            ...participants,
-            {
-              displayName: seat.displayName,
-              characterName: seat.characterName,
-              rewards: [{ type: 'xp' as const, label: `+${body.amount} XP`, xp: body.amount }],
-            },
-          ]
-      updateHandout(handout.id, { participants: nextParticipants })
+      return
     }
 
-    res.json(updated)
+    const op = await runIdempotent({
+      actorEmail: req.user!.email,
+      operationId: body.operationId,
+      kind: 'award-xp',
+      requestPayload: {
+        sessionId: body.sessionId,
+        participantDisplayName: body.participantDisplayName.trim().toLowerCase(),
+        amount: body.amount,
+      },
+      execute: async () => {
+        const updated = await applyCharacterXp(seat.email, seat.characterId, body.amount, {
+          actorEmail: req.user!.email,
+          sessionId: body.sessionId,
+        })
+        if (!updated) {
+          return {
+            status: 404,
+            body: errorPayload('NOT_FOUND', 'Personagem do participante não encontrado', {
+              requestId: req.requestId,
+            }),
+          }
+        }
+
+        const handout = await ensureHandoutForScheduledSession(body.sessionId)
+        if (handout) {
+          const participants = handout.participants.map((p) => {
+            if (p.displayName.trim().toLowerCase() !== body.participantDisplayName.trim().toLowerCase()) {
+              return p
+            }
+            return {
+              ...p,
+              rewards: [
+                ...p.rewards,
+                { type: 'xp' as const, label: `+${body.amount} XP`, xp: body.amount },
+              ],
+            }
+          })
+          const hasParticipant = participants.some(
+            (p) => p.displayName.trim().toLowerCase() === body.participantDisplayName.trim().toLowerCase(),
+          )
+          const nextParticipants = hasParticipant
+            ? participants
+            : [
+                ...participants,
+                {
+                  displayName: seat.displayName,
+                  characterName: seat.characterName,
+                  rewards: [{ type: 'xp' as const, label: `+${body.amount} XP`, xp: body.amount }],
+                },
+              ]
+          await updateHandout(handout.id, { participants: nextParticipants })
+        }
+
+        return { status: 200, body: updated as unknown as Record<string, unknown> }
+      },
+    })
+
+    res.status(op.status).json(op.body)
   } catch (e) {
     next(e)
   }
 })
 
-adminChronicleRouter.get('/character-reviews', (_req, res) => {
-  const rows = listProfiles().flatMap((profile) =>
-    profile.characters
-      .filter((character) => character.approval)
-      .map((character) => ({
-        email: profile.email,
-        displayName: profile.displayName,
-        characterId: character.id,
-        name: character.name,
-        level: character.level,
-        clan: character.clan ?? null,
-        approval: character.approval,
-        reviewNote: character.reviewNote ?? null,
-      })),
-  )
+adminChronicleRouter.get('/character-reviews', (req, res) => {
+  const rows = listProfiles()
+    .filter((profile) => canInspectPlayer(req.user!, profile.email))
+    .flatMap((profile) =>
+      profile.characters
+        .filter((character) => character.approval || character.needsRuleReview)
+        .map((character) => ({
+          email: profile.email,
+          playerId: publicPlayerId(profile.email),
+          displayName: profile.displayName,
+          characterId: character.id,
+          name: character.name,
+          level: character.level,
+          clan: character.clan ?? null,
+          subclass: character.subclass ?? null,
+          secondarySubclass: character.secondarySubclass ?? null,
+          needsRuleReview: Boolean(character.needsRuleReview),
+          ruleReviewNote: character.ruleReviewNote ?? null,
+          sheetRevision: character.sheetRevision ?? 1,
+          approval: character.approval,
+          reviewNote: character.reviewNote ?? null,
+        })),
+    )
   rows.sort((a, b) => {
     const rank = (status: string | undefined) => (status === 'submitted' ? 0 : status === 'changes' ? 1 : 2)
     return rank(a.approval) - rank(b.approval) || a.displayName.localeCompare(b.displayName)
@@ -808,20 +1064,29 @@ adminChronicleRouter.get('/character-reviews', (_req, res) => {
   res.json(rows)
 })
 
-adminChronicleRouter.post('/characters/:email/:characterId/review', (req, res, next) => {
+adminChronicleRouter.post('/characters/:email/:characterId/review', async (req, res, next) => {
   try {
+    const targetEmail = decodeURIComponent(req.params.email)
+    if (!canInspectPlayer(req.user!, targetEmail)) {
+      res.status(403).json(
+        errorPayload('FORBIDDEN', 'Você só pode revisar personagens de jogadores da sua mesa ou corte.', {
+          requestId: req.requestId,
+        }),
+      )
+      return
+    }
     const body = z
       .object({ status: z.enum(['approved', 'changes']), note: z.string().max(500).optional() })
       .parse(req.body)
-    const updated = reviewCharacter(
-      req.params.email,
+    const updated = await reviewCharacter(
+      targetEmail,
       req.params.characterId,
       body.status,
       body.note ?? '',
       req.user!.email,
     )
     if (!updated) {
-      res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
       return
     }
     res.json(updated)
@@ -830,8 +1095,48 @@ adminChronicleRouter.post('/characters/:email/:characterId/review', (req, res, n
   }
 })
 
-adminChronicleRouter.get('/backup', (_req, res) => {
-  res.json(campaignSnapshot())
+adminChronicleRouter.get('/characters/:email/:characterId/revisions', (req, res) => {
+  const targetEmail = decodeURIComponent(req.params.email)
+  if (!canInspectPlayer(req.user!, targetEmail)) {
+    res.status(403).json(
+      errorPayload('FORBIDDEN', 'Sem permissão para consultar revisões deste personagem.', {
+        requestId: req.requestId,
+      }),
+    )
+    return
+  }
+  res.json(listCharacterRevisions(targetEmail, req.params.characterId))
+})
+
+adminChronicleRouter.post('/characters/:email/:characterId/restore-revision', requireAdmin, async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        revisionId: z.string().min(1),
+        dryRun: z.boolean().optional(),
+        confirm: z.literal('restaurar-revisao').optional(),
+      })
+      .parse(req.body)
+    const out = await restoreCharacterRevision({
+      email: decodeURIComponent(String(req.params.email)),
+      characterId: String(req.params.characterId),
+      revisionId: body.revisionId,
+      actorEmail: req.user!.email,
+      dryRun: body.dryRun ?? body.confirm !== 'restaurar-revisao',
+      confirm: body.confirm,
+    })
+    res.json(out)
+  } catch (e) {
+    next(e)
+  }
+})
+
+adminChronicleRouter.get('/backup', (req, res) => {
+  res.json(campaignSnapshot(req.user!))
+})
+
+adminChronicleRouter.get('/backup/metadata', requireAdmin, (_req, res) => {
+  res.json(listBackupMetadata())
 })
 
 adminChronicleRouter.post('/backup/drill', (req, res, next) => {
@@ -854,10 +1159,15 @@ adminChronicleRouter.post('/backup/validate-storage', (req, res, next) => {
   }
 })
 
-adminChronicleRouter.post('/backup/restore', (req, res, next) => {
+adminChronicleRouter.post('/backup/restore', requireAdmin, async (req, res, next) => {
   try {
-    const body = z.object({ confirm: z.literal('restaurar-copia'), backup: z.record(z.string(), z.unknown()) }).parse(req.body)
-    res.json(restoreBackup(body.backup as Parameters<typeof restoreBackup>[0]))
+    const body = z
+      .object({
+        confirm: z.literal('restaurar-copia'),
+        backup: z.record(z.string(), z.unknown()),
+      })
+      .parse(req.body)
+    res.json(await restoreBackup(body.backup as Parameters<typeof restoreBackup>[0], req.user!.email))
   } catch (e) {
     next(e)
   }
@@ -867,7 +1177,7 @@ adminChronicleRouter.get('/board', (_req, res) => {
   res.json(listBoard())
 })
 
-adminChronicleRouter.post('/board', (req, res, next) => {
+adminChronicleRouter.post('/board', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -880,7 +1190,7 @@ adminChronicleRouter.post('/board', (req, res, next) => {
       })
       .parse(req.body)
     res.status(201).json(
-      addBoardCard({
+      await addBoardCard({
         kind: body.kind,
         title: body.title,
         status: body.status,
@@ -894,34 +1204,40 @@ adminChronicleRouter.post('/board', (req, res, next) => {
   }
 })
 
-adminChronicleRouter.delete('/board/:id', (req, res) => {
-  if (!removeBoardCard(req.params.id)) {
-    res.status(404).json({ error: { message: 'Cartão não encontrado' } })
-    return
+adminChronicleRouter.delete('/board/:id', async (req, res, next) => {
+  try {
+    if (!(await removeBoardCard(req.params.id))) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Cartão não encontrado', { requestId: req.requestId }))
+      return
+    }
+    res.json({ ok: true })
+  } catch (e) {
+    next(e)
   }
-  res.json({ ok: true })
 })
 
-adminChronicleRouter.get('/rules', (_req, res) => {
-  res.json(campaignSnapshot().rules)
+adminChronicleRouter.get('/rules', (req, res) => {
+  res.json(campaignSnapshot(req.user!).rules)
 })
 
-adminChronicleRouter.post('/rules', (req, res, next) => {
+adminChronicleRouter.post('/rules', requireAdmin, async (req, res, next) => {
   try {
     const body = z
       .object({
-        maxLevel: z.number().int().min(1).max(20),
-        subclassLevel: z.number().int().min(1).max(20),
+        maxLevel: z.number().int().min(1).max(MAX_CHARACTER_LEVEL),
+        subclassLevel: z.number().int().min(1).max(MAX_CHARACTER_LEVEL),
+        secondarySubclassLevel: z.number().int().min(1).max(MAX_CHARACTER_LEVEL).optional(),
         startingXp: z.number().int().min(0).max(10_000).optional(),
         shopBudgetCopper: z.number().int().min(0).max(1_000_000).optional(),
         decision: z.enum(['keep-existing', 'mark-review']),
       })
       .parse(req.body)
     res.json(
-      proposeRules(
+      await proposeRules(
         {
           maxLevel: body.maxLevel,
           subclassLevel: body.subclassLevel,
+          secondarySubclassLevel: body.secondarySubclassLevel,
           startingXp: body.startingXp ?? 0,
           shopBudgetCopper: body.shopBudgetCopper ?? 0,
         },
@@ -933,12 +1249,26 @@ adminChronicleRouter.post('/rules', (req, res, next) => {
   }
 })
 
-adminChronicleRouter.get('/secrets', (req, res) => {
-  const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined
-  res.json(listSecrets(sessionId))
+adminChronicleRouter.get('/secrets', (req, res, next) => {
+  try {
+    const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined
+    if (sessionId) {
+      requireSessionManager(sessionId, req.user!)
+      res.json(listSecrets(sessionId))
+      return
+    }
+    if (req.user!.role === 'admin') {
+      res.json(listSecrets())
+      return
+    }
+    const managedIds = new Set(listScheduledSessionsForManager(req.user!).map((s) => s.id))
+    res.json(listSecrets().filter((s) => managedIds.has(s.sessionId)))
+  } catch (e) {
+    next(e)
+  }
 })
 
-adminChronicleRouter.post('/secrets', (req, res, next) => {
+adminChronicleRouter.post('/secrets', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -948,8 +1278,9 @@ adminChronicleRouter.post('/secrets', (req, res, next) => {
         text: z.string().min(1).max(2000),
       })
       .parse(req.body)
+    requireSessionManager(body.sessionId, req.user!)
     res.status(201).json(
-      addSecret({
+      await addSecret({
         sessionId: body.sessionId,
         entityId: body.entityId,
         audienceEmail: body.audienceEmail ?? null,
@@ -961,38 +1292,72 @@ adminChronicleRouter.post('/secrets', (req, res, next) => {
   }
 })
 
-adminChronicleRouter.delete('/secrets/:id', (req, res) => {
-  if (!removeSecret(req.params.id)) {
-    res.status(404).json({ error: { message: 'Segredo não encontrado' } })
-    return
+adminChronicleRouter.delete('/secrets/:id', async (req, res, next) => {
+  try {
+    const existing = listSecrets().find((s) => s.id === req.params.id)
+    if (!existing) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Segredo não encontrado', { requestId: req.requestId }))
+      return
+    }
+    requireSessionManager(existing.sessionId, req.user!)
+    await removeSecret(req.params.id)
+    res.json({ ok: true })
+  } catch (e) {
+    next(e)
   }
-  res.json({ ok: true })
 })
 
-adminChronicleRouter.post('/sessions/:sessionId/advance-turn', (req, res) => {
-  const targets = openSeats(req.params.sessionId).map((seat) => ({
-    email: seat.email,
-    characterId: seat.characterId,
-  }))
-  res.json({ changed: advanceTurnEffects(targets) })
+adminChronicleRouter.post('/sessions/:sessionId/advance-turn', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const targets = openSeats(req.params.sessionId).map((seat) => ({
+      email: seat.email,
+      characterId: seat.characterId,
+    }))
+    res.json({ changed: await advanceTurnEffects(targets) })
+  } catch (e) {
+    next(e)
+  }
 })
 
-adminChronicleRouter.get('/analytics/session-line', (_req, res) => {
-  res.json(sessionActivityLineSeries())
+adminChronicleRouter.get('/analytics/session-line', (req, res) => {
+  res.json(sessionActivityLineSeries(req.user!))
 })
 
-adminChronicleRouter.get('/analytics/mesa-activity', (_req, res) => {
-  res.json(adminMesaActivityStats())
+adminChronicleRouter.get('/analytics/mesa-activity', (req, res) => {
+  res.json(adminMesaActivityStats(req.user!))
 })
 
 adminChronicleRouter.get('/analytics/player-characters', (_req, res) => {
   res.json(adminPlayerCharactersByUser())
 })
 
-adminChronicleRouter.get('/sessions/:sessionId/operations', (req, res) => {
-  res.json(listOperationsForSession(req.params.sessionId))
+adminChronicleRouter.get('/sessions/:sessionId/operations', (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        offset: z.coerce.number().int().min(0).max(10_000).optional(),
+      })
+      .parse(req.query)
+    res.json(listOperationsForSession(req.params.sessionId, query))
+  } catch (e) {
+    next(e)
+  }
 })
 
-adminChronicleRouter.get('/registered-players', (_req, res) => {
-  res.json(listRegisteredPlayers())
+adminChronicleRouter.get('/registered-players', (req, res) => {
+  const rows = listRegisteredPlayers()
+    .filter((p) => canInspectPlayer(req.user!, p.email))
+    .map((p) => ({
+      id: p.id,
+      publicId: p.id,
+      displayName: p.displayName,
+      handle: p.handle,
+      memberSince: p.memberSince,
+      characters: p.characters,
+      ...(req.user!.role === 'admin' ? { email: p.email } : {}),
+    }))
+  res.json(rows)
 })

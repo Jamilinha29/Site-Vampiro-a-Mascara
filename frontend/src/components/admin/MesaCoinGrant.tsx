@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type CoinCode } from '../../services/api'
 import { useToast } from '../ui/ToastProvider'
@@ -18,17 +18,27 @@ type Props = {
 export function MesaCoinGrant({ sessionId, participant, live }: Props) {
   const [coin, setCoin] = useState<CoinCode>('silver')
   const [amount, setAmount] = useState(5)
+  const opIdRef = useRef<string | null>(null)
   const qc = useQueryClient()
   const { push } = useToast()
+
+  useEffect(() => {
+    opIdRef.current = null
+  }, [sessionId, participant, coin, amount])
+
   const grant = useMutation({
-    mutationFn: () =>
-      api.adminGrantCoins({
+    mutationFn: () => {
+      opIdRef.current ??= crypto.randomUUID()
+      return api.adminGrantCoins({
         sessionId,
         participantDisplayName: participant,
         coin,
         amount: Math.max(1, Math.round(amount)),
-      }),
+        operationId: opIdRef.current,
+      })
+    },
     onSuccess: () => {
+      opIdRef.current = null
       push('Moedas enviadas ao jogador.', 'success')
       void qc.invalidateQueries({ queryKey: ['wallet', 'active'] })
     },
@@ -69,7 +79,7 @@ export function MesaCoinGrant({ sessionId, participant, live }: Props) {
           disabled={!participant || !live || grant.isPending}
           onClick={() => grant.mutate()}
         >
-          Enviar moedas
+          {grant.isPending ? 'Enviando…' : 'Enviar moedas'}
         </button>
       </div>
     </div>

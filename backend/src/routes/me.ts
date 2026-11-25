@@ -1,43 +1,56 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
-import { listOperationsFor } from '../services/operationLog.js'
-import {
-  listScheduledSessions,
-  confirmSessionPresence,
-  joinSessionWithCode,
-  leaveSessionSeat,
-  replaceSessionCharacter,
-  getScheduledSession,
-} from '../services/chronicleStore.js'
-import { storeProfileImage } from '../services/mediaStorage.js'
-import { classFromHouse, listSubclassesForClass } from '../services/subclassCatalog.js'
-import { readRules } from '../services/rulesState.js'
 import { readSavedFilters, writeSavedFilters } from '../services/campaignExtras.js'
 import {
+  confirmSessionPresence,
+  getScheduledSession,
+  joinSessionWithCode,
+  leaveSessionSeat,
+  listPublishedSessionsForPlayers,
+  replaceSessionCharacter,
+  syncSessionsIfStale,
+  toParticipantSessionDTO,
+} from '../services/chronicleStore.js'
+import { errorPayload } from '../services/errors.js'
+import { storeProfileImage } from '../services/mediaStorage.js'
+import { listOperationsFor } from '../services/operationLog.js'
+import {
+  STARTING_CHARACTER_XP,
   ensureProfile,
+  getCharacter,
   getCharacterBalanceStats,
+  patchCharacter,
+  publicPlayerId,
+  refreshEffects,
+  submitCharacter,
+  syncProfilesIfStale,
+  updateProfileDisplayName,
   updateProfileMedia,
   updateProfilePreferences,
-  updateProfileDisplayName,
   upsertCharacter,
-  patchCharacter,
-  getCharacter,
-  submitCharacter,
-  refreshEffects,
-  STARTING_CHARACTER_XP,
   xpRequiredToAdvance,
 } from '../services/profileStore.js'
+import { checkSharedRateLimit, resetSharedRateLimit } from '../services/rateLimitStore.js'
+import { readRules } from '../services/rulesState.js'
+import { classFromHouse, listSubclassesForClass } from '../services/subclassCatalog.js'
 
 export const meRouter = Router()
 
 meRouter.use(requireUser)
 
-meRouter.get('/profile', (req, res) => {
-  const email = req.user!.email
-  const profile = ensureProfile(email, req.user!.displayName, req.user!.role)
-  refreshEffects(email)
-  res.json(profile)
+meRouter.get('/profile', async (req, res, next) => {
+  try {
+    const email = req.user!.email
+    const profile = await ensureProfile(email, req.user!.displayName, req.user!.role)
+    await refreshEffects(email)
+    res.json({
+      ...profile,
+      publicId: publicPlayerId(profile.email),
+    })
+  } catch (e) {
+    next(e)
+  }
 })
 
 const mediaSchema = z.object({
@@ -51,12 +64,12 @@ meRouter.patch('/profile', async (req, res, next) => {
     const email = req.user!.email
     const avatarUrl = await storeProfileImage('avatar', body.avatarUrl)
     const bannerUrl = await storeProfileImage('banner', body.bannerUrl)
-    const updated = updateProfileMedia(email, { ...body, avatarUrl, bannerUrl })
+    const updated = await updateProfileMedia(email, { ...body, avatarUrl, bannerUrl })
     if (!updated) {
-      res.status(404).json({ error: { message: 'Perfil não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Perfil não encontrado', { requestId: req.requestId }))
       return
     }
-    res.json(updated)
+    res.json({ ...updated, publicId: publicPlayerId(updated.email) })
   } catch (e) {
     next(e)
   }
@@ -79,29 +92,29 @@ const accountSchema = z.object({
   displayName: z.string().min(2).max(80),
 })
 
-meRouter.patch('/profile/preferences', (req, res, next) => {
+meRouter.patch('/profile/preferences', async (req, res, next) => {
   try {
     const body = prefsSchema.parse(req.body)
-    const updated = updateProfilePreferences(req.user!.email, body)
+    const updated = await updateProfilePreferences(req.user!.email, body)
     if (!updated) {
-      res.status(404).json({ error: { message: 'Perfil não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Perfil não encontrado', { requestId: req.requestId }))
       return
     }
-    res.json(updated)
+    res.json({ ...updated, publicId: publicPlayerId(updated.email) })
   } catch (e) {
     next(e)
   }
 })
 
-meRouter.patch('/profile/account', (req, res, next) => {
+meRouter.patch('/profile/account', async (req, res, next) => {
   try {
     const body = accountSchema.parse(req.body)
-    const updated = updateProfileDisplayName(req.user!.email, body.displayName)
+    const updated = await updateProfileDisplayName(req.user!.email, body.displayName)
     if (!updated) {
-      res.status(404).json({ error: { message: 'Perfil não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Perfil não encontrado', { requestId: req.requestId }))
       return
     }
-    res.json(updated)
+    res.json({ ...updated, publicId: publicPlayerId(updated.email) })
   } catch (e) {
     next(e)
   }
@@ -113,6 +126,7 @@ const createCharacterSchema = z.object({
   name: z.string().min(1).max(120),
   species: z.string().min(1).max(120),
   clan: z.string().max(120).optional(),
+  level: z.number().int().min(0).max(20).optional(),
   isPrimary: z.boolean().optional(),
   hp: poolSchema,
   blood: poolSchema.optional(),
@@ -131,21 +145,23 @@ const createCharacterSchema = z.object({
   characterClass: z.string().min(1).max(80).nullable().optional(),
 })
 
-meRouter.post('/characters', (req, res, next) => {
+meRouter.post('/characters', async (req, res, next) => {
   try {
     const body = createCharacterSchema.parse(req.body)
-    const created = upsertCharacter(req.user!.email, {
+    const startLevel = body.level === 0 ? 0 : 1
+    const created = await upsertCharacter(req.user!.email, {
       name: body.name,
       species: body.species,
       clan: body.clan,
-      level: 1,
+      level: startLevel,
       isPrimary: body.isPrimary ?? true,
       hp: body.hp,
       blood: body.blood,
       mana: body.mana,
       will: body.will,
-      xp: { current: STARTING_CHARACTER_XP, toNext: xpRequiredToAdvance(1) },
+      xp: { current: STARTING_CHARACTER_XP, toNext: xpRequiredToAdvance(startLevel) },
       subclass: null,
+      secondarySubclass: null,
       characterClass: body.characterClass ?? null,
       balanceStats: body.balanceStats ?? null,
       vitals: {
@@ -165,7 +181,7 @@ meRouter.post('/characters', (req, res, next) => {
 meRouter.get('/characters/:characterId/balance-stats', (req, res) => {
   const result = getCharacterBalanceStats(req.user!.email, req.params.characterId)
   if (!result.found) {
-    res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+    res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
     return
   }
   res.json(result)
@@ -183,6 +199,7 @@ const patchCharacterSchema = z.object({
   mana: poolSchema.optional(),
   will: poolSchema.optional(),
   subclass: z.string().min(1).max(120).nullable().optional(),
+  secondarySubclass: z.string().min(1).max(120).nullable().optional(),
   characterClass: z.string().min(1).max(80).nullable().optional(),
   identityPatch: z
     .object({
@@ -233,47 +250,90 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
     const body = patchCharacterSchema.parse(req.body)
     const current = getCharacter(req.user!.email, req.params.characterId)
     if (!current) {
-      res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
       return
     }
+    const rules = readRules()
+    const resolvedClass = body.characterClass ?? current.characterClass ?? classFromHouse(current.identity?.house)
+
     if (body.subclass) {
-      if (current.level < readRules().subclassLevel) {
-        res.status(403).json({
-          error: { message: `A subclasse só pode ser escolhida a partir do nível ${readRules().subclassLevel}.` },
-        })
+      if (current.level < rules.subclassLevel) {
+        res.status(403).json(
+          errorPayload(
+            'FORBIDDEN',
+            `A subclasse I só pode ser escolhida a partir do nível ${rules.subclassLevel}.`,
+            { requestId: req.requestId },
+          ),
+        )
         return
       }
-      const className = body.characterClass ?? current.characterClass ?? classFromHouse(current.identity?.house)
-      if (!className) {
-        res.status(400).json({ error: { message: 'Este personagem não tem classe para filtrar as subclasses.' } })
+      if (!resolvedClass) {
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', 'Este personagem não tem classe para filtrar as subclasses.', {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
-      const options = await listSubclassesForClass(className)
+      const options = await listSubclassesForClass(resolvedClass)
       if (!options.includes(body.subclass)) {
-        res.status(400).json({
-          error: { message: `Subclasse indisponível para a classe ${className}.` },
-        })
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', `Subclasse indisponível para a classe ${resolvedClass}.`, {
+            requestId: req.requestId,
+          }),
+        )
         return
       }
     }
-    if (body.expectedRevision != null && (current.sheetRevision ?? 0) !== body.expectedRevision) {
-      res.status(409).json({
-        error: {
-          message: 'Outra aba ou dispositivo alterou esta ficha. Recarregue e tente de novo.',
-          revision: current.sheetRevision ?? 0,
-        },
-      })
-      return
+
+    if (body.secondarySubclass) {
+      if (current.level < rules.secondarySubclassLevel) {
+        res.status(403).json(
+          errorPayload(
+            'FORBIDDEN',
+            `A subclasse II só pode ser escolhida a partir do nível ${rules.secondarySubclassLevel}.`,
+            { requestId: req.requestId },
+          ),
+        )
+        return
+      }
+      if (!resolvedClass) {
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', 'Este personagem não tem classe para filtrar as subclasses.', {
+            requestId: req.requestId,
+          }),
+        )
+        return
+      }
+      const options = await listSubclassesForClass(resolvedClass)
+      if (!options.includes(body.secondarySubclass)) {
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', `Subclasse II indisponível para a classe ${resolvedClass}.`, {
+            requestId: req.requestId,
+          }),
+        )
+        return
+      }
+      const primary = body.subclass !== undefined ? body.subclass : current.subclass
+      if (primary && primary === body.secondarySubclass) {
+        res.status(400).json(
+          errorPayload('VALIDATION_ERROR', 'A subclasse II deve ser diferente da subclasse I.', {
+            requestId: req.requestId,
+          }),
+        )
+        return
+      }
     }
-    const updated = patchCharacter(req.user!.email, req.params.characterId, body)
+
+    const updated = await patchCharacter(req.user!.email, req.params.characterId, body)
     if (!updated) {
-      res.status(body.showOnHome ? 409 : 404).json({
-        error: {
-          message: body.showOnHome
-            ? 'Já há 3 personagens destacados no Início'
-            : 'Personagem não encontrado',
-        },
-      })
+      res.status(body.showOnHome ? 409 : 404).json(
+        errorPayload(
+          body.showOnHome ? 'CONFLICT' : 'NOT_FOUND',
+          body.showOnHome ? 'Já há 3 personagens destacados no Início' : 'Personagem não encontrado',
+          { requestId: req.requestId },
+        ),
+      )
       return
     }
     res.json(updated)
@@ -283,13 +343,17 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
 })
 
 /** Jogador não concede XP a si mesmo — somente o narrador na mesa. */
-meRouter.post('/characters/:characterId/submit', (req, res) => {
-  const updated = submitCharacter(req.user!.email, req.params.characterId)
-  if (!updated) {
-    res.status(404).json({ error: { message: 'Personagem não encontrado' } })
-    return
+meRouter.post('/characters/:characterId/submit', async (req, res, next) => {
+  try {
+    const updated = await submitCharacter(req.user!.email, req.params.characterId)
+    if (!updated) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
+      return
+    }
+    res.json(updated)
+  } catch (e) {
+    next(e)
   }
-  res.json(updated)
 })
 
 meRouter.get('/operations', (req, res) => {
@@ -300,7 +364,7 @@ meRouter.get('/filters', (req, res) => {
   res.json(readSavedFilters(req.user!.email))
 })
 
-meRouter.put('/filters', (req, res, next) => {
+meRouter.put('/filters', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -310,89 +374,129 @@ meRouter.put('/filters', (req, res, next) => {
         archiveRarity: z.string().max(40).optional(),
       })
       .parse(req.body)
-    res.json(writeSavedFilters(req.user!.email, body))
+    res.json(await writeSavedFilters(req.user!.email, body))
   } catch (e) {
     next(e)
   }
 })
 
 meRouter.post('/characters/:characterId/xp', (_req, res) => {
-  res.status(403).json({
-    error: { message: 'Somente o narrador concede XP na mesa da sessão.' },
-  })
+  res.status(403).json(
+    errorPayload('FORBIDDEN', 'Somente o narrador concede XP na mesa da sessão.'),
+  )
 })
 
-meRouter.get('/dashboard', (req, res) => {
-  const profile = ensureProfile(req.user!.email, req.user!.displayName, req.user!.role)
-  const scheduled = listScheduledSessions()
-  const now = Date.now()
-  const upcoming = scheduled.filter((s) => s.status !== 'closed' && new Date(s.scheduledAt).getTime() >= now)
-  const nextSession =
-    upcoming.find((s) => s.status === 'open') ??
-    upcoming[0] ??
-    scheduled.filter((s) => s.status !== 'closed').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0] ??
-    null
-  const activeChronicle = nextSession?.chronicleName ?? nextSession?.title ?? null
-  const homeCharacters =
-    profile.characters.length > 10
-      ? profile.characters.filter((c) => c.showOnHome).slice(0, 3)
-      : profile.characters
-  const displayChars = homeCharacters.length > 0 ? homeCharacters : profile.characters.slice(0, 3)
-  res.json({
-    activeChronicle: activeChronicle
-      ? { name: activeChronicle, act: nextSession ? `Próximo encontro · ${new Date(nextSession.scheduledAt).toLocaleDateString('pt-BR')}` : '' }
-      : null,
-    nextSession: nextSession
-      ? {
+meRouter.get('/dashboard', async (req, res, next) => {
+  try {
+    await Promise.all([syncProfilesIfStale(), syncSessionsIfStale()])
+    const profile = await ensureProfile(req.user!.email, req.user!.displayName, req.user!.role)
+    const scheduled = listPublishedSessionsForPlayers(req.user!.email)
+    const now = Date.now()
+    const upcoming = scheduled.filter((s) => s.status !== 'closed' && new Date(s.scheduledAt).getTime() >= now)
+    const nextSession =
+      upcoming.find((s) => s.status === 'open') ??
+      upcoming[0] ??
+      scheduled.filter((s) => s.status !== 'closed').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0] ??
+      null
+    const activeChronicle = nextSession?.chronicleName ?? nextSession?.title ?? null
+    const homeCharacters =
+      profile.characters.length > 10
+        ? profile.characters.filter((c) => c.showOnHome).slice(0, 3)
+        : profile.characters
+    const displayChars = homeCharacters.length > 0 ? homeCharacters : profile.characters.slice(0, 3)
+    res.json({
+      activeChronicle: activeChronicle
+        ? {
+          name: activeChronicle,
+          act: nextSession
+            ? `Próximo encontro · ${new Date(nextSession.scheduledAt).toLocaleDateString('pt-BR')}`
+            : '',
+        }
+        : null,
+      nextSession: nextSession
+        ? {
           id: nextSession.id,
           title: nextSession.chronicleName ?? nextSession.title,
           scheduledAt: nextSession.scheduledAt,
           status: nextSession.status,
-          accessCode: nextSession.accessCode,
         }
-      : null,
-    characters: displayChars.map((c) => ({
-      id: c.id,
-      name: c.name,
-      species: c.species,
-      clan: c.clan,
-      selected: c.isPrimary,
-      showOnHome: c.showOnHome,
-      hp: c.hp,
-      blood: c.blood,
-      will: c.will ?? { current: 0, max: 0 },
-      xp: { current: c.xp?.current ?? 0, max: c.xp?.toNext ?? 0 },
-    })),
-  })
-})
-
-meRouter.post('/sessions/:sessionId/presence', (req, res) => {
-  const updated = confirmSessionPresence(req.params.sessionId, {
-    email: req.user!.email,
-    displayName: req.user!.displayName,
-  })
-  if (!updated) {
-    res.status(404).json({ error: { message: 'Sessão não encontrada' } })
-    return
+        : null,
+      characters: displayChars.map((c) => ({
+        id: c.id,
+        name: c.name,
+        species: c.species,
+        clan: c.clan,
+        level: c.level,
+        subclass: c.subclass ?? null,
+        secondarySubclass: c.secondarySubclass ?? null,
+        needsRuleReview: Boolean(c.needsRuleReview),
+        selected: c.isPrimary,
+        showOnHome: c.showOnHome,
+        hp: c.hp,
+        blood: c.blood,
+        will: c.will ?? { current: 0, max: 0 },
+        xp: { current: c.xp?.current ?? 0, max: c.xp?.toNext ?? 0 },
+      })),
+    })
+  } catch (e) {
+    next(e)
   }
-  res.json(updated)
 })
 
-meRouter.post('/sessions/:sessionId/join', (req, res, next) => {
+meRouter.post('/sessions/:sessionId/presence', async (req, res, next) => {
   try {
+    const result = await confirmSessionPresence(req.params.sessionId, {
+      email: req.user!.email,
+      displayName: req.user!.displayName,
+    })
+    if (!result.ok) {
+      const status = result.reason === 'closed' ? 409 : result.reason === 'forbidden' ? 403 : 404
+      const message =
+        result.reason === 'closed'
+          ? 'A mesa já foi encerrada.'
+          : result.reason === 'forbidden'
+            ? 'Sem permissão para confirmar nesta mesa.'
+            : 'Sessão não encontrada'
+      res.status(status).json(
+        errorPayload(status === 409 ? 'CONFLICT' : status === 403 ? 'FORBIDDEN' : 'NOT_FOUND', message, {
+          requestId: req.requestId,
+        }),
+      )
+      return
+    }
+    res.json(toParticipantSessionDTO(result.session, req.user!.email))
+  } catch (e) {
+    next(e)
+  }
+})
+
+meRouter.post('/sessions/:sessionId/join', async (req, res, next) => {
+  try {
+    const key = `session-join:${req.user!.email.toLowerCase()}`
+    const rate = await checkSharedRateLimit(key, 15 * 60_000, 10)
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSec))
+      res.status(429).json(
+        errorPayload('RATE_LIMITED', 'Muitas tentativas seguidas. Espere alguns minutos.', {
+          requestId: req.requestId,
+        }),
+      )
+      return
+    }
+
     const body = z
       .object({
         accessCode: z.string().max(32).optional().default(''),
         characterId: z.string().min(1),
       })
       .parse(req.body)
-    const profile = ensureProfile(req.user!.email, req.user!.displayName, req.user!.role)
+    const profile = await ensureProfile(req.user!.email, req.user!.displayName, req.user!.role)
     const character = profile.characters.find((c) => c.id === body.characterId)
     if (!character) {
-      res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
       return
     }
-    const result = joinSessionWithCode(
+    const result = await joinSessionWithCode(
       req.params.sessionId,
       body.accessCode,
       { email: req.user!.email, displayName: req.user!.displayName },
@@ -403,52 +507,67 @@ meRouter.post('/sessions/:sessionId/join', (req, res, next) => {
         result.reason === 'bad_code'
           ? 'Código da mesa inválido'
           : result.reason === 'not_open'
-            ? 'A mesa ainda não foi aberta pelo narrador'
+            ? 'A mesa ainda não foi aberta ou já foi encerrada pelo narrador'
             : 'Sessão não encontrada'
-      res.status(result.reason === 'bad_code' ? 403 : result.reason === 'not_open' ? 409 : 404).json({
-        error: { message },
-      })
+      const status = result.reason === 'bad_code' ? 403 : result.reason === 'not_open' ? 409 : 404
+      res.status(status).json(errorPayload(status === 403 ? 'FORBIDDEN' : status === 409 ? 'CONFLICT' : 'NOT_FOUND', message, { requestId: req.requestId }))
       return
     }
-    res.json(result.session)
+    await resetSharedRateLimit(key)
+    res.json(toParticipantSessionDTO(result.session, req.user!.email))
   } catch (e) {
     next(e)
   }
 })
 
-meRouter.post('/sessions/:sessionId/leave', (req, res) => {
-  const updated = leaveSessionSeat(req.params.sessionId, req.user!.email)
-  if (!updated) {
-    res.status(404).json({ error: { message: 'Sessão não encontrada' } })
-    return
+meRouter.post('/sessions/:sessionId/leave', async (req, res, next) => {
+  try {
+    const result = await leaveSessionSeat(req.params.sessionId, req.user!)
+    if (!result.ok) {
+      const status = result.reason === 'forbidden' ? 403 : 404
+      res.status(status).json(
+        errorPayload(
+          status === 403 ? 'FORBIDDEN' : 'NOT_FOUND',
+          status === 403 ? 'Sem permissão nesta mesa.' : 'Sessão não encontrada',
+          { requestId: req.requestId },
+        ),
+      )
+      return
+    }
+    res.json(toParticipantSessionDTO(result.session, req.user!.email))
+  } catch (e) {
+    next(e)
   }
-  res.json(updated)
 })
 
-meRouter.post('/sessions/:sessionId/replace-character', (req, res, next) => {
+meRouter.post('/sessions/:sessionId/replace-character', async (req, res, next) => {
   try {
     const body = z.object({ characterId: z.string().min(1) }).parse(req.body)
-    const profile = ensureProfile(req.user!.email, req.user!.displayName, req.user!.role)
+    const profile = await ensureProfile(req.user!.email, req.user!.displayName, req.user!.role)
     const character = profile.characters.find((c) => c.id === body.characterId)
     if (!character) {
-      res.status(404).json({ error: { message: 'Personagem não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
       return
     }
     const session = getScheduledSession(req.params.sessionId)
     if (!session) {
-      res.status(404).json({ error: { message: 'Sessão não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Sessão não encontrada', { requestId: req.requestId }))
       return
     }
     const seated = session.seats.some((s) => s.email === req.user!.email && !s.leftAt)
     if (!seated) {
-      res.status(403).json({ error: { message: 'Entre na mesa com o código antes de trocar o personagem' } })
+      res.status(403).json(
+        errorPayload('FORBIDDEN', 'Entre na mesa com o código antes de trocar o personagem', {
+          requestId: req.requestId,
+        }),
+      )
       return
     }
-    const updated = replaceSessionCharacter(req.params.sessionId, req.user!.email, {
+    const updated = await replaceSessionCharacter(req.params.sessionId, req.user!.email, {
       id: character.id,
       name: character.name,
     })
-    res.json(updated)
+    res.json(updated ? toParticipantSessionDTO(updated, req.user!.email) : null)
   } catch (e) {
     next(e)
   }

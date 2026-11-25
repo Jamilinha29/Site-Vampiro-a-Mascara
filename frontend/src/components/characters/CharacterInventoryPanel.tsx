@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { CharacterInventoryItem, ProfileCharacterSummary } from '../../types/profile'
 import { StatBar } from '../domain/StatBar'
@@ -40,6 +40,16 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['id']>('all')
   const [sort, setSort] = useState<'rarity' | 'name' | 'weight'>('rarity')
+  const [inspectItem, setInspectItem] = useState<CharacterInventoryItem | null>(null)
+
+  useEffect(() => {
+    if (!inspectItem) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInspectItem(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inspectItem])
 
   const items = character.inventory ?? []
   const capacity = character.carryCapacityKg ?? 28
@@ -206,7 +216,11 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
               >
                 {item.equipped ? 'Desequipar' : 'Equipar'}
               </button>
-              <button type="button" className="btn-secondary text-[10px]" disabled>
+              <button
+                type="button"
+                className="btn-secondary text-[10px]"
+                onClick={() => setInspectItem(item)}
+              >
                 Inspecionar
               </button>
             </div>
@@ -218,6 +232,63 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
           </p>
         ) : null}
       </div>
+
+      {inspectItem ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Inspecionar ${inspectItem.name}`}
+          onClick={() => setInspectItem(null)}
+        >
+          <div
+            className="mesa-panel w-full max-w-lg space-y-3 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-outline-variant/40 pb-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-secondary">
+                  {inspectItem.category} · {inspectItem.rarity}
+                </p>
+                <h3 className="font-serif text-xl text-on-surface">{inspectItem.name}</h3>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                autoFocus
+                onClick={() => setInspectItem(null)}
+              >
+                Fechar
+              </button>
+            </div>
+            <p className="text-sm leading-relaxed text-on-surface-variant">
+              {inspectItem.description || 'Nenhuma descrição detalhada registrada para este item.'}
+            </p>
+            <div className="grid grid-cols-2 gap-2 rounded border border-outline-variant/40 bg-surface-container-low p-3 text-xs">
+              <div>
+                <span className="text-on-surface-variant">Peso:</span>{' '}
+                <strong className="text-on-surface">{inspectItem.weightKg.toFixed(1)} kg</strong>
+              </div>
+              <div>
+                <span className="text-on-surface-variant">Estado:</span>{' '}
+                <strong className="text-on-surface">{inspectItem.status ?? 'ok'}</strong>
+              </div>
+              {inspectItem.statsLabel ? (
+                <div className="col-span-2">
+                  <span className="text-on-surface-variant">Efeito / Bônus:</span>{' '}
+                  <strong className="text-secondary">{inspectItem.statsLabel}</strong>
+                </div>
+              ) : null}
+              {inspectItem.slot ? (
+                <div className="col-span-2">
+                  <span className="text-on-surface-variant">Slot:</span>{' '}
+                  <strong className="text-on-surface">{inspectItem.slot}</strong>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </div>
   )

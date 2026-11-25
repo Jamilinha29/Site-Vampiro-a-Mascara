@@ -3,17 +3,30 @@ import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
 import { requireNarrator } from '../middlewares/requireNarrator.js'
 import {
+  ensureHandoutForScheduledSession,
+  entityMatchesCatalogScope,
+  getEntity,
+  getScheduledSession,
+  listEntities,
+  listScheduledSessionsForManager,
+  requireSessionManager,
+  requireSessionParticipant,
+  resolveCatalogScopeForViewer,
+  syncSessionsIfStale,
+  updateHandout,
+} from '../services/chronicleStore.js'
+import {
+  COIN_LABEL,
   acceptFriend,
   addNpcBid,
   areFriends,
   closeAuction,
-  COIN_LABEL,
   createAchievement,
   creditCoins,
   deleteAchievement,
   friendEmails,
+  getAuction,
   grantAchievement,
-  shopLevelOf,
   listAchievements,
   listAuctions,
   listFriendCards,
@@ -27,23 +40,28 @@ import {
   requestFriend,
   searchPlayers,
   setShopLevel,
+  shopLevelOf,
+  syncCourtIfStale,
   withdrawBid,
   type Coin,
 } from '../services/courtStore.js'
-import { getProfile as loadProfile, listCharacters } from '../services/profileStore.js'
+import { errorPayload } from '../services/errors.js'
+import { runIdempotent } from '../services/idempotencyStore.js'
 import {
-  ensureHandoutForScheduledSession,
-  getEntity,
-  entityMatchesCatalogScope,
-  getScheduledSession,
-  listEntities,
-  listScheduledSessions,
-  resolveCatalogScopeForViewer,
-  updateHandout,
-} from '../services/chronicleStore.js'
+  MAX_CHARACTER_LEVEL,
+  findProfileByPublicId,
+  getProfile as loadProfile,
+  listCharacters,
+  publicPlayerId,
+} from '../services/profileStore.js'
 
 export const courtRouter = Router()
 courtRouter.use(requireUser)
+courtRouter.use((_req, _res, next) => {
+  void Promise.all([syncCourtIfStale(), syncSessionsIfStale()])
+    .then(() => next())
+    .catch(() => next())
+})
 
 const coinSchema = z.enum(['gold', 'silver', 'copper'])
 
@@ -69,15 +87,27 @@ courtRouter.get('/friends', (req, res) => {
 
 courtRouter.get('/players', (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q : ''
+  if (q.trim().length < 2) {
+    res.json([])
+    return
+  }
   res.json(searchPlayers(q, req.user!.email))
 })
 
-courtRouter.post('/friends', (req, res, next) => {
+const friendTargetSchema = z
+  .object({
+    email: z.string().email().optional(),
+    playerId: z.string().min(2).max(160).optional(),
+  })
+  .refine((v) => Boolean(v.email || v.playerId), { message: 'Informe o identificador do jogador.' })
+
+courtRouter.post('/friends', async (req, res, next) => {
   try {
-    const body = z.object({ email: z.string().email() }).parse(req.body)
-    const result = requestFriend(req.user!.email, body.email)
+    const body = friendTargetSchema.parse(req.body)
+    const target = body.playerId ?? body.email!
+    const result = await requestFriend(req.user!.email, target)
     if (!result.ok) {
-      res.status(400).json({ error: { message: result.error } })
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
       return
     }
     res.status(201).json(result.link)
@@ -86,29 +116,37 @@ courtRouter.post('/friends', (req, res, next) => {
   }
 })
 
-courtRouter.post('/friends/:linkId/accept', (req, res) => {
-  const result = acceptFriend(req.user!.email, req.params.linkId)
-  if (!result.ok) {
-    res.status(400).json({ error: { message: result.error } })
-    return
+courtRouter.post('/friends/:linkId/accept', async (req, res, next) => {
+  try {
+    const result = await acceptFriend(req.user!.email, req.params.linkId)
+    if (!result.ok) {
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
+      return
+    }
+    res.json(result.link)
+  } catch (e) {
+    next(e)
   }
-  res.json(result.link)
 })
 
-courtRouter.delete('/friends/:id', (req, res) => {
-  const removed = removeFriend(req.user!.email, req.params.id)
-  if (!removed) {
-    res.status(404).json({ error: { message: 'Amizade não encontrada' } })
-    return
+courtRouter.delete('/friends/:id', async (req, res, next) => {
+  try {
+    const removed = await removeFriend(req.user!.email, req.params.id)
+    if (!removed) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Amizade não encontrada', { requestId: req.requestId }))
+      return
+    }
+    res.status(204).end()
+  } catch (e) {
+    next(e)
   }
-  res.status(204).end()
 })
 
 courtRouter.get('/session-board', (req, res) => {
   const q = (typeof req.query.q === 'string' ? req.query.q : '').trim().toLowerCase()
   const me = req.user!.email
   const friends = new Set(friendEmails(me).map((e) => e.toLowerCase()))
-  const rows = listScheduledSessions().filter((s) => s.status !== 'closed')
+  const rows = listScheduledSessionsForManager({ email: me, role: 'admin' }).filter((s) => s.status !== 'closed')
   const card = (s: (typeof rows)[number]) => {
     const narrator = s.narratorEmail ? loadProfile(s.narratorEmail) : null
     const seated = (s.seats ?? []).filter((seat) => !seat.leftAt)
@@ -142,39 +180,39 @@ courtRouter.get('/session-board', (req, res) => {
   res.json({ publicTables, friendTables })
 })
 
-courtRouter.get('/sessions/:sessionId/ferreiro', (req, res) => {
-  const session = getScheduledSession(req.params.sessionId)
-  if (!session) {
-    res.status(404).json({ error: { message: 'Mesa não encontrada' } })
-    return
+courtRouter.get('/sessions/:sessionId/ferreiro', async (req, res, next) => {
+  try {
+    requireSessionParticipant(req.params.sessionId, req.user!)
+    const characterId = typeof req.query.characterId === 'string' ? req.query.characterId : undefined
+    const level = playerLevel(req.user!.email, characterId)
+    const contexts = resolveCatalogScopeForViewer(req.user!.email, req.params.sessionId)
+    const goods = listEntities({ visibility: 'published' }).filter(
+      (e) =>
+        (e.kind === 'equipment' || e.kind === 'consumable') &&
+        (e.shopCategory === 'gear' || e.shopCategory === 'consumables') &&
+        entityMatchesCatalogScope(e, contexts),
+    )
+    res.json({
+      level,
+      commerce: goods.map((item) => ({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        shopCategory: item.shopCategory,
+        rarity: item.rarity ?? 'comum',
+        priceGold: item.priceGold ?? 0,
+        priceSilver: item.priceSilver ?? 0,
+        priceCopper: item.priceCopper ?? 0,
+        requiredLevel: shopLevelOf(item),
+      })),
+      auctions: await listAuctions(req.params.sessionId),
+    })
+  } catch (e) {
+    next(e)
   }
-  const characterId = typeof req.query.characterId === 'string' ? req.query.characterId : undefined
-  const level = playerLevel(req.user!.email, characterId)
-  const contexts = resolveCatalogScopeForViewer(req.user!.email, req.params.sessionId)
-  const goods = listEntities({ visibility: 'published' }).filter(
-    (e) =>
-      (e.kind === 'equipment' || e.kind === 'consumable') &&
-      (e.shopCategory === 'gear' || e.shopCategory === 'consumables') &&
-      entityMatchesCatalogScope(e, contexts),
-  )
-  res.json({
-    level,
-    commerce: goods.map((item) => ({
-      id: item.id,
-      name: item.name,
-      description: item.description,
-      shopCategory: item.shopCategory,
-      rarity: item.rarity ?? 'comum',
-      priceGold: item.priceGold ?? 0,
-      priceSilver: item.priceSilver ?? 0,
-      priceCopper: item.priceCopper ?? 0,
-      requiredLevel: shopLevelOf(item),
-    })),
-    auctions: listAuctions(req.params.sessionId),
-  })
 })
 
-courtRouter.post('/auctions/:auctionId/bid', (req, res, next) => {
+courtRouter.post('/auctions/:auctionId/bid', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -183,16 +221,26 @@ courtRouter.post('/auctions/:auctionId/bid', (req, res, next) => {
         characterId: z.string().optional(),
       })
       .parse(req.body)
-    const result = placeBid({
+    const existing = getAuction(req.params.auctionId)
+    if (!existing) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Leilão não encontrado.', { requestId: req.requestId }))
+      return
+    }
+    const session = requireSessionParticipant(existing.sessionId, req.user!)
+    const seat = (session.seats ?? []).find(
+      (s) => !s.leftAt && s.email.toLowerCase() === req.user!.email.toLowerCase(),
+    )
+    const effectiveCharacterId = body.characterId ?? seat?.characterId
+    const result = await placeBid({
       auctionId: req.params.auctionId,
       email: req.user!.email,
       displayName: req.user!.displayName,
       amount: body.amount,
       coin: body.coin,
-      level: playerLevel(req.user!.email, body.characterId),
+      level: playerLevel(req.user!.email, effectiveCharacterId),
     })
     if (!result.ok) {
-      res.status(400).json({ error: { message: result.error } })
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
       return
     }
     res.json(result.auction)
@@ -201,13 +249,23 @@ courtRouter.post('/auctions/:auctionId/bid', (req, res, next) => {
   }
 })
 
-courtRouter.post('/auctions/:auctionId/withdraw', (req, res) => {
-  const result = withdrawBid(req.params.auctionId, req.user!.email)
-  if (!result.ok) {
-    res.status(400).json({ error: { message: result.error } })
-    return
+courtRouter.post('/auctions/:auctionId/withdraw', async (req, res, next) => {
+  try {
+    const existing = getAuction(req.params.auctionId)
+    if (!existing) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Leilão não encontrado.', { requestId: req.requestId }))
+      return
+    }
+    requireSessionParticipant(existing.sessionId, req.user!)
+    const result = await withdrawBid(req.params.auctionId, req.user!.email)
+    if (!result.ok) {
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
+      return
+    }
+    res.json(result.auction)
+  } catch (e) {
+    next(e)
   }
-  res.json(result.auction)
 })
 
 const admin = Router()
@@ -217,7 +275,7 @@ admin.get('/achievements', (_req, res) => {
   res.json(listAchievements())
 })
 
-admin.post('/achievements', (req, res, next) => {
+admin.post('/achievements', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -226,33 +284,56 @@ admin.post('/achievements', (req, res, next) => {
         howToEarn: z.string().min(4).max(400),
       })
       .parse(req.body)
-    res.status(201).json(createAchievement(body))
+    res.status(201).json(await createAchievement(body))
   } catch (e) {
     next(e)
   }
 })
 
-admin.delete('/achievements/:id', (req, res) => {
-  if (!deleteAchievement(req.params.id)) {
-    res.status(404).json({ error: { message: 'Conquista não encontrada' } })
-    return
+admin.delete('/achievements/:id', async (req, res, next) => {
+  try {
+    if (!(await deleteAchievement(req.params.id))) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Conquista não encontrada', { requestId: req.requestId }))
+      return
+    }
+    res.status(204).end()
+  } catch (e) {
+    next(e)
   }
-  res.status(204).end()
 })
 
-admin.post('/achievements/:id/grant', (req, res, next) => {
+admin.post('/achievements/:id/grant', async (req, res, next) => {
   try {
-    const body = z.object({ email: z.string().email() }).parse(req.body)
-    if (!areFriends(req.user!.email, body.email)) {
-      res.status(403).json({ error: { message: 'Só é possível marcar conquista de um jogador amigo' } })
+    const body = z
+      .object({
+        email: z.string().email().optional(),
+        playerId: z.string().min(2).max(160).optional(),
+      })
+      .refine((v) => Boolean(v.email || v.playerId), { message: 'Informe o jogador.' })
+      .parse(req.body)
+    const targetProfile = findProfileByPublicId(body.playerId ?? body.email!)
+    if (!targetProfile) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Jogador não encontrado', { requestId: req.requestId }))
       return
     }
-    const result = grantAchievement(body.email, req.params.id, req.user!.email)
+    if (req.user!.role !== 'admin' && !areFriends(req.user!.email, targetProfile.email)) {
+      res.status(403).json(
+        errorPayload('FORBIDDEN', 'Só é possível marcar conquista de um jogador amigo', {
+          requestId: req.requestId,
+        }),
+      )
+      return
+    }
+    const result = await grantAchievement(targetProfile.email, req.params.id, req.user!.email)
     if (!result.ok) {
-      res.status(404).json({ error: { message: result.error } })
+      res.status(404).json(errorPayload('NOT_FOUND', result.error, { requestId: req.requestId }))
       return
     }
-    res.json(result.unlock)
+    res.json({
+      achievementId: result.unlock.achievementId,
+      playerId: publicPlayerId(result.unlock.email),
+      unlockedAt: result.unlock.unlockedAt,
+    })
   } catch (e) {
     next(e)
   }
@@ -262,12 +343,12 @@ admin.get('/players', (req, res) => {
   res.json(narratorFriendDirectory(req.user!.email))
 })
 
-admin.post('/friends', (req, res, next) => {
+admin.post('/friends', async (req, res, next) => {
   try {
-    const body = z.object({ email: z.string().email() }).parse(req.body)
-    const result = requestFriend(req.user!.email, body.email)
+    const body = friendTargetSchema.parse(req.body)
+    const result = await requestFriend(req.user!.email, body.playerId ?? body.email!)
     if (!result.ok) {
-      res.status(400).json({ error: { message: result.error } })
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
       return
     }
     res.status(201).json(narratorFriendDirectory(req.user!.email))
@@ -276,16 +357,20 @@ admin.post('/friends', (req, res, next) => {
   }
 })
 
-admin.delete('/friends/:email', (req, res) => {
-  const removed = removeFriend(req.user!.email, decodeURIComponent(req.params.email))
-  if (!removed) {
-    res.status(404).json({ error: { message: 'Amizade não encontrada' } })
-    return
+admin.delete('/friends/:id', async (req, res, next) => {
+  try {
+    const removed = await removeFriend(req.user!.email, decodeURIComponent(req.params.id))
+    if (!removed) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Amizade não encontrada', { requestId: req.requestId }))
+      return
+    }
+    res.json(narratorFriendDirectory(req.user!.email))
+  } catch (e) {
+    next(e)
   }
-  res.json(narratorFriendDirectory(req.user!.email))
 })
 
-admin.post('/grant-coins', (req, res, next) => {
+admin.post('/grant-coins', async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -293,11 +378,16 @@ admin.post('/grant-coins', (req, res, next) => {
         participantDisplayName: z.string().min(1),
         coin: coinSchema,
         amount: z.number().int().min(1).max(100000),
+        operationId: z.string().trim().min(4).max(160).optional(),
       })
       .parse(req.body)
-    const session = getScheduledSession(body.sessionId)
-    if (!session) {
-      res.status(404).json({ error: { message: 'Sessão não encontrada' } })
+    const session = requireSessionManager(body.sessionId, req.user!)
+    if (session.status === 'closed') {
+      res.status(409).json(
+        errorPayload('CONFLICT', 'Não é possível conceder moedas em mesa encerrada.', {
+          requestId: req.requestId,
+        }),
+      )
       return
     }
     const seat =
@@ -305,40 +395,56 @@ admin.post('/grant-coins', (req, res, next) => {
         (s) => !s.leftAt && s.displayName.trim().toLowerCase() === body.participantDisplayName.trim().toLowerCase(),
       ) ?? null
     if (!seat) {
-      res.status(404).json({ error: { message: 'Jogador sem assento na mesa.' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Jogador sem assento na mesa.', { requestId: req.requestId }))
       return
     }
-    const wallet = creditCoins(
-      seat.email,
-      body.coin as Coin,
-      body.amount,
-      `Mesa · ${session.chronicleName ?? session.title}`,
-      { actorEmail: req.user!.email, sessionId: body.sessionId },
-    )
-    const handout = ensureHandoutForScheduledSession(body.sessionId)
-    if (handout) {
-      const label = `+${body.amount} ${COIN_LABEL[body.coin as Coin]}`
-      const participants = handout.participants.map((p) => {
-        if (p.displayName.trim().toLowerCase() !== body.participantDisplayName.trim().toLowerCase()) return p
-        return { ...p, rewards: [...p.rewards, { type: 'currency' as const, label }] }
-      })
-      const has = participants.some(
-        (p) => p.displayName.trim().toLowerCase() === body.participantDisplayName.trim().toLowerCase(),
-      )
-      updateHandout(handout.id, {
-        participants: has
-          ? participants
-          : [
-              ...participants,
-              {
-                displayName: seat.displayName,
-                characterName: seat.characterName,
-                rewards: [{ type: 'currency' as const, label }],
-              },
-            ],
-      })
-    }
-    res.json({ wallet, displayName: seat.displayName })
+
+    const op = await runIdempotent({
+      actorEmail: req.user!.email,
+      operationId: body.operationId,
+      kind: 'grant-coins',
+      requestPayload: {
+        sessionId: body.sessionId,
+        participantDisplayName: body.participantDisplayName.trim().toLowerCase(),
+        coin: body.coin,
+        amount: body.amount,
+      },
+      execute: async () => {
+        const wallet = await creditCoins(
+          seat.email,
+          body.coin as Coin,
+          body.amount,
+          `Mesa · ${session.chronicleName ?? session.title}`,
+          { actorEmail: req.user!.email, sessionId: body.sessionId },
+        )
+        const handout = await ensureHandoutForScheduledSession(body.sessionId)
+        if (handout) {
+          const label = `+${body.amount} ${COIN_LABEL[body.coin as Coin]}`
+          const participants = handout.participants.map((p) => {
+            if (p.displayName.trim().toLowerCase() !== body.participantDisplayName.trim().toLowerCase()) return p
+            return { ...p, rewards: [...p.rewards, { type: 'currency' as const, label }] }
+          })
+          const has = participants.some(
+            (p) => p.displayName.trim().toLowerCase() === body.participantDisplayName.trim().toLowerCase(),
+          )
+          await updateHandout(handout.id, {
+            participants: has
+              ? participants
+              : [
+                  ...participants,
+                  {
+                    displayName: seat.displayName,
+                    characterName: seat.characterName,
+                    rewards: [{ type: 'currency' as const, label }],
+                  },
+                ],
+          })
+        }
+        return { status: 200, body: { wallet, displayName: seat.displayName } }
+      },
+    })
+
+    res.status(op.status).json(op.body)
   } catch (e) {
     next(e)
   }
@@ -348,25 +454,27 @@ admin.get('/shop-levels', (_req, res) => {
   res.json(listShopLevels())
 })
 
-admin.put('/shop-levels/:entityId', (req, res, next) => {
+admin.put('/shop-levels/:entityId', async (req, res, next) => {
   try {
-    const body = z.object({ requiredLevel: z.number().int().min(1).max(20) }).parse(req.body)
+    const body = z.object({ requiredLevel: z.number().int().min(1).max(MAX_CHARACTER_LEVEL) }).parse(req.body)
     if (!getEntity(req.params.entityId)) {
-      res.status(404).json({ error: { message: 'Item não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Item não encontrado', { requestId: req.requestId }))
       return
     }
-    res.json({ entityId: req.params.entityId, requiredLevel: setShopLevel(req.params.entityId, body.requiredLevel) })
+    const level = await setShopLevel(req.params.entityId, body.requiredLevel)
+    res.json({ entityId: req.params.entityId, requiredLevel: level })
   } catch (e) {
     next(e)
   }
 })
 
-admin.post('/sessions/:sessionId/auctions', (req, res, next) => {
+admin.post('/sessions/:sessionId/auctions', async (req, res, next) => {
   try {
+    requireSessionManager(req.params.sessionId, req.user!)
     const body = z
       .object({
         entityId: z.string().min(1),
-        requiredLevel: z.number().int().min(1).max(20).default(1),
+        requiredLevel: z.number().int().min(1).max(MAX_CHARACTER_LEVEL).default(1),
         minutes: z.number().int().min(1).max(180),
         npcName: z.string().max(80).optional(),
         npcAmount: z.number().int().min(1).max(100000).optional(),
@@ -374,10 +482,10 @@ admin.post('/sessions/:sessionId/auctions', (req, res, next) => {
       })
       .parse(req.body)
     if (!getScheduledSession(req.params.sessionId)) {
-      res.status(404).json({ error: { message: 'Sessão não encontrada' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Sessão não encontrada', { requestId: req.requestId }))
       return
     }
-    const result = releaseAuction({
+    const result = await releaseAuction({
       sessionId: req.params.sessionId,
       entityId: body.entityId,
       requiredLevel: body.requiredLevel,
@@ -388,7 +496,7 @@ admin.post('/sessions/:sessionId/auctions', (req, res, next) => {
       npcCoin: body.npcCoin,
     })
     if (!result.ok) {
-      res.status(400).json({ error: { message: result.error } })
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
       return
     }
     res.status(201).json(result.auction)
@@ -397,8 +505,14 @@ admin.post('/sessions/:sessionId/auctions', (req, res, next) => {
   }
 })
 
-admin.post('/auctions/:auctionId/npc-bid', (req, res, next) => {
+admin.post('/auctions/:auctionId/npc-bid', async (req, res, next) => {
   try {
+    const existing = getAuction(req.params.auctionId)
+    if (!existing) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Leilão não encontrado', { requestId: req.requestId }))
+      return
+    }
+    requireSessionManager(existing.sessionId, req.user!)
     const body = z
       .object({
         displayName: z.string().min(1).max(80),
@@ -406,9 +520,9 @@ admin.post('/auctions/:auctionId/npc-bid', (req, res, next) => {
         coin: coinSchema,
       })
       .parse(req.body)
-    const result = addNpcBid(req.params.auctionId, body.displayName, body.amount, body.coin)
+    const result = await addNpcBid(req.params.auctionId, body.displayName, body.amount, body.coin)
     if (!result.ok) {
-      res.status(400).json({ error: { message: result.error } })
+      res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
       return
     }
     res.json(result.auction)
@@ -417,17 +531,32 @@ admin.post('/auctions/:auctionId/npc-bid', (req, res, next) => {
   }
 })
 
-admin.post('/auctions/:auctionId/close', (req, res) => {
-  const result = closeAuction(req.params.auctionId)
-  if (!result.ok) {
-    res.status(404).json({ error: { message: result.error } })
-    return
+admin.post('/auctions/:auctionId/close', async (req, res, next) => {
+  try {
+    const existing = getAuction(req.params.auctionId)
+    if (!existing) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Leilão não encontrado', { requestId: req.requestId }))
+      return
+    }
+    requireSessionManager(existing.sessionId, req.user!)
+    const result = await closeAuction(req.params.auctionId)
+    if (!result.ok) {
+      res.status(404).json(errorPayload('NOT_FOUND', result.error, { requestId: req.requestId }))
+      return
+    }
+    res.json(result.auction)
+  } catch (e) {
+    next(e)
   }
-  res.json(result.auction)
 })
 
-admin.get('/sessions/:sessionId/auctions', (req, res) => {
-  res.json(listAuctions(req.params.sessionId))
+admin.get('/sessions/:sessionId/auctions', async (req, res, next) => {
+  try {
+    requireSessionManager(req.params.sessionId, req.user!)
+    res.json(await listAuctions(req.params.sessionId))
+  } catch (e) {
+    next(e)
+  }
 })
 
 courtRouter.use('/admin', admin)

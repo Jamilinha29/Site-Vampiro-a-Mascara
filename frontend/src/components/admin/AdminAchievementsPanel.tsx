@@ -84,11 +84,14 @@ export function AdminAchievementsPanel() {
                 aria-label={`Amigo para ${item.title}`}
               >
                 <option value="">Selecionar amigo…</option>
-                {friends.map((friend) => (
-                  <option key={friend.email} value={friend.email}>
-                    {friend.displayName}
-                  </option>
-                ))}
+                {friends.map((friend) => {
+                  const target = friend.id || friend.handle || friend.email || friend.displayName
+                  return (
+                    <option key={target} value={target}>
+                      {friend.displayName} ({friend.handle})
+                    </option>
+                  )
+                })}
               </select>
               <button
                 type="button"

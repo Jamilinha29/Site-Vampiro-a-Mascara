@@ -1,3 +1,6 @@
+import { useAuthStore } from '../stores/authStore'
+import { queryClient } from '../lib/queryClient'
+
 /** Em produção na Vercel, API no mesmo host (`/api/...`). Localhost no bundle = Failed to fetch. */
 function resolveApiBase(): string {
   const raw = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/$/, '')
@@ -9,6 +12,21 @@ function resolveApiBase(): string {
 }
 
 const API_BASE = resolveApiBase()
+const REQUEST_TIMEOUT_MS = 15_000
+
+export class ApiError extends Error {
+  readonly status: number
+  readonly code?: string
+  readonly details?: unknown
+
+  constructor(status: number, message: string, options?: { code?: string; details?: unknown }) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = options?.code
+    this.details = options?.details
+  }
+}
 
 export type ReferenceEntry = {
   id: string
@@ -59,34 +77,40 @@ type BackupReport = {
   storageNote: string
 }
 
+let refreshInFlight: Promise<string | null> | null = null
+
 async function refreshAccessToken() {
-  const raw = localStorage.getItem('beladona-auth')
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as {
-      state?: { session?: { refreshToken?: string; accessToken?: string; expiresAt?: number } }
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = (async () => {
+    const store = useAuthStore.getState()
+    const refreshToken = store.session?.refreshToken
+    if (!refreshToken || !store.session) return null
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      })
+      if (!res.ok) {
+        store.clearSession()
+        queryClient.clear()
+        return null
+      }
+      const body = (await res.json()) as { accessToken?: string; refreshToken?: string; expiresAt?: number }
+      if (!body.accessToken) return null
+      useAuthStore.getState().updateSession({
+        accessToken: body.accessToken,
+        refreshToken: body.refreshToken ?? refreshToken,
+        expiresAt: body.expiresAt,
+      })
+      return body.accessToken
+    } catch {
+      return null
+    } finally {
+      refreshInFlight = null
     }
-    const refreshToken = parsed.state?.session?.refreshToken
-    if (!refreshToken || !parsed.state?.session) return null
-    const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    })
-    if (!res.ok) return null
-    const body = (await res.json()) as { accessToken?: string; refreshToken?: string; expiresAt?: number }
-    if (!body.accessToken) return null
-    parsed.state.session = {
-      ...parsed.state.session,
-      accessToken: body.accessToken,
-      refreshToken: body.refreshToken ?? refreshToken,
-      expiresAt: body.expiresAt,
-    }
-    localStorage.setItem('beladona-auth', JSON.stringify(parsed))
-    return body.accessToken
-  } catch {
-    return null
-  }
+  })()
+  return refreshInFlight
 }
 
 async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
@@ -95,37 +119,74 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
     headers.set('Content-Type', 'application/json')
   }
 
-  const token = localStorage.getItem('beladona-auth')
-  if (token) {
-    try {
-      const parsed = JSON.parse(token) as { state?: { session?: { accessToken?: string } } }
-      const access = parsed.state?.session?.accessToken
-      if (access) headers.set('Authorization', `Bearer ${access}`)
-    } catch {
-      /* ignore */
-    }
+  const access = useAuthStore.getState().session?.accessToken
+  if (access) {
+    headers.set('Authorization', `Bearer ${access}`)
   }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const upstreamSignal = init?.signal
+  const onAbort = () => controller.abort()
+  upstreamSignal?.addEventListener('abort', onAbort, { once: true })
 
   let res: Response
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...init, headers })
-  } catch {
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError' && !upstreamSignal?.aborted) {
+      throw new ApiError(504, 'O servidor demorou para responder. Tente novamente em instantes.', {
+        code: 'TIMEOUT',
+      })
+    }
     const local = !API_BASE || /localhost|127\.0\.0\.1/.test(API_BASE)
-    throw new Error(
+    throw new ApiError(
+      0,
       local
         ? 'A API local não respondeu. Confira se o servidor em localhost:4000 está no ar.'
         : 'Não foi possível falar com o servidor.',
+      { code: 'NETWORK_ERROR' },
     )
+  } finally {
+    clearTimeout(timeout)
+    upstreamSignal?.removeEventListener('abort', onAbort)
   }
+
   if (res.status === 401 && !retried && !path.startsWith('/api/v1/auth/')) {
     const renewed = await refreshAccessToken()
     if (renewed) return request<T>(path, init, true)
+    useAuthStore.getState().clearSession()
   }
+
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
-    throw new Error(body.error?.message ?? res.statusText)
+    const contentType = res.headers.get('content-type') ?? ''
+    const body = contentType.includes('application/json')
+      ? ((await res.json().catch(() => ({}))) as {
+          error?: { code?: string; message?: string; details?: unknown; revision?: number }
+        })
+      : {}
+    const fallbackMessage =
+      res.status >= 500
+        ? 'O servidor encontrou um erro inesperado. Tente novamente em instantes.'
+        : res.status === 401
+          ? 'Sua sessão expirou. Entre novamente.'
+          : res.status === 403
+            ? 'Você não tem permissão para realizar esta ação.'
+            : res.status === 404
+              ? 'Registro não encontrado.'
+              : res.status === 409
+                ? 'Conflito de atualização. Recarregue e tente novamente.'
+                : 'Não foi possível concluir a solicitação.'
+    throw new ApiError(res.status, body.error?.message ?? fallbackMessage, {
+      code: body.error?.code,
+      details: body.error?.details ?? (body.error?.revision !== undefined ? { revision: body.error.revision } : undefined),
+    })
   }
   if (res.status === 204) return undefined as T
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new ApiError(502, 'Resposta inesperada do servidor.', { code: 'INVALID_RESPONSE' })
+  }
   return res.json() as Promise<T>
 }
 
@@ -186,6 +247,7 @@ export const api = {
   adminSaveRules: (body: {
     maxLevel: number
     subclassLevel: number
+    secondarySubclassLevel?: number
     startingXp?: number
     shopBudgetCopper?: number
     decision: 'keep-existing' | 'mark-review'
@@ -214,15 +276,34 @@ export const api = {
     request<
       Array<{
         email: string
+        playerId?: string
         displayName: string
         characterId: string
         name: string
         level: number
         clan: string | null
+        subclass?: string | null
+        secondarySubclass?: string | null
+        needsRuleReview?: boolean
+        ruleReviewNote?: string | null
+        sheetRevision?: number
         approval?: 'draft' | 'submitted' | 'changes' | 'approved'
         reviewNote: string | null
       }>
     >('/api/v1/admin/chronicle/character-reviews'),
+  adminListCharacterRevisions: (email: string, characterId: string) =>
+    request<Array<{ id: string; reason: string; createdAt: string; level: number; sheetRevision: number }>>(
+      `/api/v1/admin/chronicle/characters/${encodeURIComponent(email)}/${encodeURIComponent(characterId)}/revisions`,
+    ),
+  adminRestoreCharacterRevision: (
+    email: string,
+    characterId: string,
+    body: { revisionId: string; dryRun?: boolean; confirm?: 'restaurar-revisao' },
+  ) =>
+    request(
+      `/api/v1/admin/chronicle/characters/${encodeURIComponent(email)}/${encodeURIComponent(characterId)}/restore-revision`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   adminReviewCharacter: (
     email: string,
     characterId: string,
@@ -282,45 +363,33 @@ export const api = {
       displayName: string
       role: string
     }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  meProfile: () => request<import('../types/profile').UserProfile>('/api/v1/me/profile'),
+  getRecoveryStatus: () =>
+    request<{ supabaseAuthActive: boolean; externalEmailDeliveryConfirmed: boolean; note: string }>(
+      '/api/v1/auth/recovery-status',
+    ),
   requestPasswordRecovery: (email: string) =>
     request<{ message: string }>('/api/v1/auth/recover', { method: 'POST', body: JSON.stringify({ email }) }),
-  confirmPasswordRecovery: (token: string, password: string) =>
+  confirmPasswordRecovery: (tokenOrHash: string, password: string, isTokenHash = false) =>
     request<{ message: string }>('/api/v1/auth/recover/confirm', {
       method: 'POST',
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify(
+        isTokenHash ? { tokenHash: tokenOrHash, password } : { token: tokenOrHash, password },
+      ),
     }),
   register: async (payload: Record<string, unknown>) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    const token = localStorage.getItem('beladona-auth')
-    if (token) {
-      try {
-        const parsed = JSON.parse(token) as { state?: { session?: { accessToken?: string } } }
-        const access = parsed.state?.session?.accessToken
-        if (access) headers.set('Authorization', `Bearer ${access}`)
-      } catch {
-        /* ignore */
-      }
-    }
-    const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+    return request<{
+      accessToken: string
+      refreshToken?: string
+      expiresAt?: number
+      userId: string
+      email: string
+      displayName: string
+      role: string
+    }>('/api/v1/auth/register', {
       method: 'POST',
-      headers,
       body: JSON.stringify(payload),
     })
-    const body = (await res.json().catch(() => ({}))) as {
-      accessToken?: string
-      userId?: string
-      email?: string
-      displayName?: string
-      role?: string
-      error?: { message?: string }
-    }
-    if (res.status === 202 || (body.error && !body.accessToken)) {
-      throw new Error(body.error?.message ?? 'Não foi possível concluir o cadastro.')
-    }
-    if (!res.ok) {
-      throw new Error(body.error?.message ?? res.statusText)
-    }
-    return body as { accessToken: string; userId: string; email: string; displayName: string; role: string }
   },
   getMeDashboard: () => request<DashboardPayload>('/api/v1/me/dashboard'),
   getMeProfile: () => request<import('../types/profile').UserProfile>('/api/v1/me/profile'),
@@ -372,7 +441,9 @@ export const api = {
       mana?: { current: number; max: number }
       will?: { current: number; max: number }
       subclass?: string | null
+      secondarySubclass?: string | null
       characterClass?: string | null
+      expectedRevision?: number
       identityPatch?: Partial<{
         house: string | null
         nature: string | null
@@ -392,7 +463,9 @@ export const api = {
   adminListRegisteredPlayers: () =>
     request<
       Array<{
-        email: string
+        id?: string
+        publicId?: string
+        email?: string
         displayName: string
         handle: string
         memberSince: string
@@ -423,10 +496,43 @@ export const api = {
     sessionId: string
     participantDisplayName: string
     amount: number
+    operationId?: string
   }) =>
     request<import('../types/profile').ProfileCharacterSummary>(
       `/api/v1/admin/chronicle/award-xp`,
+      { method: 'POST', body: JSON.stringify({ ...body, operationId: body.operationId ?? crypto.randomUUID() }) },
+    ),
+  getSessionActions: (sessionId: string) =>
+    request<import('../types/chronicle').SessionActionRecord[]>(
+      `/api/v1/content/sessions/${encodeURIComponent(sessionId)}/actions`,
+    ),
+  postSessionAction: (
+    sessionId: string,
+    body: {
+      characterId?: string
+      characterName?: string
+      kind: import('../types/chronicle').SessionActionRecord['kind']
+      summary: string
+      detail?: string
+    },
+  ) =>
+    request<import('../types/chronicle').SessionActionRecord>(
+      `/api/v1/content/sessions/${encodeURIComponent(sessionId)}/actions`,
       { method: 'POST', body: JSON.stringify(body) },
+    ),
+  adminGetSessionActions: (sessionId: string) =>
+    request<import('../types/chronicle').SessionActionRecord[]>(
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/actions`,
+    ),
+  adminPatchMesaWhisper: (sessionId: string, narratorWhisper: string) =>
+    request<import('../types/chronicle').SessionHandout>(
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/handout/whisper`,
+      { method: 'PATCH', body: JSON.stringify({ narratorWhisper }) },
+    ),
+  adminRotateSessionCode: (sessionId: string) =>
+    request<{ accessCode: string; session: import('../types/chronicle').ScheduledSession }>(
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/rotate-code`,
+      { method: 'POST' },
     ),
   getNews: () => request<NewsPost[]>('/api/v1/news'),
 
@@ -644,13 +750,14 @@ export const api = {
     >('/api/v1/court/achievements'),
   getFriends: () =>
     request<{
-      friends: Array<{ email: string; displayName: string; handle: string; characters: number }>
-      incoming: Array<{ id: string; createdAt: string; from: { email: string; displayName: string; handle: string } }>
+      friends: Array<{ id?: string; email?: string; displayName: string; handle: string; characters: number }>
+      incoming: Array<{ id: string; createdAt: string; from: { id?: string; email?: string; displayName: string; handle: string } }>
     }>('/api/v1/court/friends'),
   searchCourtPlayers: (q: string) =>
     request<
       Array<{
-        email: string
+        id: string
+        email?: string
         displayName: string
         handle: string
         characters: number
@@ -658,8 +765,11 @@ export const api = {
         linkId: string | null
       }>
     >(`/api/v1/court/players?q=${encodeURIComponent(q)}`),
-  requestFriend: (email: string) =>
-    request('/api/v1/court/friends', { method: 'POST', body: JSON.stringify({ email }) }),
+  requestFriend: (target: string) =>
+    request('/api/v1/court/friends', {
+      method: 'POST',
+      body: JSON.stringify(target.includes('@') ? { email: target } : { playerId: target }),
+    }),
   acceptFriend: (linkId: string) =>
     request(`/api/v1/court/friends/${encodeURIComponent(linkId)}/accept`, { method: 'POST' }),
   removeFriend: (id: string) =>
@@ -688,19 +798,20 @@ export const api = {
     request('/api/v1/court/admin/achievements', { method: 'POST', body: JSON.stringify(body) }),
   adminDeleteAchievement: (id: string) =>
     request(`/api/v1/court/admin/achievements/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  adminGrantAchievement: (id: string, email: string) =>
+  adminGrantAchievement: (id: string, target: string) =>
     request(`/api/v1/court/admin/achievements/${encodeURIComponent(id)}/grant`, {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(target.includes('@') ? { email: target } : { playerId: target }),
     }),
   adminCourtPlayers: () =>
     request<{
       registeredCount: number
-      friends: Array<{ email: string; displayName: string; handle: string; characters: number; memberSince: string | null }>
-      incoming: Array<{ id: string; createdAt: string; from: { email: string; displayName: string; handle: string; characters: number } }>
-      outgoing: Array<{ id: string; createdAt: string; to: { email: string; displayName: string; handle: string; characters: number } }>
+      friends: Array<{ id?: string; email?: string; displayName: string; handle: string; characters: number; memberSince: string | null }>
+      incoming: Array<{ id: string; createdAt: string; from: { id?: string; email?: string; displayName: string; handle: string; characters: number } }>
+      outgoing: Array<{ id: string; createdAt: string; to: { id?: string; email?: string; displayName: string; handle: string; characters: number } }>
       roster: Array<{
-        email: string
+        id: string
+        email?: string
         displayName: string
         handle: string
         characters: number
@@ -709,12 +820,24 @@ export const api = {
         linkId: string | null
       }>
     }>('/api/v1/court/admin/players'),
-  adminAddFriend: (email: string) =>
-    request('/api/v1/court/admin/friends', { method: 'POST', body: JSON.stringify({ email }) }),
-  adminRemoveFriend: (email: string) =>
-    request(`/api/v1/court/admin/friends/${encodeURIComponent(email)}`, { method: 'DELETE' }),
-  adminGrantCoins: (body: { sessionId: string; participantDisplayName: string; coin: CoinCode; amount: number }) =>
-    request('/api/v1/court/admin/grant-coins', { method: 'POST', body: JSON.stringify(body) }),
+  adminAddFriend: (target: string) =>
+    request('/api/v1/court/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify(target.includes('@') ? { email: target } : { playerId: target }),
+    }),
+  adminRemoveFriend: (idOrEmail: string) =>
+    request(`/api/v1/court/admin/friends/${encodeURIComponent(idOrEmail)}`, { method: 'DELETE' }),
+  adminGrantCoins: (body: {
+    sessionId: string
+    participantDisplayName: string
+    coin: CoinCode
+    amount: number
+    operationId?: string
+  }) =>
+    request('/api/v1/court/admin/grant-coins', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, operationId: body.operationId ?? crypto.randomUUID() }),
+    }),
   adminShopLevels: () => request<Record<string, number>>('/api/v1/court/admin/shop-levels'),
   adminSetShopLevel: (entityId: string, requiredLevel: number) =>
     request(`/api/v1/court/admin/shop-levels/${encodeURIComponent(entityId)}`, {
@@ -803,13 +926,17 @@ export type NewsPost = {
 }
 
 export type DashboardPayload = {
-  activeChronicle?: { name: string; act: string }
-  nextSession?: { id: string; title: string; scheduledAt: string }
+  activeChronicle?: { name: string; act: string } | null
+  nextSession?: { id: string; title: string; scheduledAt: string; status?: string } | null
   characters: Array<{
     id: string
     name: string
     species: string
     clan?: string
+    level?: number
+    subclass?: string | null
+    secondarySubclass?: string | null
+    needsRuleReview?: boolean
     selected?: boolean
     hp: { current: number; max: number }
     blood?: { current: number; max: number }

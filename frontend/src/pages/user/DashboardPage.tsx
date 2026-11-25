@@ -91,7 +91,11 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-5 sm:flex-row">
               <div className="mx-auto h-40 w-32 shrink-0 rounded border-2 border-secondary/40 bg-surface-container-high sm:mx-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-secondary uppercase">Nível —</p>
+                <p className="text-xs text-secondary uppercase">
+                  Nível {active.level ?? activeFull?.level ?? 1}
+                  {active.subclass ? ` · ${active.subclass}` : ''}
+                  {active.secondarySubclass ? ` / ${active.secondarySubclass}` : ''}
+                </p>
                 <h2 className="font-serif text-2xl text-on-surface">{active.name}</h2>
                 <p className="text-sm text-on-surface-variant">
                   {active.species}

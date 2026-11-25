@@ -1,0 +1,32 @@
+name: Disaster Backup
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  encrypted-export:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SECRET_KEY != '' && secrets.BELADONA_BACKUP_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Export encrypted backup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BELADONA_BACKUP_KEY: ${{ secrets.BELADONA_BACKUP_KEY }}
+          BELADONA_EXTERNAL_BACKUP_TARGET: ${{ secrets.BELADONA_EXTERNAL_BACKUP_TARGET }}
+          BELADONA_BACKUP_DIR: ${{ runner.temp }}/beladona-backups
+        run: npm run backup:export
+      - name: Upload encrypted backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: beladona-encrypted-backup
+          path: ${{ runner.temp }}/beladona-backups/beladona-backup-*.json.gz.enc
+          retention-days: 30

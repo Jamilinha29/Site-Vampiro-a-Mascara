@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/api'
 import { useToast } from '../../components/ui/ToastProvider'
@@ -6,8 +6,10 @@ import { useToast } from '../../components/ui/ToastProvider'
 export default function FriendsPage() {
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const qc = useQueryClient()
   const { push } = useToast()
+  const lastSearchRef = useRef('')
 
   const { data: book } = useQuery({
     queryKey: ['court-friends'],
@@ -16,11 +18,11 @@ export default function FriendsPage() {
   const { data: found = [], isFetching } = useQuery({
     queryKey: ['court-player-search', search],
     queryFn: () => api.searchCourtPlayers(search),
-    enabled: search.trim().length > 0,
+    enabled: search.trim().length >= 2,
   })
 
   const request = useMutation({
-    mutationFn: (email: string) => api.requestFriend(email),
+    mutationFn: (targetId: string) => api.requestFriend(targetId),
     onSuccess: () => {
       push('Pedido de amizade enviado.', 'success')
       void qc.invalidateQueries({ queryKey: ['court-player-search'] })
@@ -36,8 +38,12 @@ export default function FriendsPage() {
     onError: (e: Error) => push(e.message, 'error'),
   })
   const remove = useMutation({
-    mutationFn: (email: string) => api.removeFriend(email),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['court-friends'] }),
+    mutationFn: (idOrHandle: string) => api.removeFriend(idOrHandle),
+    onSuccess: () => {
+      setConfirmRemove(null)
+      push('Amizade removida.', 'info')
+      void qc.invalidateQueries({ queryKey: ['court-friends'] })
+    },
     onError: (e: Error) => push(e.message, 'error'),
   })
 
@@ -55,14 +61,20 @@ export default function FriendsPage() {
           className="flex flex-wrap gap-2"
           onSubmit={(e) => {
             e.preventDefault()
-            setSearch(query.trim())
+            const trimmed = query.trim()
+            if (trimmed.length < 2) {
+              push('Digite ao menos 2 caracteres para buscar.', 'info')
+              return
+            }
+            lastSearchRef.current = trimmed
+            setSearch(trimmed)
           }}
         >
           <input
             className="input-feudal min-w-[16rem] flex-1 pl-4"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nome ou @ do jogador"
+            placeholder="Nome ou @ do jogador (mín. 2 caracteres)"
           />
           <button type="submit" className="btn-primary text-xs">
             Procurar
@@ -70,23 +82,35 @@ export default function FriendsPage() {
         </form>
         {isFetching ? <p className="mt-3 text-sm text-on-surface-variant">Buscando…</p> : null}
         <ul className="mt-3 space-y-2">
-          {found.map((player) => (
-            <li key={player.email} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>
-                <span className="font-serif text-on-surface">{player.displayName}</span>
-                <span className="ml-2 text-xs text-on-surface-variant">{player.handle}</span>
-              </span>
-              {player.relation === 'none' ? (
-                <button type="button" className="btn-secondary text-[10px]" onClick={() => request.mutate(player.email)}>
-                  Pedir amizade
-                </button>
-              ) : (
-                <span className="text-xs text-secondary">
-                  {player.relation === 'friend' ? 'Amigos' : player.relation === 'outgoing' ? 'Pedido enviado' : 'Pedido recebido'}
+          {found.map((player) => {
+            const targetKey = player.id || player.handle || player.email || ''
+            return (
+              <li key={targetKey} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>
+                  <span className="font-serif text-on-surface">{player.displayName}</span>
+                  <span className="ml-2 text-xs text-on-surface-variant">{player.handle}</span>
                 </span>
-              )}
-            </li>
-          ))}
+                {player.relation === 'none' ? (
+                  <button
+                    type="button"
+                    className="btn-secondary text-[10px]"
+                    disabled={request.isPending}
+                    onClick={() => request.mutate(targetKey)}
+                  >
+                    Pedir amizade
+                  </button>
+                ) : (
+                  <span className="text-xs text-secondary">
+                    {player.relation === 'friend'
+                      ? 'Amigos'
+                      : player.relation === 'outgoing'
+                        ? 'Pedido enviado'
+                        : 'Pedido recebido'}
+                  </span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       </section>
 
@@ -97,7 +121,12 @@ export default function FriendsPage() {
             {book?.incoming.map((row) => (
               <li key={row.id} className="flex items-center justify-between gap-2 text-sm">
                 <span className="font-serif">{row.from.displayName}</span>
-                <button type="button" className="btn-primary text-[10px]" onClick={() => accept.mutate(row.id)}>
+                <button
+                  type="button"
+                  className="btn-primary text-[10px]"
+                  disabled={accept.isPending}
+                  onClick={() => accept.mutate(row.id)}
+                >
                   Aceitar
                 </button>
               </li>
@@ -112,17 +141,45 @@ export default function FriendsPage() {
           <p className="mt-2 text-sm text-on-surface-variant">Você ainda não tem amigos na corte.</p>
         ) : (
           <ul className="mt-3 divide-y divide-outline-variant/30">
-            {book?.friends.map((friend) => (
-              <li key={friend.email} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <span>
-                  <span className="font-serif text-on-surface">{friend.displayName}</span>
-                  <span className="ml-2 text-xs text-on-surface-variant">{friend.handle}</span>
-                </span>
-                <button type="button" className="btn-secondary text-[10px]" onClick={() => remove.mutate(friend.email)}>
-                  Desfazer
-                </button>
-              </li>
-            ))}
+            {book?.friends.map((friend) => {
+              const targetKey = friend.id || friend.handle || friend.email || friend.displayName
+              const confirming = confirmRemove === targetKey
+              return (
+                <li key={targetKey} className="flex items-center justify-between gap-2 py-2 text-sm">
+                  <span>
+                    <span className="font-serif text-on-surface">{friend.displayName}</span>
+                    <span className="ml-2 text-xs text-on-surface-variant">{friend.handle}</span>
+                  </span>
+                  {confirming ? (
+                    <span className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="btn-primary text-[10px]"
+                        disabled={remove.isPending}
+                        onClick={() => remove.mutate(targetKey)}
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary text-[10px]"
+                        onClick={() => setConfirmRemove(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-secondary text-[10px]"
+                      onClick={() => setConfirmRemove(targetKey)}
+                    >
+                      Desfazer
+                    </button>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>

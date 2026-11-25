@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { RequestUser } from '../middlewares/optionalUser.js'
 import { devRoleForEmail, signDevToken, type DevRole } from './devAuth.js'
 import { ensureProfile, getProfile } from './profileStore.js'
+import { isSharedDeploymentEnvironment } from './supabaseClient.js'
 
 export function isSupabaseAuthConfigured() {
   const url = process.env.SUPABASE_URL?.trim()
@@ -13,30 +14,33 @@ export function isSupabaseAuthConfigured() {
     return false
   }
   if (anon?.startsWith('sb_secret_')) {
-    console.warn(
-      '[auth] SUPABASE_ANON_KEY parece ser secret/service (sb_secret_). Use a chave pública (anon/publishable) no painel Supabase → API Keys.',
+    console.error(
+      '[auth] SUPABASE_ANON_KEY inválida (sb_secret_). Por segurança, o uso de secret como chave anon foi recusado.',
     )
+    return false
   }
   return Boolean(url && anon)
 }
 
 export function allowDevAuth() {
-  if (process.env.NODE_ENV === 'production') return false
+  if (isSharedDeploymentEnvironment()) return false
   if (process.env.ALLOW_DEV_AUTH === 'false') return false
   if (process.env.NODE_ENV === 'test') return true
   return process.env.ALLOW_DEV_AUTH === 'true'
 }
 
-function narratorAllowlist() {
-  return (process.env.NARRATOR_EMAILS ?? '')
+function emailList(envName: string) {
+  return (process.env[envName] ?? '')
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean)
 }
 
-/** Papel de mestre só vem do servidor: lista NARRATOR_EMAILS ou app_metadata. O cadastro público não escolhe o papel. */
-function roleFromSupabaseUser(email: string, appMeta: Record<string, unknown>): DevRole {
-  if (narratorAllowlist().includes(email.trim().toLowerCase())) return 'narrator'
+/** Papel de mestre/admin só vem do servidor: lista ADMIN_EMAILS/NARRATOR_EMAILS ou app_metadata. */
+export function roleFromSupabaseUser(email: string, appMeta: Record<string, unknown>): DevRole {
+  const key = email.trim().toLowerCase()
+  if (emailList('ADMIN_EMAILS').includes(key)) return 'admin'
+  if (emailList('NARRATOR_EMAILS').includes(key)) return 'narrator'
   const raw = appMeta.role
   if (raw === 'admin' || raw === 'narrator') return raw
   return 'player'
@@ -45,8 +49,8 @@ function roleFromSupabaseUser(email: string, appMeta: Record<string, unknown>): 
 function resolveDevUser(token: string): RequestUser | null {
   if (!token.startsWith('dev-') || !allowDevAuth()) return null
   try {
-    const email = Buffer.from(token.slice(4), 'base64url').toString('utf8')
-    if (!email.includes('@')) return null
+    const email = Buffer.from(token.slice(4), 'base64url').toString('utf8').trim().toLowerCase()
+    if (!email || !email.includes('@') || /\s/.test(email)) return null
     const profile = getProfile(email)
     const emailRole = devRoleForEmail(email)
     const storedRole = profile?.role
@@ -72,8 +76,9 @@ export async function resolveUserFromAuthHeader(authHeader?: string): Promise<Re
   const token = authHeader.slice(7).trim()
   if (!token) return null
 
-  const devUser = resolveDevUser(token)
-  if (devUser) return devUser
+  if (token.startsWith('dev-')) {
+    return resolveDevUser(token)
+  }
 
   if (!isSupabaseAuthConfigured()) return null
 
@@ -90,10 +95,12 @@ export async function resolveUserFromAuthHeader(authHeader?: string): Promise<Re
   const displayName =
     (typeof meta.display_name === 'string' && meta.display_name) ||
     (typeof meta.displayName === 'string' && meta.displayName) ||
+    (typeof meta.full_name === 'string' && meta.full_name) ||
+    (typeof meta.name === 'string' && meta.name) ||
     email.split('@')[0] ||
     'Cainita'
 
-  ensureProfile(email, displayName, role, { authoritative: true })
+  await ensureProfile(email, displayName, role, { authoritative: true })
   return {
     userId: data.user.id,
     email,
@@ -116,7 +123,7 @@ export async function loginWithSupabase(email: string, password: string) {
     (typeof data.user.user_metadata?.displayName === 'string' && data.user.user_metadata.displayName) ||
     email.split('@')[0] ||
     'Cainita'
-  ensureProfile(data.user.email, displayName, role, { authoritative: true })
+  await ensureProfile(data.user.email, displayName, role, { authoritative: true })
   return {
     ok: true as const,
     session: {
@@ -154,8 +161,8 @@ export async function registerWithSupabase(
       pendingConfirmation: true as const,
     }
   }
-  const role = roleFromSupabaseUser(data.user.email, {})
-  ensureProfile(data.user.email, displayName, role, { authoritative: true })
+  const role = roleFromSupabaseUser(data.user.email, (data.user.app_metadata ?? {}) as Record<string, unknown>)
+  await ensureProfile(data.user.email, displayName, role, { authoritative: true })
   return {
     ok: true as const,
     session: {
@@ -171,7 +178,10 @@ export async function registerWithSupabase(
 }
 
 export function devLogin(email: string, displayName: string) {
+  if (!allowDevAuth()) {
+    throw new Error('Autenticação de desenvolvimento bloqueada neste ambiente.')
+  }
   const role = devRoleForEmail(email)
-  ensureProfile(email, displayName, role)
+  void ensureProfile(email, displayName, role)
   return signDevToken(email, displayName, role)
 }

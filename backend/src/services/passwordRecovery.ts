@@ -1,39 +1,9 @@
-import { createHash, randomBytes } from 'crypto'
+import { createClient } from '@supabase/supabase-js'
+import { isSupabaseAuthConfigured } from './supabaseAuth.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
-import { sendTransactionalEmail } from './resendClient.js'
-
-const THIRTY_MINUTES = 30 * 60 * 1000
-
-type ResetRecord = { userId: string; email: string; expiresAt: number }
-
-const records = new Map<string, ResetRecord>()
 
 export const RECOVERY_PUBLIC_MESSAGE =
-  'Se este correio tiver uma conta, o corvo sai com o caminho para um selo novo. O caminho vale por 30 minutos.'
-
-function hashToken(token: string) {
-  return createHash('sha256').update(token).digest('hex')
-}
-
-export function createRecoveryToken(userId: string, email: string, ttlMs = THIRTY_MINUTES) {
-  const token = randomBytes(32).toString('base64url')
-  records.set(hashToken(token), { userId, email: email.toLowerCase(), expiresAt: Date.now() + ttlMs })
-  return token
-}
-
-export function peekRecoveryToken(token: string) {
-  const row = records.get(hashToken(token))
-  if (!row) return null
-  if (row.expiresAt <= Date.now()) {
-    records.delete(hashToken(token))
-    return null
-  }
-  return row
-}
-
-export function dropRecoveryToken(token: string) {
-  records.delete(hashToken(token))
-}
+  'Se este correio tiver uma conta com senha, enviaremos as instruções para redefinir o selo. O link expira conforme a política de segurança.'
 
 function appOrigin() {
   const explicit = process.env.PUBLIC_APP_URL?.trim()
@@ -42,44 +12,85 @@ function appOrigin() {
   return (cors || 'http://localhost:5173').replace(/\/$/, '')
 }
 
-async function findAuthUser(email: string) {
-  const sb = getSupabaseAdmin()
-  if (!sb) return null
-  const target = email.trim().toLowerCase()
-  for (let page = 1; page <= 5; page += 1) {
-    const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 200 })
-    if (error || !data.users.length) return null
-    const found = data.users.find((user) => user.email?.toLowerCase() === target)
-    if (found?.id && found.email) return { id: found.id, email: found.email }
-    if (data.users.length < 200) return null
+export function getRecoveryCapabilities() {
+  const supabaseAuthActive = isSupabaseAuthConfigured()
+  const customSmtpVerified = process.env.SUPABASE_SMTP_VERIFIED === 'true'
+  return {
+    supabaseAuthActive,
+    externalEmailDeliveryConfirmed: customSmtpVerified,
+    note: customSmtpVerified
+      ? 'Recuperação via Supabase Auth ativa com envio SMTP validado.'
+      : 'Supabase Auth ativo; no plano Free o SMTP padrão entrega apenas para membros da equipe até configurar SMTP próprio.',
   }
-  return null
 }
 
+/**
+ * Solicita recuperação de senha diretamente ao Supabase Auth (sem tokens em memória).
+ * Nunca revela se o e-mail existe ou registra tokens/links nos logs.
+ */
 export async function requestPasswordRecovery(email: string) {
   if (process.env.NODE_ENV === 'test') return
-  const user = await findAuthUser(email)
-  if (!user) return
-  const token = createRecoveryToken(user.id, user.email)
-  const link = `${appOrigin()}/auth/recover?token=${encodeURIComponent(token)}`
-  const sent = await sendTransactionalEmail({
-    to: user.email,
-    subject: 'Novo selo da Beladona',
-    html: `<p>Alguém pediu um selo novo para esta conta.</p><p><a href="${link}">Escolher o selo novo</a></p><p>O caminho expira em 30 minutos. Se não foi você, ignore este corvo.</p>`,
-  })
-  if (!sent.ok) {
-    dropRecoveryToken(token)
-    console.warn('[auth] Recuperação não enviada. Confira RESEND_API_KEY e RESEND_FROM. Motivo:', sent.reason)
+  if (!isSupabaseAuthConfigured()) return
+  const url = process.env.SUPABASE_URL!.trim()
+  const anon = process.env.SUPABASE_ANON_KEY!.trim()
+  const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } })
+  const redirectTo = `${appOrigin()}/auth/recover`
+  const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo })
+  if (error) {
+    console.warn('[auth] resetPasswordForEmail recusado pelo provedor:', error.message)
   }
 }
 
-export async function confirmPasswordRecovery(token: string, password: string) {
-  const row = peekRecoveryToken(token)
-  if (!row) return { ok: false as const, message: 'Este caminho expirou ou já foi usado. Peça outro corvo.' }
-  const sb = getSupabaseAdmin()
-  if (!sb) return { ok: false as const, message: 'A troca de selo não está disponível neste servidor.' }
-  const { error } = await sb.auth.admin.updateUserById(row.userId, { password })
-  if (error) return { ok: false as const, message: 'Não foi possível gravar o selo novo. Peça outro corvo.' }
-  dropRecoveryToken(token)
+/**
+ * Conclui a redefinição validando o token de recuperação emitido pelo Supabase Auth.
+ * Sobrevive a reinícios do servidor e múltiplas instâncias (sem Map local).
+ */
+export async function confirmPasswordRecovery(
+  tokenOrHash: string,
+  password: string,
+  options?: { type?: 'token' | 'token_hash' },
+) {
+  if (!isSupabaseAuthConfigured()) {
+    return {
+      ok: false as const,
+      message: 'A troca de selo exige Supabase Auth configurado neste servidor.',
+    }
+  }
+  const url = process.env.SUPABASE_URL!.trim()
+  const anon = process.env.SUPABASE_ANON_KEY!.trim()
+  const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } })
+
+  if (options?.type === 'token_hash') {
+    const { data, error } = await sb.auth.verifyOtp({
+      token_hash: tokenOrHash,
+      type: 'recovery',
+    })
+    if (error || !data.user?.id) {
+      return { ok: false as const, message: 'Este caminho expirou ou já foi usado. Peça outro corvo.' }
+    }
+    const admin = getSupabaseAdmin()
+    if (!admin) {
+      return { ok: false as const, message: 'A troca de selo não está disponível neste servidor.' }
+    }
+    const { error: updateErr } = await admin.auth.admin.updateUserById(data.user.id, { password })
+    if (updateErr) {
+      return { ok: false as const, message: 'Não foi possível gravar o selo novo. Peça outro corvo.' }
+    }
+    return { ok: true as const }
+  }
+
+  // Valida access token da sessão de recuperação emitida pelo Supabase Auth
+  const { data, error } = await sb.auth.getUser(tokenOrHash)
+  if (error || !data.user?.id) {
+    return { ok: false as const, message: 'Este caminho expirou ou já foi usado. Peça outro corvo.' }
+  }
+  const admin = getSupabaseAdmin()
+  if (!admin) {
+    return { ok: false as const, message: 'A troca de selo não está disponível neste servidor.' }
+  }
+  const { error: updateErr } = await admin.auth.admin.updateUserById(data.user.id, { password })
+  if (updateErr) {
+    return { ok: false as const, message: 'Não foi possível gravar o selo novo. Peça outro corvo.' }
+  }
   return { ok: true as const }
 }

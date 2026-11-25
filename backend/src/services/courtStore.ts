@@ -1,10 +1,23 @@
-import { randomUUID } from 'crypto'
-import { getEntity, type ChronicleEntity } from './chronicleStore.js'
-import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
-import { recordOperation } from './operationLog.js'
+import { randomUUID } from 'node:crypto'
+import { getEntity, getScheduledSession, type ChronicleEntity } from './chronicleStore.js'
+import {
+  checkRemoteDocumentRevision,
+  commitDocument,
+  documentWeight,
+  getLoadedDocumentRevision,
+  loadDocument,
+  runExclusive,
+} from './campaignDocuments.js'
+import { recordOperationStrict } from './operationLog.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
 import { grantEntityToCharacter } from './itemGrant.js'
-import { getProfile, listRegisteredPlayers } from './profileStore.js'
+import {
+  findProfileByPublicId,
+  getProfile,
+  listRegisteredPlayers,
+  publicPlayerId,
+} from './profileStore.js'
+import { MAX_CHARACTER_LEVEL } from './progressionRules.js'
 
 export type Coin = 'gold' | 'silver' | 'copper'
 
@@ -18,9 +31,9 @@ const COIN_VALUE: Record<Coin, number> = { gold: 100, silver: 10, copper: 1 }
 const RARITY_LEVEL: Record<string, number> = {
   comum: 1,
   incomum: 3,
-  raro: 6,
-  ancestral: 10,
-  proibido: 14,
+  raro: 5,
+  ancestral: 8,
+  proibido: 10,
 }
 
 export type Achievement = {
@@ -93,6 +106,7 @@ type CourtFile = {
   itemLevels: Record<string, number>
 }
 
+const DOC_ID = 'court'
 const FILE = 'court.json'
 
 function emptyFile(): CourtFile {
@@ -109,16 +123,53 @@ function emptyFile(): CourtFile {
 
 let state: CourtFile = readJsonFile<CourtFile>(FILE) ?? emptyFile()
 
-function save() {
-  if (process.env.NODE_ENV === 'test') return
-  writeJsonFile(FILE, state)
-  rememberDocument('court', state)
+function clone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T
+}
+
+async function saveCourt(): Promise<void> {
+  await commitDocument(DOC_ID, state)
+  if (process.env.NODE_ENV !== 'test') {
+    writeJsonFile(FILE, state)
+  }
+}
+
+export async function syncCourtIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision(DOC_ID)
+  if (remoteRev > getLoadedDocumentRevision(DOC_ID)) {
+    await hydrateCourt()
+  }
 }
 
 export async function hydrateCourt() {
-  const doc = await loadDocument<CourtFile>('court')
+  const doc = await loadDocument<CourtFile>(DOC_ID)
   if (!doc || documentWeight(doc.body) === 0) return
   state = { ...emptyFile(), ...doc.body }
+}
+
+export function resetCourtForTests() {
+  state = emptyFile()
+}
+
+export function snapshotCourtState(): CourtFile {
+  return clone(state)
+}
+
+export function restoreCourtSnapshot(snapshot: CourtFile) {
+  state = clone(snapshot)
+}
+
+async function runCourtMutation<T>(fn: () => Promise<T> | T): Promise<T> {
+  return runExclusive('store:court', async () => {
+    await syncCourtIfStale()
+    const backup = snapshotCourtState()
+    try {
+      return await fn()
+    } catch (err) {
+      restoreCourtSnapshot(backup)
+      throw err
+    }
+  })
 }
 
 function emailKey(email: string) {
@@ -136,15 +187,19 @@ function findLink(a: string, b: string) {
 
 export function shopLevelOf(entity: Pick<ChronicleEntity, 'id' | 'rarity'> & { requiredLevel?: number }) {
   const stored = state.itemLevels[entity.id]
-  if (stored && stored > 0) return stored
-  if (entity.requiredLevel && entity.requiredLevel > 0) return entity.requiredLevel
+  if (stored && stored > 0) return Math.min(MAX_CHARACTER_LEVEL, stored)
+  if (entity.requiredLevel && entity.requiredLevel > 0) {
+    return Math.min(MAX_CHARACTER_LEVEL, entity.requiredLevel)
+  }
   return RARITY_LEVEL[entity.rarity ?? ''] ?? 1
 }
 
-export function setShopLevel(entityId: string, level: number) {
-  state.itemLevels[entityId] = Math.min(20, Math.max(1, Math.round(level)))
-  save()
-  return state.itemLevels[entityId]
+export async function setShopLevel(entityId: string, level: number) {
+  return runCourtMutation(async () => {
+    state.itemLevels[entityId] = Math.min(MAX_CHARACTER_LEVEL, Math.max(0, Math.round(level)))
+    await saveCourt()
+    return state.itemLevels[entityId]
+  })
 }
 
 export function listShopLevels() {
@@ -166,33 +221,42 @@ export function entityPrice(entity: Pick<ChronicleEntity, 'priceGold' | 'priceSi
   return entityPriceParts(entity)[0] ?? { coin: 'silver' as const, amount: 0 }
 }
 
-function walletOf(email: string) {
+export function hasWallet(email: string): boolean {
+  return Boolean(state.wallets[emailKey(email)])
+}
+
+function ensureWalletForCredit(email: string) {
   const key = emailKey(email)
   if (!state.wallets[key]) state.wallets[key] = { gold: 0, silver: 0, copper: 0 }
   return state.wallets[key]
 }
 
 export function listWalletSnapshot() {
-  return state.wallets
+  return clone(state.wallets)
 }
 
-export function replaceWalletMap(wallets: CourtFile['wallets']) {
-  state = { ...state, wallets: wallets ?? {} }
-  save()
+export async function replaceWalletMap(wallets: CourtFile['wallets']) {
+  return runCourtMutation(async () => {
+    state = { ...state, wallets: clone(wallets ?? {}) }
+    await saveCourt()
+  })
 }
 
 export function getCourtWallet(email: string) {
-  const w = walletOf(email)
+  const w = state.wallets[emailKey(email)]
+  if (!w) return { gold: 0, silver: 0, copper: 0 }
   return { gold: w.gold, silver: w.silver, copper: w.copper }
 }
 
-export function listCourtLedger(email: string) {
+export function listCourtLedger(email: string, options?: { limit?: number; offset?: number }) {
   const key = emailKey(email)
+  const limit = Math.min(100, Math.max(1, options?.limit ?? 50))
+  const offset = Math.max(0, options?.offset ?? 0)
   return state.ledger
     .filter((row) => row.email === key)
     .slice()
     .reverse()
-    .slice(0, 50)
+    .slice(offset, offset + limit)
     .map(({ id, kind, label, amount, at }) => ({ id, kind, label, amount, at }))
 }
 
@@ -205,51 +269,77 @@ function pushLedger(email: string, kind: 'credit' | 'debit', coin: Coin, amount:
     amount: `${kind === 'credit' ? '+' : '−'}${amount} ${COIN_LABEL[coin]}`,
     at: new Date().toISOString(),
   })
-  if (state.ledger.length > 400) state.ledger = state.ledger.slice(-400)
+  if (state.ledger.length > 800) state.ledger = state.ledger.slice(-800)
 }
 
-type CoinMeta = { actorEmail?: string; sessionId?: string }
+type CoinMeta = { actorEmail?: string; sessionId?: string; operationId?: string }
 
-export function creditCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
+export async function creditCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
   const qty = Math.max(0, Math.round(amount))
   if (qty <= 0) return getCourtWallet(email)
-  const w = walletOf(email)
-  const before = String(w[coin])
-  w[coin] += qty
-  pushLedger(email, 'credit', coin, qty, label)
-  const adjustment = /estorno|compens/i.test(label)
-  recordOperation({
-    email,
-    actorEmail: meta?.actorEmail?.trim() || email,
-    kind: adjustment ? 'adjustment' : 'credit',
-    summary: label,
-    before,
-    after: String(w[coin]),
-    sessionId: meta?.sessionId,
+  return runCourtMutation(async () => {
+    const w = ensureWalletForCredit(email)
+    const before = String(w[coin])
+    w[coin] += qty
+    pushLedger(email, 'credit', coin, qty, label)
+    const adjustment = /estorno|compens/i.test(label)
+    await saveCourt()
+    await recordOperationStrict({
+      email,
+      actorEmail: meta?.actorEmail?.trim() || email,
+      kind: adjustment ? 'adjustment' : 'credit',
+      summary: label,
+      before,
+      after: String(w[coin]),
+      sessionId: meta?.sessionId,
+      operationId: meta?.operationId,
+    })
+    return { ...w }
   })
-  save()
-  return { ...w }
 }
 
-export function debitCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
-  const qty = Math.max(0, Math.round(amount))
-  const w = walletOf(email)
-  if (qty === 0) return { ok: true as const, wallet: { ...w } }
-  if (w[coin] < qty) return { ok: false as const, error: `Saldo insuficiente de ${COIN_LABEL[coin]}` }
+export function applyDebitInMemory(email: string, coin: Coin, amount: number, label: string) {
+  const qty = Math.round(amount)
+  if (!Number.isFinite(qty) || qty < 0) {
+    return { ok: false as const, error: 'Valor financeiro inválido.' }
+  }
+  if (qty === 0) return { ok: true as const, wallet: getCourtWallet(email), changed: false }
+  const w = state.wallets[emailKey(email)]
+  if (!w) {
+    return { ok: false as const, error: 'Carteira não iniciada para esta conta.' }
+  }
+  if (w[coin] < qty) {
+    return { ok: false as const, error: `Saldo insuficiente de ${COIN_LABEL[coin]}` }
+  }
   const before = String(w[coin])
   w[coin] -= qty
   pushLedger(email, 'debit', coin, qty, label)
-  recordOperation({
-    email,
-    actorEmail: meta?.actorEmail?.trim() || email,
-    kind: 'debit',
-    summary: label,
-    before,
-    after: String(w[coin]),
-    sessionId: meta?.sessionId,
+  return { ok: true as const, wallet: { ...w }, before, after: String(w[coin]), changed: true }
+}
+
+export async function commitCourtState() {
+  await saveCourt()
+}
+
+export async function debitCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
+  return runCourtMutation(async () => {
+    const res = applyDebitInMemory(email, coin, amount, label)
+    if (!res.ok) return res
+    if (res.changed) {
+      await saveCourt()
+      await recordOperationStrict({
+        email,
+        actorEmail: meta?.actorEmail?.trim() || email,
+        kind: 'debit',
+        summary: label,
+        before: res.before,
+        after: res.after,
+        sessionId: meta?.sessionId,
+        operationId: meta?.operationId,
+      })
+    }
+    return { ok: true as const, wallet: res.wallet }
   })
-  save()
-  return { ok: true as const, wallet: { ...w } }
 }
 
 export function listAchievements() {
@@ -268,43 +358,49 @@ export function muralFor(email: string) {
   })
 }
 
-export function createAchievement(input: { title: string; description: string; howToEarn: string }) {
-  const row: Achievement = {
-    id: randomUUID(),
-    title: input.title.trim(),
-    description: input.description.trim(),
-    howToEarn: input.howToEarn.trim(),
-    createdAt: new Date().toISOString(),
-  }
-  state.achievements.push(row)
-  save()
-  return row
+export async function createAchievement(input: { title: string; description: string; howToEarn: string }) {
+  return runCourtMutation(async () => {
+    const row: Achievement = {
+      id: randomUUID(),
+      title: input.title.trim(),
+      description: input.description.trim(),
+      howToEarn: input.howToEarn.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    state.achievements.push(row)
+    await saveCourt()
+    return row
+  })
 }
 
-export function deleteAchievement(id: string) {
-  const before = state.achievements.length
-  state.achievements = state.achievements.filter((a) => a.id !== id)
-  state.unlocks = state.unlocks.filter((u) => u.achievementId !== id)
-  if (state.achievements.length === before) return false
-  save()
-  return true
+export async function deleteAchievement(id: string) {
+  return runCourtMutation(async () => {
+    const before = state.achievements.length
+    state.achievements = state.achievements.filter((a) => a.id !== id)
+    state.unlocks = state.unlocks.filter((u) => u.achievementId !== id)
+    if (state.achievements.length === before) return false
+    await saveCourt()
+    return true
+  })
 }
 
-export function grantAchievement(email: string, achievementId: string, grantedBy: string) {
-  const achievement = state.achievements.find((a) => a.id === achievementId)
-  if (!achievement) return { ok: false as const, error: 'Conquista não encontrada' }
-  const key = emailKey(email)
-  const existing = state.unlocks.find((u) => u.achievementId === achievementId && emailKey(u.email) === key)
-  if (existing) return { ok: true as const, unlock: existing }
-  const unlock: AchievementUnlock = {
-    achievementId,
-    email,
-    unlockedAt: new Date().toISOString(),
-    grantedBy,
-  }
-  state.unlocks.push(unlock)
-  save()
-  return { ok: true as const, unlock }
+export async function grantAchievement(email: string, achievementId: string, grantedBy: string) {
+  return runCourtMutation(async () => {
+    const achievement = state.achievements.find((a) => a.id === achievementId)
+    if (!achievement) return { ok: false as const, error: 'Conquista não encontrada' }
+    const key = emailKey(email)
+    const existing = state.unlocks.find((u) => u.achievementId === achievementId && emailKey(u.email) === key)
+    if (existing) return { ok: true as const, unlock: existing }
+    const unlock: AchievementUnlock = {
+      achievementId,
+      email,
+      unlockedAt: new Date().toISOString(),
+      grantedBy,
+    }
+    state.unlocks.push(unlock)
+    await saveCourt()
+    return { ok: true as const, unlock }
+  })
 }
 
 export function areFriends(a: string, b: string) {
@@ -319,14 +415,24 @@ export function friendEmails(email: string) {
     .map((f) => (emailKey(f.a) === key ? f.b : f.a))
 }
 
+/** Projeção pública sem expor e-mail de terceiros (C26). */
 function publicPlayer(email: string) {
   const profile = getProfile(email)
+  const id = profile?.publicId ?? publicPlayerId(email)
   return {
-    email,
-    displayName: profile?.displayName ?? email,
-    handle: profile?.handle ?? email,
+    id,
+    displayName: profile?.displayName ?? 'Cainita',
+    handle: profile?.handle ?? `@${id}`,
     characters: profile?.characters.length ?? 0,
     memberSince: profile?.memberSince ?? null,
+  }
+}
+
+function publicFriendLink(link: FriendLink) {
+  return {
+    id: link.id,
+    status: link.status,
+    createdAt: link.createdAt,
   }
 }
 
@@ -356,9 +462,11 @@ export function listOutgoingFor(email: string) {
     }))
 }
 
-export function searchPlayers(query: string, viewerEmail: string, limit = 20) {
+export function searchPlayers(query: string, viewerEmail: string, limit = 20, includeEmpty = false) {
   const q = query.trim().toLowerCase()
+  if (!includeEmpty && q.length < 2) return []
   const viewer = emailKey(viewerEmail)
+  const safeLimit = Math.min(50, Math.max(1, limit))
   return listRegisteredPlayers()
     .filter((p) => emailKey(p.email) !== viewer)
     .filter((p) => {
@@ -366,77 +474,98 @@ export function searchPlayers(query: string, viewerEmail: string, limit = 20) {
       return (
         p.displayName.toLowerCase().includes(q) ||
         p.handle.toLowerCase().includes(q) ||
-        p.email.toLowerCase().includes(q)
+        p.id.toLowerCase() === q
       )
     })
-    .slice(0, limit)
+    .slice(0, safeLimit)
     .map((p) => {
       const link = findLink(viewerEmail, p.email)
       return {
-        ...p,
-        relation: !link ? 'none' : link.status === 'accepted' ? 'friend' : emailKey(link.requestedBy) === viewer ? 'outgoing' : 'incoming',
+        id: p.id,
+        displayName: p.displayName,
+        handle: p.handle,
+        characters: p.characters,
+        memberSince: p.memberSince,
+        relation: !link
+          ? ('none' as const)
+          : link.status === 'accepted'
+            ? ('friend' as const)
+            : emailKey(link.requestedBy) === viewer
+              ? ('outgoing' as const)
+              : ('incoming' as const),
         linkId: link?.id ?? null,
       }
     })
 }
 
-export function requestFriend(fromEmail: string, toEmail: string, immediate = false) {
-  if (emailKey(fromEmail) === emailKey(toEmail)) {
-    return { ok: false as const, error: 'Não é possível adicionar a si mesmo' }
-  }
-  const target = getProfile(toEmail)
-  if (!target || target.role !== 'player') {
-    return { ok: false as const, error: 'Jogador não encontrado' }
-  }
-  const existing = findLink(fromEmail, toEmail)
-  if (existing) {
-    if (immediate && existing.status !== 'accepted') {
-      existing.status = 'accepted'
-      save()
+export async function requestFriend(fromEmail: string, targetIdentifier: string, immediate = false) {
+  return runCourtMutation(async () => {
+    const target = findProfileByPublicId(targetIdentifier)
+    if (!target || target.role !== 'player') {
+      return { ok: false as const, error: 'Jogador não encontrado' }
     }
-    return { ok: true as const, link: existing }
-  }
-  const link: FriendLink = {
-    id: randomUUID(),
-    a: fromEmail,
-    b: toEmail,
-    status: immediate ? 'accepted' : 'pending',
-    requestedBy: fromEmail,
-    createdAt: new Date().toISOString(),
-  }
-  state.friends.push(link)
-  save()
-  return { ok: true as const, link }
+    if (emailKey(fromEmail) === emailKey(target.email)) {
+      return { ok: false as const, error: 'Não é possível adicionar a si mesmo' }
+    }
+    const existing = findLink(fromEmail, target.email)
+    if (existing) {
+      if (immediate && existing.status !== 'accepted') {
+        existing.status = 'accepted'
+        await saveCourt()
+      }
+      return { ok: true as const, link: publicFriendLink(existing) }
+    }
+    const link: FriendLink = {
+      id: randomUUID(),
+      a: fromEmail,
+      b: target.email,
+      status: immediate ? 'accepted' : 'pending',
+      requestedBy: fromEmail,
+      createdAt: new Date().toISOString(),
+    }
+    state.friends.push(link)
+    await saveCourt()
+    return { ok: true as const, link: publicFriendLink(link) }
+  })
 }
 
-export function acceptFriend(email: string, linkId: string) {
-  const link = state.friends.find((f) => f.id === linkId)
-  if (!link) return { ok: false as const, error: 'Pedido não encontrado' }
-  const key = emailKey(email)
-  if (emailKey(link.a) !== key && emailKey(link.b) !== key) {
-    return { ok: false as const, error: 'Pedido não encontrado' }
-  }
-  if (emailKey(link.requestedBy) === key) {
-    return { ok: false as const, error: 'Aguarde o outro jogador aceitar' }
-  }
-  link.status = 'accepted'
-  save()
-  return { ok: true as const, link }
+export async function acceptFriend(email: string, linkId: string) {
+  return runCourtMutation(async () => {
+    const link = state.friends.find((f) => f.id === linkId)
+    if (!link) return { ok: false as const, error: 'Pedido não encontrado' }
+    const key = emailKey(email)
+    if (emailKey(link.a) !== key && emailKey(link.b) !== key) {
+      return { ok: false as const, error: 'Pedido não encontrado' }
+    }
+    if (emailKey(link.requestedBy) === key) {
+      return { ok: false as const, error: 'Aguarde o outro jogador aceitar' }
+    }
+    if (link.status === 'accepted') {
+      return { ok: true as const, link: publicFriendLink(link) }
+    }
+    link.status = 'accepted'
+    await saveCourt()
+    return { ok: true as const, link: publicFriendLink(link) }
+  })
 }
 
-export function removeFriend(email: string, linkIdOrFriendEmail: string) {
-  const key = emailKey(email)
-  const before = state.friends.length
-  state.friends = state.friends.filter((f) => {
-    const involved = emailKey(f.a) === key || emailKey(f.b) === key
-    if (!involved) return true
-    if (f.id === linkIdOrFriendEmail) return false
-    if (emailKey(f.a) === emailKey(linkIdOrFriendEmail) || emailKey(f.b) === emailKey(linkIdOrFriendEmail)) return false
+export async function removeFriend(email: string, linkIdOrPlayerIdOrEmail: string) {
+  return runCourtMutation(async () => {
+    const key = emailKey(email)
+    const targetProfile = findProfileByPublicId(linkIdOrPlayerIdOrEmail)
+    const targetEmail = targetProfile ? emailKey(targetProfile.email) : emailKey(linkIdOrPlayerIdOrEmail)
+    const before = state.friends.length
+    state.friends = state.friends.filter((f) => {
+      const involved = emailKey(f.a) === key || emailKey(f.b) === key
+      if (!involved) return true
+      if (f.id === linkIdOrPlayerIdOrEmail) return false
+      if (emailKey(f.a) === targetEmail || emailKey(f.b) === targetEmail) return false
+      return true
+    })
+    if (state.friends.length === before) return false
+    await saveCourt()
     return true
   })
-  if (state.friends.length === before) return false
-  save()
-  return true
 }
 
 export function narratorFriendDirectory(narratorEmail: string) {
@@ -446,7 +575,7 @@ export function narratorFriendDirectory(narratorEmail: string) {
     friends: listFriendCards(narratorEmail),
     incoming: listPendingFor(narratorEmail),
     outgoing: listOutgoingFor(narratorEmail),
-    roster: searchPlayers('', narratorEmail, 500),
+    roster: searchPlayers('', narratorEmail, 500, true),
   }
 }
 
@@ -454,13 +583,17 @@ function bidWorth(bid: AuctionBid) {
   return bid.amount * COIN_VALUE[bid.coin]
 }
 
-function refundBid(bid: AuctionBid, label: string) {
+function refundBidInMemory(bid: AuctionBid, label: string) {
   if (bid.npc || !bid.bidderEmail || bid.refunded) return
-  creditCoins(bid.bidderEmail, bid.coin, bid.amount, label)
+  const qty = Math.max(0, Math.round(bid.amount))
+  if (qty <= 0) return
+  const w = ensureWalletForCredit(bid.bidderEmail)
+  w[bid.coin] += qty
+  pushLedger(bid.bidderEmail, 'credit', bid.coin, qty, label)
   bid.refunded = true
 }
 
-function settleAuction(auction: Auction, force = false) {
+async function settleAuction(auction: Auction, force = false) {
   if (auction.status !== 'open') return auction
   const active = auction.bids.filter((b) => !b.withdrawn)
   const expired = new Date(auction.endsAt).getTime() <= Date.now()
@@ -476,7 +609,7 @@ function settleAuction(auction: Auction, force = false) {
   }
   const winner = [...active].sort((a, b) => bidWorth(b) - bidWorth(a) || a.at.localeCompare(b.at))[0]
   for (const bid of active) {
-    if (bid.id !== winner.id) refundBid(bid, `Lance superado · ${auction.itemName}`)
+    if (bid.id !== winner.id) refundBidInMemory(bid, `Lance superado · ${auction.itemName}`)
   }
   auction.status = 'awarded'
   auction.winnerLabel = winner.displayName
@@ -484,35 +617,51 @@ function settleAuction(auction: Auction, force = false) {
   auction.granted = winner.npc || !winner.bidderEmail
   if (!auction.granted && winner.bidderEmail) {
     const entity = getEntity(auction.entityId)
-    if (entity && grantEntityToCharacter(winner.bidderEmail, undefined, entity)) {
+    const session = getScheduledSession(auction.sessionId)
+    const seat = session?.seats?.find((s) => !s.leftAt && emailKey(s.email) === emailKey(winner.bidderEmail!))
+    if (entity && (await grantEntityToCharacter(winner.bidderEmail, seat?.characterId, entity))) {
       auction.granted = true
     }
   }
   return auction
 }
 
-export function settleOpenAuctions() {
-  let changed = false
-  for (const auction of state.auctions) {
-    const beforeStatus = auction.status
-    const beforeGranted = auction.granted
-    settleAuction(auction)
-    if (auction.status !== beforeStatus || auction.granted !== beforeGranted) changed = true
-  }
-  if (changed) save()
+export async function settleOpenAuctions() {
+  return runCourtMutation(async () => {
+    let changed = false
+    for (const auction of state.auctions) {
+      const beforeStatus = auction.status
+      const beforeGranted = auction.granted
+      await settleAuction(auction)
+      if (auction.status !== beforeStatus || auction.granted !== beforeGranted) changed = true
+    }
+    if (changed) await saveCourt()
+  })
 }
 
-export function listAuctions(sessionId?: string) {
-  settleOpenAuctions()
+export function getAuction(auctionId: string) {
+  return state.auctions.find((a) => a.id === auctionId) ?? null
+}
+
+function sanitizeAuction(a: Auction) {
+  const { winnerEmail: _we, ...rest } = a
+  return {
+    ...rest,
+    bids: a.bids.map(({ bidderEmail: _be, ...bid }) => bid),
+    leading: [...a.bids.filter((b) => !b.withdrawn)]
+      .sort((x, y) => bidWorth(y) - bidWorth(x))
+      .map(({ bidderEmail: _be, ...bid }) => bid)[0] ?? null,
+  }
+}
+
+export async function listAuctions(sessionId?: string) {
+  await settleOpenAuctions()
   return state.auctions
     .filter((a) => (sessionId ? a.sessionId === sessionId : true))
-    .map((a) => ({
-      ...a,
-      leading: [...a.bids.filter((b) => !b.withdrawn)].sort((x, y) => bidWorth(y) - bidWorth(x))[0] ?? null,
-    }))
+    .map(sanitizeAuction)
 }
 
-export function releaseAuction(input: {
+export async function releaseAuction(input: {
   sessionId: string
   entityId: string
   requiredLevel: number
@@ -522,62 +671,68 @@ export function releaseAuction(input: {
   npcAmount?: number
   npcCoin?: Coin
 }) {
-  const entity = getEntity(input.entityId)
-  if (!entity || entity.visibility !== 'published') {
-    return { ok: false as const, error: 'Item da loja não publicado' }
-  }
-  const minutes = Math.min(180, Math.max(1, Math.round(input.minutes)))
-  const auction: Auction = {
-    id: randomUUID(),
-    sessionId: input.sessionId,
-    entityId: entity.id,
-    itemName: entity.name,
-    requiredLevel: Math.min(20, Math.max(1, Math.round(input.requiredLevel || shopLevelOf(entity)))),
-    endsAt: new Date(Date.now() + minutes * 60_000).toISOString(),
-    status: 'open',
-    createdBy: input.createdBy,
-    bids: [],
-    winnerEmail: null,
-    winnerLabel: null,
-    granted: false,
-  }
-  if (input.npcName?.trim() && (input.npcAmount ?? 0) > 0 && input.npcCoin) {
+  return runCourtMutation(async () => {
+    const entity = getEntity(input.entityId)
+    if (!entity || entity.visibility !== 'published') {
+      return { ok: false as const, error: 'Item da loja não publicado' }
+    }
+    const minutes = Math.min(180, Math.max(1, Math.round(input.minutes)))
+    const auction: Auction = {
+      id: randomUUID(),
+      sessionId: input.sessionId,
+      entityId: entity.id,
+      itemName: entity.name,
+      requiredLevel: Math.min(MAX_CHARACTER_LEVEL, Math.max(0, Math.round(input.requiredLevel || shopLevelOf(entity)))),
+      endsAt: new Date(Date.now() + minutes * 60_000).toISOString(),
+      status: 'open',
+      createdBy: input.createdBy,
+      bids: [],
+      winnerEmail: null,
+      winnerLabel: null,
+      granted: false,
+    }
+    if (input.npcName?.trim() && (input.npcAmount ?? 0) > 0 && input.npcCoin) {
+      auction.bids.push({
+        id: randomUUID(),
+        bidderEmail: null,
+        displayName: input.npcName.trim(),
+        amount: Math.round(input.npcAmount ?? 0),
+        coin: input.npcCoin,
+        npc: true,
+        withdrawn: false,
+        refunded: false,
+        at: new Date().toISOString(),
+      })
+    }
+    state.auctions.push(auction)
+    await saveCourt()
+    return { ok: true as const, auction: sanitizeAuction(auction) }
+  })
+}
+
+export async function addNpcBid(auctionId: string, displayName: string, amount: number, coin: Coin) {
+  return runCourtMutation(async () => {
+    const auction = state.auctions.find((a) => a.id === auctionId)
+    if (!auction || auction.status !== 'open' || new Date(auction.endsAt).getTime() <= Date.now()) {
+      return { ok: false as const, error: 'Leilão encerrado' }
+    }
     auction.bids.push({
       id: randomUUID(),
       bidderEmail: null,
-      displayName: input.npcName.trim(),
-      amount: Math.round(input.npcAmount ?? 0),
-      coin: input.npcCoin,
+      displayName: displayName.trim(),
+      amount: Math.max(1, Math.round(amount)),
+      coin,
       npc: true,
       withdrawn: false,
       refunded: false,
       at: new Date().toISOString(),
     })
-  }
-  state.auctions.push(auction)
-  save()
-  return { ok: true as const, auction }
-}
-
-export function addNpcBid(auctionId: string, displayName: string, amount: number, coin: Coin) {
-  const auction = state.auctions.find((a) => a.id === auctionId)
-  if (!auction || auction.status !== 'open') return { ok: false as const, error: 'Leilão encerrado' }
-  auction.bids.push({
-    id: randomUUID(),
-    bidderEmail: null,
-    displayName: displayName.trim(),
-    amount: Math.max(1, Math.round(amount)),
-    coin,
-    npc: true,
-    withdrawn: false,
-    refunded: false,
-    at: new Date().toISOString(),
+    await saveCourt()
+    return { ok: true as const, auction: sanitizeAuction(auction) }
   })
-  save()
-  return { ok: true as const, auction }
 }
 
-export function placeBid(input: {
+export async function placeBid(input: {
   auctionId: string
   email: string
   displayName: string
@@ -585,59 +740,76 @@ export function placeBid(input: {
   coin: Coin
   level: number
 }) {
-  settleOpenAuctions()
-  const auction = state.auctions.find((a) => a.id === input.auctionId)
-  if (!auction || auction.status !== 'open') return { ok: false as const, error: 'Leilão encerrado' }
-  if (input.level < auction.requiredLevel) {
-    return { ok: false as const, error: `Nível ${auction.requiredLevel} necessário para este lote` }
-  }
-  const amount = Math.max(1, Math.round(input.amount))
-  const mine = auction.bids.find((b) => !b.withdrawn && b.bidderEmail && emailKey(b.bidderEmail) === emailKey(input.email))
-  const rivals = auction.bids.filter((b) => !b.withdrawn && b !== mine)
-  const topRival = [...rivals].sort((a, b) => bidWorth(b) - bidWorth(a))[0]
-  if (topRival && amount * COIN_VALUE[input.coin] <= bidWorth(topRival)) {
-    return { ok: false as const, error: 'O lance precisa superar o maior valor' }
-  }
-  const purse = getCourtWallet(input.email)
-  const available = purse[input.coin] + (mine && mine.coin === input.coin && !mine.refunded ? mine.amount : 0)
-  if (available < amount) return { ok: false as const, error: `Saldo insuficiente de ${COIN_LABEL[input.coin]}` }
-  if (mine) {
-    mine.withdrawn = true
-    refundBid(mine, `Lance refeito · ${auction.itemName}`)
-  }
-  const paid = debitCoins(input.email, input.coin, amount, `Lance · ${auction.itemName}`)
-  if (!paid.ok) return paid
-  auction.bids.push({
-    id: randomUUID(),
-    bidderEmail: input.email,
-    displayName: input.displayName,
-    amount,
-    coin: input.coin,
-    npc: false,
-    withdrawn: false,
-    refunded: false,
-    at: new Date().toISOString(),
+  return runCourtMutation(async () => {
+    for (const a of state.auctions) {
+      if (a.status === 'open') await settleAuction(a)
+    }
+    const auction = state.auctions.find((a) => a.id === input.auctionId)
+    if (!auction || auction.status !== 'open' || new Date(auction.endsAt).getTime() <= Date.now()) {
+      return { ok: false as const, error: 'Leilão encerrado' }
+    }
+    if (!hasWallet(input.email)) {
+      return { ok: false as const, error: 'Carteira não iniciada para dar lances.' }
+    }
+    if (input.level < auction.requiredLevel) {
+      return { ok: false as const, error: `Nível ${auction.requiredLevel} necessário para este lote` }
+    }
+    const amount = Math.max(1, Math.round(input.amount))
+    const mine = auction.bids.find(
+      (b) => !b.withdrawn && b.bidderEmail && emailKey(b.bidderEmail) === emailKey(input.email),
+    )
+    const rivals = auction.bids.filter((b) => !b.withdrawn && b !== mine)
+    const topRival = [...rivals].sort((a, b) => bidWorth(b) - bidWorth(a))[0]
+    if (topRival && amount * COIN_VALUE[input.coin] <= bidWorth(topRival)) {
+      return { ok: false as const, error: 'O lance precisa superar o maior valor' }
+    }
+    const purse = getCourtWallet(input.email)
+    const available = purse[input.coin] + (mine && mine.coin === input.coin && !mine.refunded ? mine.amount : 0)
+    if (available < amount) return { ok: false as const, error: `Saldo insuficiente de ${COIN_LABEL[input.coin]}` }
+    if (mine) {
+      mine.withdrawn = true
+      refundBidInMemory(mine, `Lance refeito · ${auction.itemName}`)
+    }
+    const paid = applyDebitInMemory(input.email, input.coin, amount, `Lance · ${auction.itemName}`)
+    if (!paid.ok) return paid
+    auction.bids.push({
+      id: randomUUID(),
+      bidderEmail: input.email,
+      displayName: input.displayName,
+      amount,
+      coin: input.coin,
+      npc: false,
+      withdrawn: false,
+      refunded: false,
+      at: new Date().toISOString(),
+    })
+    await saveCourt()
+    return { ok: true as const, auction: sanitizeAuction(auction) }
   })
-  save()
-  return { ok: true as const, auction }
 }
 
-export function withdrawBid(auctionId: string, email: string) {
-  const auction = state.auctions.find((a) => a.id === auctionId)
-  if (!auction || auction.status !== 'open') return { ok: false as const, error: 'Leilão encerrado' }
-  const mine = auction.bids.find((b) => !b.withdrawn && b.bidderEmail && emailKey(b.bidderEmail) === emailKey(email))
-  if (!mine) return { ok: false as const, error: 'Você não tem lance ativo' }
-  mine.withdrawn = true
-  refundBid(mine, `Desistência · ${auction.itemName}`)
-  settleAuction(auction)
-  save()
-  return { ok: true as const, auction }
+export async function withdrawBid(auctionId: string, email: string) {
+  return runCourtMutation(async () => {
+    const auction = state.auctions.find((a) => a.id === auctionId)
+    if (!auction || auction.status !== 'open') return { ok: false as const, error: 'Leilão encerrado' }
+    const mine = auction.bids.find(
+      (b) => !b.withdrawn && b.bidderEmail && emailKey(b.bidderEmail) === emailKey(email),
+    )
+    if (!mine) return { ok: false as const, error: 'Você não tem lance ativo' }
+    mine.withdrawn = true
+    refundBidInMemory(mine, `Desistência · ${auction.itemName}`)
+    await settleAuction(auction)
+    await saveCourt()
+    return { ok: true as const, auction: sanitizeAuction(auction) }
+  })
 }
 
-export function closeAuction(auctionId: string) {
-  const auction = state.auctions.find((a) => a.id === auctionId)
-  if (!auction) return { ok: false as const, error: 'Leilão não encontrado' }
-  settleAuction(auction, true)
-  save()
-  return { ok: true as const, auction }
+export async function closeAuction(auctionId: string) {
+  return runCourtMutation(async () => {
+    const auction = state.auctions.find((a) => a.id === auctionId)
+    if (!auction) return { ok: false as const, error: 'Leilão não encontrado' }
+    await settleAuction(auction, true)
+    await saveCourt()
+    return { ok: true as const, auction: sanitizeAuction(auction) }
+  })
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/api'
 import { useAuthStore, type AuthSession } from '../../stores/authStore'
+import { getSupabaseBrowser } from '../../lib/supabaseBrowser'
 import { useToast } from '../../components/ui/ToastProvider'
 import { BrandLogo } from '../../components/brand/BrandLogo'
 
@@ -43,9 +44,10 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
   }, [initialMode])
 
   const loginMutation = useMutation({
-    mutationFn: ({ email, password }: { email: string; password: string }) => api.login(email, password),
-    onSuccess: (data) => {
-      setSession(sessionFromLogin(data))
+    mutationFn: ({ email, password }: { email: string; password: string; remember: boolean }) =>
+      api.login(email, password),
+    onSuccess: (data, vars) => {
+      setSession(sessionFromLogin(data), vars.remember)
       push('Santuário aberto. Boa caçada.', 'success')
       const dest = data.role === 'narrator' || data.role === 'admin' ? '/admin' : '/user'
       navigate(dest)
@@ -61,7 +63,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
         push('Este correio não possui selo de narrador. Use narrador@… ou mestre@…', 'error')
         return
       }
-      setSession(sessionFromLogin({ ...data, role }))
+      setSession(sessionFromLogin({ ...data, role }), true)
       push('Conclave aberto. Bem-vindo, mestre.', 'success')
       navigate('/admin')
     },
@@ -71,7 +73,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
   const registerMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => api.register(payload),
     onSuccess: (data) => {
-      setSession(sessionFromLogin(data))
+      setSession(sessionFromLogin(data), true)
       push('Linhagem registrada. Boa caçada.', 'success')
       const dest = data.role === 'narrator' || data.role === 'admin' ? '/admin' : '/user'
       navigate(dest)
@@ -100,7 +102,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
             <LoginColumn
               mode={mode}
               setMode={setMode}
-              onSubmit={(email, password) => loginMutation.mutate({ email, password })}
+              onSubmit={(email, password, remember) => loginMutation.mutate({ email, password, remember })}
               loading={loginMutation.isPending}
               onAdminSubmit={(email, password) => adminLoginMutation.mutate({ email, password })}
               adminLoading={adminLoginMutation.isPending}
@@ -214,7 +216,7 @@ function LoginColumn({
 }: {
   mode: Mode
   setMode: (m: Mode) => void
-  onSubmit: (email: string, password: string) => void
+  onSubmit: (email: string, password: string, remember: boolean) => void
   loading: boolean
   onAdminSubmit: (email: string, password: string) => void
   adminLoading: boolean
@@ -223,6 +225,7 @@ function LoginColumn({
   const passId = useId()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(true)
   const [showPass, setShowPass] = useState(false)
   const [adminMode, setAdminMode] = useState(false)
 
@@ -275,7 +278,7 @@ function LoginColumn({
               className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
               onSubmit={(e) => {
                 e.preventDefault()
-                onSubmit(email, password)
+                onSubmit(email, password, remember)
               }}
             >
               <Field label="Correio Feudal ou Nome de Guerra" required hint="ex: valerius@corte-noturna.org" id={emailId}>
@@ -305,7 +308,12 @@ function LoginColumn({
                 </button>
               </Field>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-on-surface-variant">
-                <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-outline-variant text-primary-container focus:ring-primary-container" />
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="h-4 w-4 rounded border-outline-variant text-primary-container focus:ring-primary-container"
+                />
                 Manter Vigília Ativa (Lembrar sessão)
               </label>
               <button type="submit" className="btn-primary w-full py-2 text-sm" disabled={loading}>
@@ -434,22 +442,41 @@ function AuthOuDivider() {
   )
 }
 
-function googleStubMessage(context: 'login' | 'register' | 'admin') {
-  if (context === 'register') return 'Cadastro pelo Google será habilitado na crônica oficial.'
-  if (context === 'admin') return 'Entrada de mestre pelo Google será habilitada na crônica oficial.'
-  return 'Entrada pelo Google será habilitada na crônica oficial.'
-}
-
 function GoogleAuthButton({ context, className = '' }: { context: 'login' | 'register' | 'admin'; className?: string }) {
   const { push } = useToast()
+  const [busy, setBusy] = useState(false)
+
+  async function handleGoogle() {
+    const sb = getSupabaseBrowser()
+    if (!sb) {
+      push('Entrada pelo Google requer VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY configurados.', 'info')
+      return
+    }
+    setBusy(true)
+    try {
+      const flow = context === 'admin' ? 'adm' : 'player'
+      const redirectTo = `${window.location.origin}/auth/callback?flow=${flow}`
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      })
+      if (error) {
+        push(error.message || 'Falha ao iniciar autenticação com Google.', 'error')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <button
       type="button"
+      disabled={busy}
       className={`btn-secondary inline-flex items-center justify-center gap-2 py-2 text-xs ${className}`}
-      onClick={() => push(googleStubMessage(context), 'info')}
+      onClick={() => void handleGoogle()}
     >
       <GoogleIcon />
-      Google
+      {busy ? 'Conectando…' : 'Google'}
     </button>
   )
 }

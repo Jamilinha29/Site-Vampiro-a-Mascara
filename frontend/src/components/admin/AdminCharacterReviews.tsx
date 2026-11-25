@@ -50,15 +50,25 @@ export function AdminCharacterReviews() {
                   <span className="text-xs text-on-surface-variant">
                     nv. {row.level}
                     {row.clan ? ` · ${row.clan}` : ''}
+                    {row.subclass ? ` · ${row.subclass}` : ''}
+                    {row.secondarySubclass ? ` / ${row.secondarySubclass}` : ''}
                   </span>
                 </p>
-                <span className="text-xs uppercase tracking-wide text-secondary">
-                  {approvalLabel[row.approval ?? 'draft']}
-                </span>
+                <div className="flex items-center gap-2">
+                  {row.needsRuleReview ? (
+                    <span className="rounded border border-primary/50 bg-primary/15 px-1.5 py-0.5 text-[10px] uppercase text-primary">
+                      Revisão de regra
+                    </span>
+                  ) : null}
+                  <span className="text-xs uppercase tracking-wide text-secondary">
+                    {approvalLabel[row.approval ?? 'draft']}
+                  </span>
+                </div>
               </div>
               <p className="mt-1 text-xs text-on-surface-variant">
-                {row.displayName} · {row.email}
+                Jogador: {row.displayName}{row.playerId ? ` · ${row.playerId}` : ''}
               </p>
+              {row.ruleReviewNote ? <p className="mt-1 text-xs text-primary">{row.ruleReviewNote}</p> : null}
               {row.reviewNote ? <p className="mt-2 text-sm text-on-surface-variant">{row.reviewNote}</p> : null}
               <label className="mt-3 block text-xs text-on-surface-variant">
                 Nota para o jogador

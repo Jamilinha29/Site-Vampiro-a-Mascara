@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { DotRating } from '../domain/DotRating'
 import type { CreatedSkill, ProfileCharacterSummary } from '../../types/profile'
 import { resolveSheetKind, type SheetKind } from '../../lib/characterSheetKind'
-import { SUBCLASS_CHOICE_LEVEL } from '../../lib/characterProgression'
+import { SECOND_SUBCLASS_CHOICE_LEVEL, SUBCLASS_CHOICE_LEVEL } from '../../lib/characterProgression'
 import { IDENTITY_EDIT_LIMIT, MAX_PATRONS, type IdentityFieldKey } from '../../lib/characterOptions'
 import {
   abilitySlotLimits,
@@ -155,10 +155,21 @@ function IdentityGrid({ character, playerName, onPatchIdentity, saving }: Props)
         saving={saving}
       />
       <Field
-        label="Subclasse"
+        label={`Subclasse I (nível ${SUBCLASS_CHOICE_LEVEL}+)`}
         value={
           character.subclass ??
-          (character.level >= SUBCLASS_CHOICE_LEVEL ? 'Pendente (nível 7+)' : 'Disponível no nível 7')
+          (character.level >= SUBCLASS_CHOICE_LEVEL
+            ? `Pendente (nível ${SUBCLASS_CHOICE_LEVEL}+)`
+            : `Disponível no nível ${SUBCLASS_CHOICE_LEVEL}`)
+        }
+      />
+      <Field
+        label={`Subclasse II (nível ${SECOND_SUBCLASS_CHOICE_LEVEL}+)`}
+        value={
+          character.secondarySubclass ??
+          (character.level >= SECOND_SUBCLASS_CHOICE_LEVEL
+            ? `Pendente (nível ${SECOND_SUBCLASS_CHOICE_LEVEL}+)`
+            : `Disponível no nível ${SECOND_SUBCLASS_CHOICE_LEVEL}`)
         }
       />
       <Field label="Fé" value={idn?.faith ?? '—'} />

@@ -63,6 +63,7 @@ export type SessionHandout = {
   title: string
   status: 'pending_close' | 'closed'
   narrativeSummary: string
+  narratorWhisper?: string
   scheduledSessionId?: string
   chronicleName?: string
   npcIds: string[]
@@ -90,18 +91,29 @@ export type SessionHandout = {
 }
 
 export type SessionPresence = {
-  email: string
+  email?: string
   displayName: string
   confirmedAt: string
 }
 
 export type SessionSeat = {
-  email: string
+  email?: string
   displayName: string
   characterId: string
   characterName: string
   joinedAt: string
   leftAt?: string
+}
+
+export type SessionActionRecord = {
+  id: string
+  sessionId: string
+  actorName: string
+  characterId?: string
+  kind: 'declaration' | 'skill' | 'damage' | 'potion' | 'turn_end' | 'round_end' | 'system'
+  summary: string
+  detail?: string
+  createdAt: string
 }
 
 /** Metadados exibidos na ficha da mesa (tabela RPG / campanha / arco…). */
@@ -124,9 +136,13 @@ export type ScheduledSession = {
   scheduledAt: string
   chronicleName?: string
   narratorEmail?: string
+  narratorName?: string
+  mySeat?: SessionSeat | null
+  myPresenceConfirmed?: boolean
   tableMeta?: SessionTableMeta
   /** Senha/código da mesa gerado na criação. Vazio na lista do jogador. */
-  accessCode: string
+  accessCode?: string
+  accessCodeRotatedAt?: string
   listing?: 'public' | 'private'
   status: 'scheduled' | 'open' | 'closed'
   startedAt?: string

@@ -13,13 +13,19 @@ export default async function handler(req: unknown, res: unknown) {
     sls ??= serverless(app)
     return sls(req as Parameters<ServerlessHandler>[0], res as Parameters<ServerlessHandler>[1])
   } catch (err) {
-    console.error('[api] handler failed', err)
-    const message = err instanceof Error ? err.message : 'API initialization failed'
+    console.error('[api] handler failed:', err instanceof Error ? err.message : err)
     const resLike = res as { statusCode?: number; setHeader?: (k: string, v: string) => void; end?: (b: string) => void }
     if (typeof resLike.statusCode === 'number') {
-      resLike.statusCode = 500
+      resLike.statusCode = 503
       resLike.setHeader?.('content-type', 'application/json')
-      resLike.end?.(JSON.stringify({ error: { message } }))
+      resLike.end?.(
+        JSON.stringify({
+          error: {
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'Serviço temporariamente indisponível.',
+          },
+        }),
+      )
       return
     }
     throw err

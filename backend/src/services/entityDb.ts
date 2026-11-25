@@ -1,16 +1,8 @@
 import type { ChronicleEntity } from './chronicleStore.js'
+import { PersistenceError } from './errors.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
 
 const TABLE = 'EntidadesCronica'
-
-type DbRow = {
-  id: string
-  kind: string
-  visibility: string
-  payload: ChronicleEntity
-  created_at: string
-  updated_at: string
-}
 
 const KINDS = new Set(['npc', 'monster', 'equipment', 'consumable', 'archive', 'download'])
 
@@ -37,7 +29,7 @@ function normalizeThreat(value: unknown): ChronicleEntity['threatLevel'] {
 /** A planilha usa grimoire, tome e amulet. O glossário usa rituals, chronicles e relics. */
 function placeArchive(rawCategory: string, rawClassification: string) {
   const category = rawCategory.toLowerCase()
-  let classification = rawClassification.toLowerCase()
+  const classification = rawClassification.toLowerCase()
   if (category === 'grimoire' || category === 'grimorio' || classification === 'grimoire') {
     return { archiveCategory: 'rituals' as const, classification: 'grimoire' }
   }
@@ -57,15 +49,22 @@ function placeArchive(rawCategory: string, rawClassification: string) {
   return { archiveCategory: undefined, classification }
 }
 
-/** Planilha gravada nas colunas entra no mesmo formato que o payload do glossário. */
+/**
+ * Planilha gravada nas colunas entra no mesmo formato que o payload do glossário.
+ * Padrão conservador (C22): registros sem visibilidade explícita entram como `draft`.
+ */
 export function entityFromDbRow(row: Record<string, unknown>): ChronicleEntity | null {
   const payload =
     row.payload && typeof row.payload === 'object' ? (row.payload as Partial<ChronicleEntity>) : {}
   const name = firstText(payload.name, row.name)
   const kind = firstText(payload.kind, row.kind)
   if (!name || !KINDS.has(kind)) return null
-  const visibility = firstText(payload.visibility, row.visibility) || 'published'
-  const placed = placeArchive(firstText(payload.archiveCategory, row.archive_category), firstText(payload.classification, row.classification))
+  const rawVisibility = firstText(payload.visibility, row.visibility).toLowerCase()
+  const visibility: ChronicleEntity['visibility'] = rawVisibility === 'published' ? 'published' : 'draft'
+  const placed = placeArchive(
+    firstText(payload.archiveCategory, row.archive_category),
+    firstText(payload.classification, row.classification),
+  )
   const classification = (placed.classification || undefined) as ChronicleEntity['classification']
   const threatLevel = normalizeThreat(payload.threatLevel)
   return {
@@ -74,7 +73,7 @@ export function entityFromDbRow(row: Record<string, unknown>): ChronicleEntity |
     kind: kind as ChronicleEntity['kind'],
     name,
     description: firstText(payload.description, row.description),
-    visibility: visibility === 'draft' ? 'draft' : 'published',
+    visibility,
     archiveCategory: placed.archiveCategory,
     bestiaryTier: kind === 'monster' ? payload.bestiaryTier ?? 'known' : payload.bestiaryTier,
     threatLevel,
@@ -88,12 +87,16 @@ export function entityFromDbRow(row: Record<string, unknown>): ChronicleEntity |
     creatureType: firstText(payload.creatureType, row.creature_type) || undefined,
     statsText: firstText(payload.statsText, row.stats_text) || undefined,
     imageUrl: firstText(payload.imageUrl, row.image_url) || undefined,
+    fileUrl: firstText(payload.fileUrl, row.file_url) || undefined,
+    chronicleScope: payload.chronicleScope ?? (typeof row.chronicle_scope === 'string' ? row.chronicle_scope : null),
+    narratorScope: payload.narratorScope ?? (typeof row.narrator_scope === 'string' ? row.narrator_scope : null),
     createdAt: firstText(payload.createdAt, row.created_at) || new Date().toISOString(),
     updatedAt: firstText(payload.updatedAt, row.updated_at) || new Date().toISOString(),
   }
 }
 
 export async function dbLoadEntities(): Promise<ChronicleEntity[] | null> {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return null
   const sb = getSupabaseAdmin()
   if (!sb) return null
   const { data, error } = await sb.from(TABLE).select('*').order('updated_at', { ascending: false })
@@ -109,6 +112,7 @@ export async function dbLoadEntities(): Promise<ChronicleEntity[] | null> {
 
 /** Feitiços gravados no catálogo entram no glossário como grimório. */
 export async function dbLoadGrimoireSpells(): Promise<ChronicleEntity[]> {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return []
   const sb = getSupabaseAdmin()
   if (!sb) return []
   const { data, error } = await sb.from('CatalogoReferencia').select('id, name, description').eq('kind', 'grimoire_spell')
@@ -136,6 +140,9 @@ export async function dbLoadGrimoireSpells(): Promise<ChronicleEntity[]> {
 }
 
 export async function dbUpsertEntity(row: ChronicleEntity): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') {
+    return { ok: true }
+  }
   const sb = getSupabaseAdmin()
   if (!sb) return { ok: true }
   const record = {
@@ -149,18 +156,21 @@ export async function dbUpsertEntity(row: ChronicleEntity): Promise<{ ok: true }
   const { error } = await sb.from(TABLE).upsert(record, { onConflict: 'id' })
   if (error) {
     console.warn('[supabase] Falha ao salvar entidade:', row.id, error.message)
-    return { ok: false, error: `Não foi possível gravar “${row.name}” no banco. A versão anterior continua valendo.` }
+    throw new PersistenceError(`Não foi possível gravar “${row.name}” no banco. A versão anterior continua valendo.`, error)
   }
   return { ok: true }
 }
 
 export async function dbDeleteEntity(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') {
+    return { ok: true }
+  }
   const sb = getSupabaseAdmin()
   if (!sb) return { ok: true }
   const { error } = await sb.from(TABLE).delete().eq('id', id)
   if (error) {
     console.warn('[supabase] Falha ao excluir entidade:', id, error.message)
-    return { ok: false, error: 'Não foi possível excluir no banco. O registro continua na mesa.' }
+    throw new PersistenceError('Não foi possível excluir no banco. O registro continua na mesa.', error)
   }
   return { ok: true }
 }

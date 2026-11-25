@@ -22,6 +22,15 @@ jobs:
           test "$code" = "200" || (cat /tmp/health.json; exit 1)
           grep -q '"ok":true' /tmp/health.json
 
+      - name: API ready
+        env:
+          READY_URL: ${{ secrets.READY_URL }}
+        run: |
+          if [ -z "$READY_URL" ]; then echo "READY_URL não configurado — passo ignorado."; exit 0; fi
+          code=$(curl -sS -o /tmp/ready.json -w '%{http_code}' --max-time 25 "$READY_URL")
+          test "$code" = "200" || (cat /tmp/ready.json; exit 1)
+          grep -q '"ok":true' /tmp/ready.json
+
       - name: Site (SPA)
         env:
           SITE_URL: ${{ secrets.SITE_URL }}

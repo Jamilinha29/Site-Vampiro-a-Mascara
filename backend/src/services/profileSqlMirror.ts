@@ -8,7 +8,7 @@ const CHARACTER_TABLES = ['Personagens', 'characters'] as const
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 
-function asUuid(id: string) {
+export function asUuid(id: string) {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return id
   const hex = createHash('sha256').update(id).digest('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`
@@ -74,6 +74,11 @@ function characterRow(profileId: string, character: ProfileCharacter) {
     xp_current: character.xp?.current ?? 0,
     xp_to_next: character.xp?.toNext ?? 0,
     subclass: character.subclass ?? null,
+    secondary_subclass: character.secondarySubclass ?? null,
+    character_class: character.characterClass ?? null,
+    sheet_revision: character.sheetRevision ?? 0,
+    needs_rule_review: Boolean(character.needsRuleReview),
+    rule_review_note: character.ruleReviewNote ?? null,
     carry_capacity_kg: character.carryCapacityKg ?? 0,
     identity: character.identity ?? {},
     vitals: character.vitals ?? null,
@@ -84,6 +89,7 @@ function characterRow(profileId: string, character: ProfileCharacter) {
 }
 
 export async function mirrorProfileToSql(profile: UserProfile) {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return
   const profileId = await upsertOnFirstTable(PROFILE_TABLES, profileRow(profile), 'email')
   if (!profileId) return
   for (const character of profile.characters) {
@@ -92,6 +98,7 @@ export async function mirrorProfileToSql(profile: UserProfile) {
 }
 
 export async function mirrorAllProfilesToSql() {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return
   for (const profile of listProfiles()) {
     await mirrorProfileToSql(profile)
   }

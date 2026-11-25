@@ -217,9 +217,8 @@ export function AdminShopEditor() {
           <button
             key={t.id}
             type="button"
-            className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wider uppercase ${
-              tab === t.id ? 'bg-primary-container text-white' : 'border border-outline-variant/40 text-on-surface-variant'
-            }`}
+            className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wider uppercase ${tab === t.id ? 'bg-primary-container text-white' : 'border border-outline-variant/40 text-on-surface-variant'
+              }`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -440,7 +439,7 @@ export function AdminShopEditor() {
             <input
               type="number"
               min={1}
-              max={20}
+              max={10}
               className="input-feudal mt-1 pl-4"
               value={requiredLevel}
               onChange={(e) => setRequiredLevel(Number(e.target.value) || 1)}
@@ -504,9 +503,8 @@ export function AdminShopEditor() {
           {filtered.map((item) => (
             <li
               key={item.id}
-              className={`flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm ${
-                editingId === item.id ? 'border-secondary/50 bg-secondary/10' : 'border-outline-variant/40'
-              }`}
+              className={`flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm ${editingId === item.id ? 'border-secondary/50 bg-secondary/10' : 'border-outline-variant/40'
+                }`}
             >
               <div>
                 <p className="font-serif text-on-surface">{item.name}</p>

@@ -37,23 +37,28 @@ const sendSchema = z.object({
   message: z.string().trim().min(1).max(500),
 })
 
-notificationsRouter.post('/send', requireNarrator, (req, res, next) => {
+notificationsRouter.post('/send', requireNarrator, async (req, res, next) => {
   try {
     const body = sendSchema.parse(req.body)
-    res.status(201).json(createSentNotice(body))
+    const created = await createSentNotice({
+      ...body,
+      senderEmail: req.user!.email,
+      senderName: req.user!.displayName,
+    })
+    res.status(201).json(created)
   } catch (e) {
     next(e)
   }
 })
 
-notificationsRouter.post('/mark-read', (req, res, next) => {
+notificationsRouter.post('/mark-read', async (req, res, next) => {
   try {
     const body = markSchema.parse(req.body)
     const email = req.user!.email
     if (body.all) {
-      markAllNotificationsRead(email)
+      await markAllNotificationsRead(email)
     } else if (body.ids?.length) {
-      markNotificationsRead(email, body.ids)
+      await markNotificationsRead(email, body.ids)
     }
     res.json({ count: unreadNotificationCount(email) })
   } catch (e) {

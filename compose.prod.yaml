@@ -18,9 +18,11 @@ services:
       context: .
       dockerfile: docker/Dockerfile.frontend.prod
       args:
-        VITE_API_URL: http://localhost:4000
+        VITE_API_URL: ""
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
     ports:
-      - '8080:80'
+      - '8080:8080'
     depends_on:
       api:
         condition: service_healthy

@@ -36,15 +36,15 @@ import { buyAtTable } from '../../backend/src/services/shopPurchase.js'
 const email = 'comprador.etapa4@ci.local'
 
 describe('compra na mesa', () => {
-  it('cobra uma vez, entrega no personagem sentado e devolve a mesma resposta se a chave se repete', () => {
-    const character = upsertCharacter(email, {
+  it('cobra uma vez, entrega no personagem sentado e devolve a mesma resposta se a chave se repete', async () => {
+    const character = await upsertCharacter(email, {
       name: 'Comprador',
       species: 'Vampiro',
       level: 1,
       isPrimary: true,
       hp: { current: 10, max: 10 },
     })
-    upsertCharacter(email, {
+    await upsertCharacter(email, {
       id: 'outro-personagem',
       name: 'Outro',
       species: 'Vampiro',
@@ -52,11 +52,11 @@ describe('compra na mesa', () => {
       isPrimary: false,
       hp: { current: 10, max: 10 },
     })
-    const session = createScheduledSession({
+    const session = await createScheduledSession({
       title: 'Mesa de teste',
       scheduledAt: '2026-11-18T22:00:00.000Z',
     })
-    updateScheduledSession(session.id, {
+    await updateScheduledSession(session.id, {
       status: 'open',
       seats: [
         {
@@ -68,9 +68,9 @@ describe('compra na mesa', () => {
         },
       ],
     })
-    creditCoins(email, 'silver', 5, 'Teste')
+    await creditCoins(email, 'silver', 5, 'Teste')
 
-    const wrong = buyAtTable({
+    const wrong = await buyAtTable({
       email,
       entityId: item.id,
       quantity: 1,
@@ -78,9 +78,9 @@ describe('compra na mesa', () => {
       characterId: 'outro-personagem',
       operationId: 'op-personagem-errado',
     })
-    expect(wrong.status).toBe(400)
+    expect(wrong.status).toBe(403)
 
-    const first = buyAtTable({
+    const first = await buyAtTable({
       email,
       entityId: item.id,
       quantity: 1,
@@ -88,7 +88,7 @@ describe('compra na mesa', () => {
       characterId: character.id,
       operationId: 'op-compra-unica',
     })
-    const again = buyAtTable({
+    const again = await buyAtTable({
       email,
       entityId: item.id,
       quantity: 1,

@@ -15,6 +15,10 @@ node_modules/
 *.pfx
 beladona-backup.json
 **/beladona-backup*.json
+backups/
+*.dump
+*.sql.gz
+*.enc
 
 # Logs & OS
 *.log
@@ -33,3 +37,6 @@ backend/data/
 
 # Uploads (prefer object storage in production)
 uploads/
+
+# Local private documentation (never push to GitHub)
+README_LOCAL.md

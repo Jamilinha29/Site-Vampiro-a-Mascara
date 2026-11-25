@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import { resolveUserFromAuthHeader } from '../services/supabaseAuth.js'
+import { errorPayload } from '../services/errors.js'
 
 export type RequestUser = {
   userId: string
@@ -20,7 +21,7 @@ export function requireUser(req: Request, res: Response, next: NextFunction) {
   void resolveUserFromAuthHeader(req.headers.authorization)
     .then((user) => {
       if (!user) {
-        res.status(401).json({ error: { message: 'Não autenticado' } })
+        res.status(401).json(errorPayload('UNAUTHORIZED', 'Não autenticado.', { requestId: req.requestId }))
         return
       }
       req.user = user

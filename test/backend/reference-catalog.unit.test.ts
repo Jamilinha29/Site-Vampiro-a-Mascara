@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   mergeReferenceKind,
   listReference,
@@ -38,7 +41,23 @@ describe('mergeReferenceKind', () => {
 })
 
 describe('reference catalog file snapshot', () => {
-  it('persists merged rows to local json backup', async () => {
+  let tmpDir: string | null = null
+
+  beforeEach(() => {
+    resetReferenceCatalogForTests()
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'beladona-ref-'))
+    process.env.BELADONA_DATA_DIR = tmpDir
+  })
+
+  afterEach(() => {
+    delete process.env.BELADONA_DATA_DIR
+    if (tmpDir && fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+    tmpDir = null
+  })
+
+  it('persists merged rows to local json backup when data dir is configured', async () => {
     await mergeReferenceKind('equipment_type', [{ name: 'Armadura', description: 'Peças de proteção' }])
     const local = readJsonFile<Array<{ name: string }>>(FILE)
     expect(local?.some((row) => row.name === 'Armadura')).toBe(true)

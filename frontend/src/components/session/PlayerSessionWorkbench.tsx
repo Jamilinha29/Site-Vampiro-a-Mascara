@@ -62,9 +62,14 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     queryFn: () => api.getSessionMyBag(sessionId),
     refetchInterval: 4000,
   })
+  const { data: persistedActions = [] } = useQuery({
+    queryKey: ['session-actions', sessionId],
+    queryFn: () => api.getSessionActions(sessionId),
+    refetchInterval: 4000,
+  })
 
   const session = scheduled.find((s) => s.id === sessionId)
-  const seat = session?.seats?.find((s) => s.email === auth?.email && !s.leftAt)
+  const seat = session?.mySeat ?? session?.seats?.find((s) => s.email === auth?.email && !s.leftAt)
   const character: ProfileCharacterSummary | undefined =
     profile?.characters.find((c) => c.id === seat?.characterId) ??
     profile?.characters.find((c) => c.isPrimary) ??
@@ -140,13 +145,36 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     if (!character || dead) return
     setSkillBusy(true)
     try {
-      await api.patchMeCharacter(character.id, { createdSkills: next })
+      await api.patchMeCharacter(character.id, {
+        createdSkills: next,
+        expectedRevision: character.sheetRevision,
+      })
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       push('Habilidades salvas na ficha.', 'success')
     } catch (e) {
       push(e instanceof Error ? e.message : 'Falha ao salvar habilidades', 'error')
     } finally {
       setSkillBusy(false)
+    }
+  }
+
+  async function recordAction(
+    kind: 'declaration' | 'skill' | 'damage' | 'potion' | 'turn_end',
+    summary: string,
+    detail?: string,
+  ) {
+    setUsedLog((prev) => [summary, ...prev].slice(0, 8))
+    try {
+      await api.postSessionAction(sessionId, {
+        characterId: character?.id,
+        characterName: character?.name,
+        kind,
+        summary,
+        detail,
+      })
+      void qc.invalidateQueries({ queryKey: ['session-actions', sessionId] })
+    } catch {
+      /* ação local já registrada caso rede oscile */
     }
   }
 
@@ -170,6 +198,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
       try {
         await api.patchMeCharacter(character.id, {
           mana: { current: manaPool.current - cost, max: manaPool.max },
+          expectedRevision: character.sheetRevision,
         })
         void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       } catch (e) {
@@ -183,7 +212,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     const mod = skill.attributeMod >= 0 ? `+${skill.attributeMod}` : `${skill.attributeMod}`
     const manaBit = cost > 0 ? ` · −${cost} mana` : ''
     const line = `${character.name} usou ${skill.name} (${skill.die} · ${skill.attribute} ${mod}${manaBit})`
-    setUsedLog((prev) => [line, ...prev].slice(0, 8))
+    await recordAction('skill', line)
     push(line, 'success')
   }
 
@@ -196,10 +225,11 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     try {
       await api.patchMeCharacter(character.id, {
         hp: { current: nextHp, max: character.hp.max },
+        expectedRevision: character.sheetRevision,
       })
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       const line = `${character.name} sofreu ${dmg} de dano → ${nextHp}/${character.hp.max}`
-      setUsedLog((prev) => [line, ...prev].slice(0, 8))
+      await recordAction('damage', line)
       if (nextHp <= 0) {
         setSessionDead(sessionId, character.id, true)
         setDeadTick((n) => n + 1)
@@ -243,13 +273,16 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         hp: { current: nextHp, max: character.hp.max },
         mana: nextMana,
         inventory: nextInventory,
+        expectedRevision: character.sheetRevision,
       })
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       const bits = [
         healHp ? `+${healHp} vida` : null,
         restoreMana ? `+${restoreMana} mana` : null,
       ].filter(Boolean)
-      push(`Usou ${item.name} (${bits.join(', ')})`, 'success')
+      const msg = `Usou ${item.name} (${bits.join(', ')})`
+      await recordAction('potion', msg)
+      push(msg, 'success')
     } catch (e) {
       push(e instanceof Error ? e.message : 'Falha ao usar poção', 'error')
     } finally {
@@ -279,7 +312,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             Imprimir resumo
           </button>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Narrador · <span className="text-secondary">{session?.narratorEmail ?? auth?.displayName ?? '—'}</span>
+            Narrador · <span className="text-secondary">{session?.narratorName ?? session?.narratorEmail ?? 'Narrador'}</span>
             {session ? (
               <>
                 <span className="mx-2 text-outline-variant">·</span>
@@ -505,9 +538,12 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             <p className="text-xs text-on-surface-variant">
               Objetivos e consequências sincronizam quando o narrador publica o ato.
             </p>
-            {usedLog.length > 0 ? (
-              <ul className="mt-3 space-y-1.5 text-xs text-on-surface-variant">
-                {usedLog.map((line, i) => (
+            {persistedActions.length > 0 || usedLog.length > 0 ? (
+              <ul className="mt-3 max-h-48 space-y-1.5 overflow-y-auto text-xs text-on-surface-variant">
+                {(persistedActions.length > 0
+                  ? persistedActions.map((a) => `${a.actorName}: ${a.summary}`)
+                  : usedLog
+                ).map((line, i) => (
                   <li key={`${line}-${i}`} className="rounded border border-outline-variant/25 px-2 py-1.5">
                     {line}
                   </li>
@@ -530,9 +566,11 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
               className="btn-secondary mt-2 text-xs"
               disabled={!declareText.trim()}
               onClick={() => {
-                setUsedLog((prev) => [`Declaração: ${declareText.trim()}`, ...prev].slice(0, 8))
+                const text = declareText.trim()
                 setDeclareText('')
-                push('Declaração registrada na sessão.', 'success')
+                void recordAction('declaration', `Declaração: ${text}`).then(() => {
+                  push('Declaração registrada na sessão.', 'success')
+                })
               }}
             >
               Enviar declaração
@@ -593,7 +631,16 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             >
               Sair da sala
             </button>
-            <button type="button" className="btn-primary text-xs" disabled={restMode}>
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              disabled={restMode || !character}
+              onClick={() => {
+                void recordAction('turn_end', `${character?.name ?? 'Personagem'} concluiu o turno`).then(() => {
+                  push('Turno concluído e registrado na mesa.', 'success')
+                })
+              }}
+            >
               Concluir turno
             </button>
           </div>

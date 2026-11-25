@@ -1,8 +1,17 @@
-import { randomUUID } from 'crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 import { dbDeleteEntity, dbLoadEntities, dbLoadGrimoireSpells, dbUpsertEntity } from './entityDb.js'
-import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
+import {
+  checkRemoteDocumentRevision,
+  commitDocument,
+  documentWeight,
+  getLoadedDocumentRevision,
+  loadDocument,
+  runExclusive,
+} from './campaignDocuments.js'
 import { getProfile, pauseEffectsForSeats } from './profileStore.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
+import { ForbiddenError, NotFoundError } from './errors.js'
+import { getSupabaseAdmin } from './supabaseClient.js'
 
 export type EntityKind = 'npc' | 'monster' | 'equipment' | 'consumable' | 'archive' | 'download'
 
@@ -47,7 +56,6 @@ export type ChronicleEntity = {
   priceCopper?: number
   fileName?: string
   fileUrl?: string
-  /** Ficha tática (bestiário) */
   creatureSize?: string
   creatureSpeed?: string
   creatureSenses?: string
@@ -58,9 +66,7 @@ export type ChronicleEntity = {
   secondaryAttackDesc?: string
   sceneTrigger?: string
   narratorNotes?: string
-  /** Vazio = global. Caso contrário, só nas mesas com a mesma crônica. */
   chronicleScope?: string | null
-  /** E-mail do narrador dono do item (opcional, combina com crônica). */
   narratorScope?: string | null
   creatureStats?: { for: number; des: number; vig: number; int: number; sab: number; car: number }
   passiveTraits?: string[]
@@ -82,8 +88,10 @@ export type SessionHandout = {
   title: string
   status: 'pending_close' | 'closed'
   narrativeSummary: string
+  narratorWhisper?: string
   scheduledSessionId?: string
   chronicleName?: string
+  narratorEmail?: string
   npcIds: string[]
   monstersSlain: Array<{ entityId: string; name: string; statsText?: string }>
   participants: Array<{
@@ -96,6 +104,8 @@ export type SessionHandout = {
   sceneNpcs: SceneNpc[]
   chronicleAmbience: ChronicleAmbience
   restMode: boolean
+  round?: number
+  activeTurnIndex?: number
   publishedToPlayers: boolean
   createdAt: string
   closedAt?: string
@@ -167,7 +177,7 @@ export type ScheduledSession = {
   narratorEmail?: string
   tableMeta?: SessionTableMeta
   accessCode: string
-  /** public: entra sem código. private: só com código de sala. */
+  accessCodeRotatedAt?: string
   listing?: 'public' | 'private'
   status: 'scheduled' | 'open' | 'closed'
   startedAt?: string
@@ -179,7 +189,85 @@ export type ScheduledSession = {
   createdAt: string
 }
 
+export type SessionActionEntry = {
+  id: string
+  sessionId: string
+  actorEmail: string
+  characterId?: string
+  characterName: string
+  kind: 'declaration' | 'skill' | 'damage' | 'potion' | 'turn_end' | 'round_end' | 'system'
+  summary: string
+  detail: string
+  createdAt: string
+}
+
+/** Projeção pública segura: sem accessCode e sem e-mails internos (C01). */
+export type PublicSessionDTO = {
+  id: string
+  title: string
+  scheduledAt: string
+  chronicleName?: string
+  tableMeta?: SessionTableMeta
+  listing: 'public' | 'private'
+  status: 'scheduled' | 'open' | 'closed'
+  startedAt?: string
+  endedAt?: string
+  activeDurationMs: number
+  narratorName: string
+  seatedCount: number
+  presenceCount: number
+  createdAt: string
+}
+
+/** Projeção para jogador participante: sem accessCode nem e-mails de terceiros (C01). */
+export type ParticipantSessionDTO = PublicSessionDTO & {
+  mySeat: { characterId: string; characterName: string; joinedAt: string } | null
+  hasConfirmedPresence: boolean
+  seats: Array<{
+    displayName: string
+    characterId: string
+    characterName: string
+    joinedAt: string
+    isMe: boolean
+  }>
+  presence: Array<{
+    displayName: string
+    confirmedAt: string
+    isMe: boolean
+  }>
+}
+
+/** Projeção completa para o narrador responsável pela mesa ou admin (C01). */
+export type NarratorSessionDTO = ScheduledSession
+
+const SESSIONS_DOC = 'sessions'
+const ACTIONS_DOC = 'session-actions'
+const ENTITY_FILE = 'chronicle-entities.json'
+
 const entities = new Map<string, ChronicleEntity>()
+const handouts = new Map<string, SessionHandout>()
+const scheduledSessions = new Map<string, ScheduledSession>()
+const sessionActions: SessionActionEntry[] = []
+
+function clone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T
+}
+
+function now() {
+  return new Date().toISOString()
+}
+
+function sameEmail(a?: string, b?: string) {
+  return (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+}
+
+function sameEntityText(left: string, right: string) {
+  return left.trim().toLowerCase() === right.trim().toLowerCase()
+}
+
+function writeEntityFile() {
+  writeJsonFile(ENTITY_FILE, [...entities.values()])
+}
 
 export function replaceAllEntities(rows: ChronicleEntity[]) {
   entities.clear()
@@ -188,14 +276,71 @@ export function replaceAllEntities(rows: ChronicleEntity[]) {
   }
 }
 
-const ENTITY_FILE = 'chronicle-entities.json'
-
-function writeEntityFile() {
-  writeJsonFile(ENTITY_FILE, [...entities.values()])
+export function resetSessionsForTests() {
+  handouts.clear()
+  scheduledSessions.clear()
+  sessionActions.length = 0
 }
 
-function sameEntityText(left: string, right: string) {
-  return left.trim().toLowerCase() === right.trim().toLowerCase()
+export function resetEntitiesForTests() {
+  entities.clear()
+}
+
+export function toPublicSessionDTO(row: ScheduledSession): PublicSessionDTO {
+  const s = ensureSessionDefaults(row)
+  const narrator = s.narratorEmail ? getProfile(s.narratorEmail) : null
+  const activeSeats = (s.seats ?? []).filter((seat) => !seat.leftAt)
+  return {
+    id: s.id,
+    title: s.title,
+    scheduledAt: s.scheduledAt,
+    chronicleName: s.chronicleName,
+    tableMeta: s.tableMeta,
+    listing: s.listing ?? 'private',
+    status: s.status,
+    startedAt: s.startedAt,
+    endedAt: s.endedAt,
+    activeDurationMs: s.activeDurationMs ?? 0,
+    narratorName: narrator?.displayName ?? 'Narrador',
+    seatedCount: activeSeats.length,
+    presenceCount: (s.presence ?? []).length,
+    createdAt: s.createdAt,
+  }
+}
+
+export function toParticipantSessionDTO(row: ScheduledSession, viewerEmail?: string): ParticipantSessionDTO {
+  const s = ensureSessionDefaults(row)
+  const base = toPublicSessionDTO(s)
+  const viewer = viewerEmail?.trim().toLowerCase() ?? ''
+  const activeSeats = (s.seats ?? []).filter((seat) => !seat.leftAt)
+  const myActiveSeat = viewer ? activeSeats.find((seat) => sameEmail(seat.email, viewer)) ?? null : null
+  return {
+    ...base,
+    mySeat: myActiveSeat
+      ? {
+          characterId: myActiveSeat.characterId,
+          characterName: myActiveSeat.characterName,
+          joinedAt: myActiveSeat.joinedAt,
+        }
+      : null,
+    hasConfirmedPresence: Boolean(viewer && (s.presence ?? []).some((p) => sameEmail(p.email, viewer))),
+    seats: activeSeats.map((seat) => ({
+      displayName: seat.displayName,
+      characterId: seat.characterId,
+      characterName: seat.characterName,
+      joinedAt: seat.joinedAt,
+      isMe: Boolean(viewer && sameEmail(seat.email, viewer)),
+    })),
+    presence: (s.presence ?? []).map((p) => ({
+      displayName: p.displayName,
+      confirmedAt: p.confirmedAt,
+      isMe: Boolean(viewer && sameEmail(p.email, viewer)),
+    })),
+  }
+}
+
+export function toNarratorSessionDTO(row: ScheduledSession): NarratorSessionDTO {
+  return clone(ensureSessionDefaults(row))
 }
 
 /** Junta o que o banco confirmou. Consulta falha ou tabela vazia não apaga o que já está na memória. */
@@ -256,33 +401,58 @@ export async function hydrateEntitiesFromDatabase() {
 }
 
 async function commitEntity(row: ChronicleEntity) {
-  const saved = await dbUpsertEntity(row)
-  if (!saved.ok) throw new Error(saved.error)
+  await dbUpsertEntity(row)
   entities.set(row.id, row)
   writeEntityFile()
 }
-const handouts = new Map<string, SessionHandout>()
-const scheduledSessions = new Map<string, ScheduledSession>()
 
-function snapshotSessions() {
-  rememberDocument('sessions', {
+async function commitSessions(): Promise<void> {
+  await commitDocument(SESSIONS_DOC, {
     sessions: [...scheduledSessions.values()],
     handouts: [...handouts.values()],
   })
 }
 
-export async function hydrateSessions() {
-  const doc = await loadDocument<{ sessions: ScheduledSession[]; handouts: SessionHandout[] }>('sessions')
-  if (!doc || documentWeight(doc.body) === 0) return
-  if (!doc.body.sessions?.length && !doc.body.handouts?.length) return
-  scheduledSessions.clear()
-  handouts.clear()
-  for (const session of doc.body.sessions ?? []) scheduledSessions.set(session.id, session)
-  for (const handout of doc.body.handouts ?? []) handouts.set(handout.id, handout)
+async function runSessionMutation<T>(fn: () => Promise<T> | T): Promise<T> {
+  return runExclusive('store:sessions', async () => {
+    await syncSessionsIfStale()
+    const prevSessions = clone([...scheduledSessions.entries()])
+    const prevHandouts = clone([...handouts.entries()])
+    try {
+      return await fn()
+    } catch (err) {
+      scheduledSessions.clear()
+      for (const [k, v] of prevSessions) scheduledSessions.set(k, v)
+      handouts.clear()
+      for (const [k, v] of prevHandouts) handouts.set(k, v)
+      throw err
+    }
+  })
 }
 
-function now() {
-  return new Date().toISOString()
+export async function syncSessionsIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision(SESSIONS_DOC)
+  if (remoteRev > getLoadedDocumentRevision(SESSIONS_DOC)) {
+    await hydrateSessions()
+  }
+}
+
+export async function hydrateSessions() {
+  const [doc, actionsDoc] = await Promise.all([
+    loadDocument<{ sessions: ScheduledSession[]; handouts: SessionHandout[] }>(SESSIONS_DOC),
+    loadDocument<SessionActionEntry[]>(ACTIONS_DOC),
+  ])
+  if (doc && documentWeight(doc.body) > 0) {
+    if (doc.body.sessions?.length || doc.body.handouts?.length) {
+      scheduledSessions.clear()
+      handouts.clear()
+      for (const session of doc.body.sessions ?? []) scheduledSessions.set(session.id, session)
+      for (const handout of doc.body.handouts ?? []) handouts.set(handout.id, handout)
+    }
+  }
+  if (actionsDoc && documentWeight(actionsDoc.body) > 0) {
+    sessionActions.splice(0, sessionActions.length, ...actionsDoc.body.slice(-600))
+  }
 }
 
 export function listEntities(filter?: { kind?: EntityKind; visibility?: ChronicleEntity['visibility'] }) {
@@ -328,8 +498,7 @@ export async function updateEntity(id: string, patch: Partial<Omit<ChronicleEnti
 
 export async function deleteEntity(id: string) {
   if (!entities.has(id)) return false
-  const removed = await dbDeleteEntity(id)
-  if (!removed.ok) throw new Error(removed.error)
+  await dbDeleteEntity(id)
   entities.delete(id)
   writeEntityFile()
   return true
@@ -387,17 +556,19 @@ function scopedPublished(rows: ChronicleEntity[], contexts: CatalogScopeContext[
 export function listPublishedForArchive(category: ArchiveCategory, email?: string, sessionId?: string) {
   const contexts = resolveCatalogScopeForViewer(email, sessionId)
   return scopedPublished(
-    listEntities().filter(
-      (e) =>
-        e.kind === 'archive' ||
-        e.kind === 'equipment' ||
-        e.kind === 'consumable' ||
-        e.kind === 'monster',
-    ).filter((e) => {
-      if (e.kind === 'archive') return e.archiveCategory === category
-      if (e.archiveCategory === category) return true
-      return false
-    }),
+    listEntities()
+      .filter(
+        (e) =>
+          e.kind === 'archive' ||
+          e.kind === 'equipment' ||
+          e.kind === 'consumable' ||
+          e.kind === 'monster',
+      )
+      .filter((e) => {
+        if (e.kind === 'archive') return e.archiveCategory === category
+        if (e.archiveCategory === category) return true
+        return false
+      }),
     contexts,
   )
 }
@@ -420,9 +591,11 @@ export function listPublishedForBestiary(tier: BestiaryTier, email?: string, ses
   )
 }
 
-export function listPublishedDownloads(category: DownloadCategory) {
-  const files = forPlayers(
+export function listPublishedDownloads(category: DownloadCategory, email?: string, sessionId?: string) {
+  const contexts = resolveCatalogScopeForViewer(email, sessionId)
+  const files = scopedPublished(
     listEntities({ visibility: 'published' }).filter((e) => e.kind === 'download' && e.downloadCategory === category),
+    contexts,
   )
   if (category === 'handouts') {
     const sessionDocs = [...handouts.values()].filter((h) => h.publishedToPlayers && h.status === 'closed')
@@ -441,28 +614,32 @@ export function getHandout(id: string) {
   return handouts.get(id) ?? null
 }
 
-export function createHandout(
+export async function createHandout(
   input: Omit<
     SessionHandout,
     'id' | 'status' | 'publishedToPlayers' | 'createdAt' | 'closedAt' | 'sceneThreats' | 'sceneNpcs' | 'chronicleAmbience' | 'restMode'
   > &
-    Partial<Pick<SessionHandout, 'sceneThreats' | 'sceneNpcs' | 'chronicleAmbience' | 'restMode'>>,
+    Partial<Pick<SessionHandout, 'sceneThreats' | 'sceneNpcs' | 'chronicleAmbience' | 'restMode' | 'narratorEmail'>>,
 ) {
-  const id = randomUUID()
-  const row: SessionHandout = {
-    sceneThreats: [],
-    sceneNpcs: [],
-    chronicleAmbience: { ...DEFAULT_CHRONICLE_AMBIENCE },
-    restMode: false,
-    ...input,
-    id,
-    status: 'pending_close',
-    publishedToPlayers: false,
-    createdAt: now(),
-  }
-  handouts.set(id, row)
-  snapshotSessions()
-  return row
+  return runSessionMutation(async () => {
+    const id = randomUUID()
+    const row: SessionHandout = {
+      sceneThreats: [],
+      sceneNpcs: [],
+      chronicleAmbience: { ...DEFAULT_CHRONICLE_AMBIENCE },
+      restMode: false,
+      round: 1,
+      activeTurnIndex: 0,
+      ...input,
+      id,
+      status: 'pending_close',
+      publishedToPlayers: false,
+      createdAt: now(),
+    }
+    handouts.set(id, row)
+    await commitSessions()
+    return row
+  })
 }
 
 export function getScheduledSession(id: string) {
@@ -474,69 +651,22 @@ function findHandoutByScheduledSession(sessionId: string) {
   return [...handouts.values()].find((h) => h.scheduledSessionId === sessionId) ?? null
 }
 
-function findLatestHandoutForChronicle(chronicleName: string, excludeHandoutId?: string) {
-  const key = chronicleName.trim().toLowerCase()
-  if (!key) return null
-  return (
-    [...handouts.values()]
-      .filter((h) => h.id !== excludeHandoutId && (h.chronicleName?.trim().toLowerCase() ?? '') === key)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
-  )
-}
-
-/** Continuidade: missões e participantes seguem da última mesa da mesma crônica. */
-function continuityPayload(chronicleName: string, excludeHandoutId?: string) {
-  const prev = findLatestHandoutForChronicle(chronicleName, excludeHandoutId)
-  if (!prev) {
-    return {
-      participants: [] as SessionHandout['participants'],
-      missions: [] as SessionHandout['missions'],
-      monstersSlain: [] as SessionHandout['monstersSlain'],
-    }
-  }
-  return {
-    participants: prev.participants.map((p) => ({
-      ...p,
-      rewards: p.rewards.map((r) => ({ ...r })),
-    })),
-    missions: prev.missions.map((m) => ({ ...m })),
-    monstersSlain: prev.monstersSlain.map((m) => ({ ...m })),
-  }
-}
-
-/** Mescla novos eventos (ex.: bestiário) mantendo o que já estava registrado na mesa. */
-export function syncHandoutSessionEvents(handoutId: string) {
-  const row = handouts.get(handoutId)
-  if (!row || !row.chronicleName) return row
-  const base = continuityPayload(row.chronicleName, row.id)
-  const mergeMonsters = [...row.monstersSlain]
-  for (const m of base.monstersSlain) {
-    if (!mergeMonsters.some((x) => x.entityId === m.entityId && x.name === m.name)) {
-      mergeMonsters.push(m)
-    }
-  }
-  const mergeMissions = [...row.missions]
-  for (const m of base.missions) {
-    if (!mergeMissions.some((x) => x.title === m.title)) mergeMissions.push(m)
-  }
-  return updateHandout(handoutId, {
-    participants: row.participants.length ? row.participants : base.participants,
-    missions: mergeMissions,
-    monstersSlain: mergeMonsters,
-  })
-}
-
-export function ensureHandoutForScheduledSession(sessionId: string) {
+export async function ensureHandoutForScheduledSession(sessionId: string) {
   const session = getScheduledSession(sessionId)
   if (!session) return null
   const existing = findHandoutByScheduledSession(sessionId)
   if (existing) {
     const row = handouts.get(existing.id)!
-    if (!row.sceneThreats) updateHandout(row.id, { sceneThreats: [] })
-    if (!row.sceneNpcs) updateHandout(row.id, { sceneNpcs: [] })
-    if (!row.chronicleAmbience) updateHandout(row.id, { chronicleAmbience: { ...DEFAULT_CHRONICLE_AMBIENCE } })
-    if (row.restMode == null) updateHandout(row.id, { restMode: false })
-    return handouts.get(existing.id)!
+    const patch: Partial<SessionHandout> = {}
+    if (!row.sceneThreats) patch.sceneThreats = []
+    if (!row.sceneNpcs) patch.sceneNpcs = []
+    if (!row.chronicleAmbience) patch.chronicleAmbience = { ...DEFAULT_CHRONICLE_AMBIENCE }
+    if (row.restMode == null) patch.restMode = false
+    if (!row.narratorEmail && session.narratorEmail) patch.narratorEmail = session.narratorEmail
+    if (Object.keys(patch).length > 0) {
+      return updateHandout(row.id, patch)
+    }
+    return row
   }
   const chronicleName = session.chronicleName?.trim() || session.title
   return createHandout({
@@ -544,6 +674,7 @@ export function ensureHandoutForScheduledSession(sessionId: string) {
     narrativeSummary: '',
     scheduledSessionId: sessionId,
     chronicleName,
+    narratorEmail: session.narratorEmail,
     npcIds: [],
     monstersSlain: [],
     participants: [],
@@ -555,19 +686,31 @@ export function ensureHandoutForScheduledSession(sessionId: string) {
   })
 }
 
-export function patchMesaHandoutNarrative(sessionId: string, narrativeSummary: string) {
+export async function patchMesaHandoutNarrative(sessionId: string, narrativeSummary: string) {
   const row = findHandoutByScheduledSession(sessionId)
   if (!row) return null
   return updateHandout(row.id, { narrativeSummary })
 }
 
-export function updateHandout(id: string, patch: Partial<SessionHandout>) {
-  const row = handouts.get(id)
+export async function patchMesaHandoutWhisper(sessionId: string, narratorWhisper: string) {
+  const row = findHandoutByScheduledSession(sessionId)
   if (!row) return null
-  const next = { ...row, ...patch, ...(patch.status === 'closed' && !row.closedAt ? { closedAt: now() } : {}) }
-  handouts.set(id, next)
-  snapshotSessions()
-  return next
+  return updateHandout(row.id, { narratorWhisper })
+}
+
+export async function updateHandout(id: string, patch: Partial<SessionHandout>) {
+  return runSessionMutation(async () => {
+    const row = handouts.get(id)
+    if (!row) return null
+    const next = {
+      ...row,
+      ...patch,
+      ...(patch.status === 'closed' && !row.closedAt ? { closedAt: now() } : {}),
+    }
+    handouts.set(id, next)
+    await commitSessions()
+    return next
+  })
 }
 
 async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
@@ -601,6 +744,8 @@ async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
     creatureStats: row.creatureStats,
     passiveTraits: row.passiveTraits,
     attributeMods: row.attributeMods,
+    chronicleScope: row.chronicleScope,
+    narratorScope: row.narratorScope,
     visibility: 'published' as const,
   }
   if (twin) {
@@ -615,7 +760,6 @@ async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
   })
 }
 
-/** Publica entidade; NPC/monstro ganham espelho `archive` no glossário do jogador. */
 export async function publishEntity(id: string) {
   return updateEntity(id, { visibility: 'published' })
 }
@@ -632,7 +776,6 @@ function ensureSessionDefaults(row: ScheduledSession): ScheduledSession {
   }
   if (!row.accessCode || !row.status || !row.presence || !row.seats) {
     scheduledSessions.set(row.id, next)
-    snapshotSessions()
   }
   return next
 }
@@ -648,18 +791,31 @@ export function openSeats(sessionId: string) {
   return (scheduledSessions.get(sessionId)?.seats ?? []).filter((seat) => !seat.leftAt)
 }
 
-export function replaceSessionBundle(sessions: ScheduledSession[], nextHandouts?: SessionHandout[]) {
-  scheduledSessions.clear()
-  for (const session of sessions) {
-    if (session?.id) scheduledSessions.set(session.id, session)
-  }
-  if (nextHandouts) {
-    handouts.clear()
-    for (const handout of nextHandouts) {
-      if (handout?.id) handouts.set(handout.id, handout)
+export function sharesAnyManagedSession(narratorEmail: string, playerEmail: string): boolean {
+  const nKey = narratorEmail.trim().toLowerCase()
+  const pKey = playerEmail.trim().toLowerCase()
+  return [...scheduledSessions.values()].some((s) => {
+    if (!s.narratorEmail || !sameEmail(s.narratorEmail, nKey)) return false
+    const inSeats = (s.seats ?? []).some((seat) => sameEmail(seat.email, pKey))
+    const inPresence = (s.presence ?? []).some((p) => sameEmail(p.email, pKey))
+    return inSeats || inPresence
+  })
+}
+
+export async function replaceSessionBundle(sessions: ScheduledSession[], nextHandouts?: SessionHandout[]) {
+  return runSessionMutation(async () => {
+    scheduledSessions.clear()
+    for (const session of sessions) {
+      if (session?.id) scheduledSessions.set(session.id, session)
     }
-  }
-  snapshotSessions()
+    if (nextHandouts) {
+      handouts.clear()
+      for (const handout of nextHandouts) {
+        if (handout?.id) handouts.set(handout.id, handout)
+      }
+    }
+    await commitSessions()
+  })
 }
 
 export function listScheduledSessions() {
@@ -668,17 +824,34 @@ export function listScheduledSessions() {
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
 }
 
+export function listScheduledSessionsForManager(user: { email: string; role: string }) {
+  const rows = listScheduledSessions()
+  if (user.role === 'admin') return rows
+  return rows.filter((s) => s.narratorEmail && sameEmail(s.narratorEmail, user.email))
+}
+
 export function findScheduledSessionByAccessCode(code: string) {
   const key = code.trim().toUpperCase()
   if (!key) return null
   return listScheduledSessions().find((s) => s.status !== 'closed' && s.accessCode.toUpperCase() === key) ?? null
 }
 
-function generateAccessCode() {
+/** Gera código único criptograficamente seguro (C11). */
+export function generateAccessCode(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 6; i += 1) code += alphabet[Math.floor(Math.random() * alphabet.length)]
-  return code
+  const activeCodes = new Set(
+    [...scheduledSessions.values()]
+      .filter((s) => s.status !== 'closed' && s.accessCode)
+      .map((s) => s.accessCode.toUpperCase()),
+  )
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    let code = ''
+    for (let i = 0; i < 6; i += 1) {
+      code += alphabet[randomInt(0, alphabet.length)]
+    }
+    if (!activeCodes.has(code)) return code
+  }
+  return randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
 }
 
 function normalizeTableMeta(
@@ -698,13 +871,13 @@ function normalizeTableMeta(
     arcTitle: arc,
     missionTitle: arc,
     playerGroup: meta.playerGroup?.trim() ?? '',
-    targetDuration: '',
-    recommendedLevels: '',
+    targetDuration: meta.targetDuration?.trim() ?? '',
+    recommendedLevels: meta.recommendedLevels?.trim() ?? '',
     sessionOrdinal: meta.sessionOrdinal,
   }
 }
 
-export function createScheduledSession(input: {
+export async function createScheduledSession(input: {
   title: string
   scheduledAt: string
   chronicleName?: string
@@ -712,71 +885,87 @@ export function createScheduledSession(input: {
   tableMeta?: SessionTableMeta
   listing?: 'public' | 'private'
 }) {
-  const id = randomUUID()
-  const chronicleName = input.chronicleName?.trim()
-  const tableMeta = normalizeTableMeta(input.tableMeta, chronicleName, input.title)
-  const displayTitle = tableMeta?.sessionLabel || input.title
-  const row: ScheduledSession = {
-    id,
-    title: displayTitle,
-    scheduledAt: input.scheduledAt,
-    chronicleName: chronicleName || tableMeta?.campaignName,
-    narratorEmail: input.narratorEmail,
-    tableMeta,
-    accessCode: generateAccessCode(),
-    listing: input.listing === 'public' ? 'public' : 'private',
-    status: 'scheduled',
-    activeDurationMs: 0,
-    presence: [],
-    seats: [],
-    createdAt: now(),
-  }
-  scheduledSessions.set(id, row)
-  snapshotSessions()
-  ensureHandoutForScheduledSession(id)
-  return row
+  const created = await runSessionMutation(async () => {
+    const id = randomUUID()
+    const chronicleName = input.chronicleName?.trim()
+    const tableMeta = normalizeTableMeta(input.tableMeta, chronicleName, input.title)
+    const displayTitle = tableMeta?.sessionLabel || input.title
+    const row: ScheduledSession = {
+      id,
+      title: displayTitle,
+      scheduledAt: input.scheduledAt,
+      chronicleName: chronicleName || tableMeta?.campaignName,
+      narratorEmail: input.narratorEmail,
+      tableMeta,
+      accessCode: generateAccessCode(),
+      accessCodeRotatedAt: now(),
+      listing: input.listing === 'public' ? 'public' : 'private',
+      status: 'scheduled',
+      activeDurationMs: 0,
+      presence: [],
+      seats: [],
+      createdAt: now(),
+    }
+    scheduledSessions.set(id, row)
+    await commitSessions()
+    return row
+  })
+  await ensureHandoutForScheduledSession(created.id)
+  return created
 }
 
-export function updateScheduledSession(
+export async function updateScheduledSession(
   id: string,
-  patch: Partial<Omit<ScheduledSession, 'id' | 'createdAt' | 'accessCode'>>,
+  patch: Partial<Omit<ScheduledSession, 'id' | 'createdAt' | 'accessCode'>> & { accessCode?: string },
 ) {
-  const row = scheduledSessions.get(id)
-  if (!row) return null
-  let tableMeta = patch.tableMeta !== undefined ? patch.tableMeta : row.tableMeta
-  if (tableMeta) {
-    tableMeta = normalizeTableMeta(tableMeta, patch.chronicleName ?? row.chronicleName, patch.title ?? row.title) ?? tableMeta
-  }
-  const next = { ...row, ...patch, tableMeta }
-  scheduledSessions.set(id, next)
-  snapshotSessions()
-  return next
+  return runSessionMutation(async () => {
+    const row = scheduledSessions.get(id)
+    if (!row) return null
+    let tableMeta = patch.tableMeta !== undefined ? patch.tableMeta : row.tableMeta
+    if (tableMeta) {
+      tableMeta = normalizeTableMeta(tableMeta, patch.chronicleName ?? row.chronicleName, patch.title ?? row.title) ?? tableMeta
+    }
+    const next = { ...row, ...patch, tableMeta }
+    scheduledSessions.set(id, next)
+    await commitSessions()
+    return next
+  })
 }
 
-export function deleteScheduledSession(sessionId: string, narratorEmail: string) {
+export async function rotateSessionAccessCode(sessionId: string, user: { email: string; role: string }) {
+  const session = requireSessionManager(sessionId, user)
+  return updateScheduledSession(session.id, {
+    accessCode: generateAccessCode(),
+    accessCodeRotatedAt: now(),
+  })
+}
+
+export async function deleteScheduledSession(sessionId: string, user: { email: string; role: string }) {
   const session = getScheduledSession(sessionId)
   if (!session) return { ok: false as const, reason: 'not_found' as const }
-  if (session.narratorEmail && !sameEmail(session.narratorEmail, narratorEmail) && getProfile(narratorEmail)?.role !== 'admin') {
+  if (!canManageSessionObj(session, user)) {
     return { ok: false as const, reason: 'forbidden' as const }
   }
   if (session.status === 'open') return { ok: false as const, reason: 'open' as const }
-  for (const handout of [...handouts.values()]) {
-    if (handout.scheduledSessionId === sessionId) handouts.delete(handout.id)
-  }
-  scheduledSessions.delete(sessionId)
-  snapshotSessions()
-  return { ok: true as const }
+  return runSessionMutation(async () => {
+    for (const handout of [...handouts.values()]) {
+      if (handout.scheduledSessionId === sessionId) handouts.delete(handout.id)
+    }
+    scheduledSessions.delete(sessionId)
+    await commitSessions()
+    return { ok: true as const }
+  })
 }
 
-export function openScheduledSession(sessionId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function openScheduledSession(sessionId: string, user: { email: string; role: string }) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const row = getScheduledSession(sessionId)
   if (!row) return { ok: false as const, reason: 'not_found' as const }
   if (row.status === 'closed') return { ok: false as const, reason: 'closed' as const }
   if (row.status === 'open') return { ok: true as const, session: row }
   const stamp = now()
-  const next = updateScheduledSession(sessionId, {
+  const next = await updateScheduledSession(sessionId, {
     status: 'open',
     startedAt: row.startedAt ?? stamp,
     lastOpenedAt: stamp,
@@ -785,8 +974,8 @@ export function openScheduledSession(sessionId: string, narratorEmail: string) {
   return { ok: true as const, session: next! }
 }
 
-export function rescheduleSameTable(sessionId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function rescheduleSameTable(sessionId: string, user: { email: string; role: string }) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const row = getScheduledSession(sessionId)
   if (!row) return { ok: false as const, reason: 'not_found' as const }
@@ -794,18 +983,18 @@ export function rescheduleSameTable(sessionId: string, narratorEmail: string) {
   const start = new Date()
   start.setHours(20, 0, 0, 0)
   if (start.getTime() <= Date.now()) start.setDate(start.getDate() + 1)
-  const created = createScheduledSession({
+  const created = await createScheduledSession({
     title: row.tableMeta?.sessionLabel || row.title,
     scheduledAt: start.toISOString(),
     chronicleName: row.chronicleName,
-    narratorEmail: row.narratorEmail,
+    narratorEmail: row.narratorEmail ?? user.email,
     tableMeta: row.tableMeta,
     listing: row.listing,
   })
   const previous = findHandoutByScheduledSession(sessionId)
   const fresh = findHandoutByScheduledSession(created.id)
   if (previous && fresh) {
-    updateHandout(fresh.id, {
+    await updateHandout(fresh.id, {
       participants: previous.participants.map((participant) => ({
         ...participant,
         rewards: participant.rewards.map((reward) => ({ ...reward })),
@@ -818,8 +1007,8 @@ export function rescheduleSameTable(sessionId: string, narratorEmail: string) {
   return { ok: true as const, session: created }
 }
 
-export function closeScheduledSession(sessionId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function closeScheduledSession(sessionId: string, user: { email: string; role: string }) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const row = getScheduledSession(sessionId)
   if (!row) return { ok: false as const, reason: 'not_found' as const }
@@ -829,34 +1018,51 @@ export function closeScheduledSession(sessionId: string, narratorEmail: string) 
     const anchor = row.lastOpenedAt ?? row.startedAt
     if (anchor) activeDurationMs += Math.max(0, Date.now() - new Date(anchor).getTime())
   }
-  const next = updateScheduledSession(sessionId, {
+  const next = await updateScheduledSession(sessionId, {
     status: 'closed',
     endedAt,
     activeDurationMs,
   })
   const handout = findHandoutByScheduledSession(sessionId)
   if (handout && handout.status !== 'closed') {
-    updateHandout(handout.id, { status: 'closed', closedAt: endedAt })
+    await updateHandout(handout.id, { status: 'closed', closedAt: endedAt })
   }
-  pauseEffectsForSeats((row.seats ?? []).filter((seat) => !seat.leftAt))
+  await pauseEffectsForSeats((row.seats ?? []).filter((seat) => !seat.leftAt))
   return { ok: true as const, session: next! }
 }
 
-export function confirmSessionPresence(
+export async function confirmSessionPresence(
   sessionId: string,
-  user: { email: string; displayName: string },
+  user: { email: string; displayName: string; role?: string },
+  accessCode?: string,
 ) {
   const row = getScheduledSession(sessionId)
-  if (!row) return null
+  if (!row) return { ok: false as const, reason: 'not_found' as const }
+  if (row.status === 'closed') return { ok: false as const, reason: 'closed' as const }
+
+  const listing = row.listing ?? 'private'
+  const isParticipant =
+    (row.seats ?? []).some((s) => !s.leftAt && sameEmail(s.email, user.email)) ||
+    (row.presence ?? []).some((p) => sameEmail(p.email, user.email)) ||
+    (user.role ? canManageSessionObj(row, { email: user.email, role: user.role }) : false)
+
+  if (listing === 'private' && !isParticipant) {
+    const provided = accessCode?.trim().toUpperCase() ?? ''
+    if (!provided || provided !== row.accessCode.toUpperCase()) {
+      return { ok: false as const, reason: 'forbidden' as const }
+    }
+  }
+
   const presence = [...(row.presence ?? [])]
-  const idx = presence.findIndex((p) => p.email === user.email)
+  const idx = presence.findIndex((p) => sameEmail(p.email, user.email))
   const entry = { email: user.email, displayName: user.displayName, confirmedAt: now() }
   if (idx >= 0) presence[idx] = entry
   else presence.push(entry)
-  return updateScheduledSession(sessionId, { presence })
+  const updated = await updateScheduledSession(sessionId, { presence })
+  return { ok: true as const, session: updated!, confirmedAt: entry.confirmedAt }
 }
 
-export function joinSessionWithCode(
+export async function joinSessionWithCode(
   sessionId: string,
   accessCode: string,
   user: { email: string; displayName: string },
@@ -864,14 +1070,14 @@ export function joinSessionWithCode(
 ) {
   const row = getScheduledSession(sessionId)
   if (!row) return { ok: false as const, reason: 'not_found' as const }
+  if (row.status !== 'open') {
+    return { ok: false as const, reason: 'not_open' as const }
+  }
   const listing = row.listing ?? 'private'
   if (listing !== 'public' && row.accessCode.toUpperCase() !== accessCode.trim().toUpperCase()) {
     return { ok: false as const, reason: 'bad_code' as const }
   }
-  if (row.status !== 'open') {
-    return { ok: false as const, reason: 'not_open' as const }
-  }
-  const seats = [...(row.seats ?? [])].filter((s) => !(s.email === user.email && !s.leftAt))
+  const seats = [...(row.seats ?? [])].filter((s) => !(sameEmail(s.email, user.email) && !s.leftAt))
   seats.push({
     email: user.email,
     displayName: user.displayName,
@@ -879,20 +1085,25 @@ export function joinSessionWithCode(
     characterName: character.name,
     joinedAt: now(),
   })
-  const next = updateScheduledSession(sessionId, { seats })
+  const next = await updateScheduledSession(sessionId, { seats })
   return { ok: true as const, session: next! }
 }
 
-export function leaveSessionSeat(sessionId: string, email: string) {
+export async function leaveSessionSeat(sessionId: string, user: { email: string; role: string }) {
   const row = getScheduledSession(sessionId)
-  if (!row) return null
+  if (!row) return { ok: false as const, reason: 'not_found' as const }
+  const isSeated = (row.seats ?? []).some((s) => sameEmail(s.email, user.email) && !s.leftAt)
+  if (!isSeated && !canManageSessionObj(row, user)) {
+    return { ok: false as const, reason: 'forbidden' as const }
+  }
   const seats = (row.seats ?? []).map((s) =>
-    s.email === email && !s.leftAt ? { ...s, leftAt: now() } : s,
+    sameEmail(s.email, user.email) && !s.leftAt ? { ...s, leftAt: now() } : s,
   )
-  return updateScheduledSession(sessionId, { seats })
+  const updated = await updateScheduledSession(sessionId, { seats })
+  return { ok: true as const, session: updated! }
 }
 
-export function replaceSessionCharacter(
+export async function replaceSessionCharacter(
   sessionId: string,
   email: string,
   character: { id: string; name: string },
@@ -900,7 +1111,7 @@ export function replaceSessionCharacter(
   const row = getScheduledSession(sessionId)
   if (!row) return null
   const seats = (row.seats ?? []).map((s) =>
-    s.email === email && !s.leftAt
+    sameEmail(s.email, email) && !s.leftAt
       ? { ...s, characterId: character.id, characterName: character.name }
       : s,
   )
@@ -919,17 +1130,20 @@ function parseVitalsFromStats(statsText?: string) {
   return { hpMax, manaMax }
 }
 
-function sameEmail(a?: string, b?: string) {
-  return (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+function canManageSessionObj(session: ScheduledSession, user: { email: string; role: string }) {
+  if (user.role === 'admin') return true
+  if (user.role !== 'narrator') return false
+  if (!session.narratorEmail) return false
+  return sameEmail(session.narratorEmail, user.email)
 }
 
 export function sessionAccess(sessionId: string, user: { email: string; role?: string }) {
   const session = getScheduledSession(sessionId)
   if (!session) return { ok: false as const, reason: 'not_found' as const }
-  const role = user.role ?? getProfile(user.email)?.role
+  const role = user.role ?? getProfile(user.email)?.role ?? 'player'
   if (role === 'admin') return { ok: true as const, session }
   if (role === 'narrator') {
-    if (!session.narratorEmail || sameEmail(session.narratorEmail, user.email)) {
+    if (session.narratorEmail && sameEmail(session.narratorEmail, user.email)) {
       return { ok: true as const, session }
     }
     return { ok: false as const, reason: 'forbidden' as const }
@@ -939,10 +1153,33 @@ export function sessionAccess(sessionId: string, user: { email: string; role?: s
   return { ok: true as const, session }
 }
 
-function canManageMesa(sessionId: string, email: string) {
-  const access = sessionAccess(sessionId, { email, role: getProfile(email)?.role === 'admin' ? 'admin' : 'narrator' })
-  if (!access.ok) return access
-  return { ok: true as const }
+export function requireSessionParticipant(sessionId: string, user: { email: string; role: string }): ScheduledSession {
+  const access = sessionAccess(sessionId, user)
+  if (!access.ok) {
+    if (access.reason === 'not_found') throw new NotFoundError('Mesa não encontrada.')
+    throw new ForbiddenError('Você não está nesta mesa.')
+  }
+  return access.session
+}
+
+export function requireSessionManager(sessionId: string, user: { email: string; role: string }): ScheduledSession {
+  const session = getScheduledSession(sessionId)
+  if (!session) throw new NotFoundError('Mesa não encontrada.')
+  if (!canManageSessionObj(session, user)) {
+    throw new ForbiddenError('Somente o narrador responsável por esta mesa pode executar esta ação.')
+  }
+  return session
+}
+
+function canManageMesa(sessionId: string, user: { email: string; role: string } | string) {
+  const resolved =
+    typeof user === 'string'
+      ? { email: user, role: getProfile(user)?.role === 'admin' ? 'admin' : 'narrator' }
+      : user
+  const session = getScheduledSession(sessionId)
+  if (!session) return { ok: false as const, reason: 'not_found' as const }
+  if (!canManageSessionObj(session, resolved)) return { ok: false as const, reason: 'forbidden' as const }
+  return { ok: true as const, session }
 }
 
 export function listSceneThreatsForSession(sessionId: string) {
@@ -951,8 +1188,12 @@ export function listSceneThreatsForSession(sessionId: string) {
   return handout.sceneThreats ?? []
 }
 
-export function addSceneThreat(sessionId: string, entityId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function addSceneThreat(
+  sessionId: string,
+  entityId: string,
+  user: { email: string; role: string },
+) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
@@ -969,17 +1210,17 @@ export function addSceneThreat(sessionId: string, entityId: string, narratorEmai
     manaMax,
   }
   const sceneThreats = [...(handout.sceneThreats ?? []), threat]
-  const updated = updateHandout(handout.id, { sceneThreats })
+  const updated = await updateHandout(handout.id, { sceneThreats })
   return { ok: true as const, handout: updated! }
 }
 
-export function applySceneThreatDelta(
+export async function applySceneThreatDelta(
   sessionId: string,
   threatId: string,
-  narratorEmail: string,
+  user: { email: string; role: string },
   delta: { hpDelta?: number; manaDelta?: number },
 ) {
-  const access = canManageMesa(sessionId, narratorEmail)
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
@@ -996,22 +1237,30 @@ export function applySceneThreatDelta(
   }
   const sceneThreats = [...threats]
   sceneThreats[idx] = next
-  const updated = updateHandout(handout.id, { sceneThreats })
+  const updated = await updateHandout(handout.id, { sceneThreats })
   return { ok: true as const, handout: updated! }
 }
 
-export function removeSceneThreat(sessionId: string, threatId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function removeSceneThreat(
+  sessionId: string,
+  threatId: string,
+  user: { email: string; role: string },
+) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
   const sceneThreats = (handout.sceneThreats ?? []).filter((t) => t.id !== threatId)
-  const updated = updateHandout(handout.id, { sceneThreats })
+  const updated = await updateHandout(handout.id, { sceneThreats })
   return { ok: true as const, handout: updated! }
 }
 
-export function addSceneNpc(sessionId: string, entityId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function addSceneNpc(
+  sessionId: string,
+  entityId: string,
+  user: { email: string; role: string },
+) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
@@ -1024,42 +1273,56 @@ export function addSceneNpc(sessionId: string, entityId: string, narratorEmail: 
     description: entity.description,
   }
   const sceneNpcs = [...(handout.sceneNpcs ?? []), npc]
-  const updated = updateHandout(handout.id, { sceneNpcs })
+  const updated = await updateHandout(handout.id, { sceneNpcs })
   return { ok: true as const, handout: updated! }
 }
 
-export function removeSceneNpc(sessionId: string, npcId: string, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function removeSceneNpc(
+  sessionId: string,
+  npcId: string,
+  user: { email: string; role: string },
+) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
   const sceneNpcs = (handout.sceneNpcs ?? []).filter((n) => n.id !== npcId)
-  const updated = updateHandout(handout.id, { sceneNpcs })
+  const updated = await updateHandout(handout.id, { sceneNpcs })
   return { ok: true as const, handout: updated! }
 }
 
-export function patchMesaAmbience(sessionId: string, patch: Partial<ChronicleAmbience>, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function patchMesaAmbience(
+  sessionId: string,
+  patch: Partial<ChronicleAmbience>,
+  user: { email: string; role: string },
+) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
   const chronicleAmbience = { ...(handout.chronicleAmbience ?? DEFAULT_CHRONICLE_AMBIENCE), ...patch }
-  const updated = updateHandout(handout.id, { chronicleAmbience })
+  const updated = await updateHandout(handout.id, { chronicleAmbience })
   return { ok: true as const, handout: updated! }
 }
 
-export function setMesaRestMode(sessionId: string, restMode: boolean, narratorEmail: string) {
-  const access = canManageMesa(sessionId, narratorEmail)
+export async function setMesaRestMode(
+  sessionId: string,
+  restMode: boolean,
+  user: { email: string; role: string },
+) {
+  const access = canManageMesa(sessionId, user)
   if (!access.ok) return access
   const handout = findHandoutByScheduledSession(sessionId)
   if (!handout) return { ok: false as const, reason: 'not_found' as const }
-  const updated = updateHandout(handout.id, { restMode })
+  const updated = await updateHandout(handout.id, { restMode })
   return { ok: true as const, handout: updated! }
 }
 
 export type SessionLiveBrief = {
   narrativeSummary: string
   restMode: boolean
+  round: number
+  activeTurnIndex: number
   chronicleAmbience: ChronicleAmbience
   sceneNpcs: Array<{ id: string; name: string; description: string }>
 }
@@ -1070,6 +1333,8 @@ export function getSessionLiveBrief(sessionId: string): SessionLiveBrief | null 
   return {
     narrativeSummary: handout.narrativeSummary,
     restMode: handout.restMode ?? false,
+    round: handout.round ?? 1,
+    activeTurnIndex: handout.activeTurnIndex ?? 0,
     chronicleAmbience: handout.chronicleAmbience ?? DEFAULT_CHRONICLE_AMBIENCE,
     sceneNpcs: (handout.sceneNpcs ?? []).map((n) => ({
       id: n.id,
@@ -1097,10 +1362,76 @@ export function getSessionBagForPlayer(sessionId: string, email: string) {
   return { rewards: participant?.rewards ?? [] }
 }
 
-/** Últimas 8 semanas: sessões agendadas + handouts encerrados por semana (dados reais). */
-export function sessionActivityLineSeries() {
+export async function recordSessionAction(input: {
+  sessionId: string
+  actorEmail: string
+  characterId?: string
+  characterName: string
+  kind: SessionActionEntry['kind']
+  summary: string
+  detail?: string
+}) {
+  return runExclusive('store:session-actions', async () => {
+    const entry: SessionActionEntry = {
+      id: randomUUID(),
+      sessionId: input.sessionId,
+      actorEmail: input.actorEmail.trim().toLowerCase(),
+      characterId: input.characterId,
+      characterName: input.characterName.trim() || 'Aventureiro',
+      kind: input.kind,
+      summary: input.summary.trim(),
+      detail: (input.detail ?? '').trim(),
+      createdAt: now(),
+    }
+    const sb = getSupabaseAdmin()
+    if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+      const { error } = await sb.from('AcoesSessao').insert({
+        id: entry.id,
+        session_id: entry.sessionId,
+        actor_email: entry.actorEmail,
+        character_id: entry.characterId ?? null,
+        character_name: entry.characterName,
+        kind: entry.kind,
+        summary: entry.summary,
+        detail: entry.detail,
+        created_at: entry.createdAt,
+      })
+      if (error && !/AcoesSessao|schema cache|does not exist/i.test(error.message)) {
+        console.warn('[acoes] Falha ao gravar AcoesSessao:', error.message)
+      }
+    }
+    const backup = [...sessionActions]
+    sessionActions.push(entry)
+    if (sessionActions.length > 600) sessionActions.splice(0, sessionActions.length - 600)
+    try {
+      await commitDocument(ACTIONS_DOC, sessionActions.slice(-600))
+      return entry
+    } catch (err) {
+      sessionActions.splice(0, sessionActions.length, ...backup)
+      throw err
+    }
+  })
+}
+
+export function listSessionActions(sessionId: string, limit = 60) {
+  const safeLimit = Math.min(200, Math.max(1, limit))
+  return sessionActions
+    .filter((row) => row.sessionId === sessionId)
+    .slice(-safeLimit)
+    .reverse()
+    .map(({ actorEmail: _actor, ...rest }) => rest)
+}
+
+/** Últimas 8 semanas: sessões agendadas + handouts encerrados por semana. */
+export function sessionActivityLineSeries(user?: { email: string; role: string }) {
   const weeks: { label: string; count: number }[] = []
   const nowDate = new Date()
+  const visibleSessions = user ? listScheduledSessionsForManager(user) : listScheduledSessions()
+  const visibleIds = new Set(visibleSessions.map((s) => s.id))
+  const visibleHandouts = listHandouts(true).filter(
+    (h) => !user || user.role === 'admin' || (h.scheduledSessionId && visibleIds.has(h.scheduledSessionId)),
+  )
+
   for (let i = 7; i >= 0; i--) {
     const start = new Date(nowDate)
     start.setDate(start.getDate() - i * 7)
@@ -1108,11 +1439,11 @@ export function sessionActivityLineSeries() {
     const end = new Date(start)
     end.setDate(end.getDate() + 7)
     const label = start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
-    const scheduled = listScheduledSessions().filter((s) => {
+    const scheduled = visibleSessions.filter((s) => {
       const d = new Date(s.scheduledAt)
       return d >= start && d < end
     }).length
-    const closed = listHandouts(true).filter((h) => {
+    const closed = visibleHandouts.filter((h) => {
       const d = new Date(h.closedAt ?? h.createdAt)
       return h.status === 'closed' && d >= start && d < end
     }).length
@@ -1133,9 +1464,9 @@ function inRange(iso: string, start: Date, end: Date) {
   return t >= start.getTime() && t < end.getTime()
 }
 
-export function adminMesaActivityStats() {
-  const now = new Date()
-  const dayStart = new Date(now)
+export function adminMesaActivityStats(user?: { email: string; role: string }) {
+  const nowDate = new Date()
+  const dayStart = new Date(nowDate)
   dayStart.setHours(0, 0, 0, 0)
   const dayEnd = new Date(dayStart)
   dayEnd.setDate(dayEnd.getDate() + 1)
@@ -1145,20 +1476,23 @@ export function adminMesaActivityStats() {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 7)
 
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1)
+  const monthEnd = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1)
 
-  const handouts = listHandouts(true)
-  const scheduled = listScheduledSessions()
+  const scheduled = user ? listScheduledSessionsForManager(user) : listScheduledSessions()
+  const visibleIds = new Set(scheduled.map((s) => s.id))
+  const allHandouts = listHandouts(true).filter(
+    (h) => !user || user.role === 'admin' || (h.scheduledSessionId && visibleIds.has(h.scheduledSessionId)),
+  )
 
   function bucket(start: Date, end: Date) {
-    const touched = handouts.filter((h) => {
+    const touched = allHandouts.filter((h) => {
       const anchor = h.closedAt ?? h.createdAt
       return inRange(anchor, start, end) || (h.status === 'pending_close' && inRange(h.createdAt, start, end))
     })
     const hours = touched.reduce((sum, h) => sum + handoutActiveHours(h), 0)
     const sessionsMarked = scheduled.filter((s) => inRange(s.scheduledAt, start, end)).length
-    const actsClosed = handouts.filter(
+    const actsClosed = allHandouts.filter(
       (h) => h.status === 'closed' && h.closedAt && inRange(h.closedAt, start, end),
     ).length
     return {
@@ -1169,7 +1503,7 @@ export function adminMesaActivityStats() {
   }
 
   return {
-    openMesas: handouts.filter((h) => h.status === 'pending_close').length,
+    openMesas: allHandouts.filter((h) => h.status === 'pending_close').length,
     day: bucket(dayStart, dayEnd),
     week: bucket(weekStart, weekEnd),
     month: bucket(monthStart, monthEnd),
@@ -1226,7 +1560,7 @@ export function getPlayerSessionActCanon(sessionId: string): PlayerSessionActCan
   }
 }
 
-export function listPublishedSessionsForPlayers(viewerEmail?: string) {
+export function listPublishedSessionsForPlayers(viewerEmail?: string): ParticipantSessionDTO[] {
   const viewer = viewerEmail?.trim().toLowerCase() ?? ''
   return listScheduledSessions()
     .filter((s) => s.status !== 'closed')
@@ -1239,5 +1573,5 @@ export function listPublishedSessionsForPlayers(viewerEmail?: string) {
       if ((s.presence ?? []).some((p) => p.email.toLowerCase() === viewer)) return true
       return false
     })
-    .map((s) => ({ ...s, listing: s.listing ?? 'private', accessCode: '' }))
+    .map((s) => toParticipantSessionDTO(s, viewerEmail))
 }

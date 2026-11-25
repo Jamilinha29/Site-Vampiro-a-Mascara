@@ -176,7 +176,7 @@ export default function SettingsPage() {
           {profile.role !== 'player' ? ' (esta conta também acessa o painel do mestre)' : ''}
         </p>
         <p className="mt-2 text-xs text-on-surface-variant">
-          Alteração de senha será habilitada com autenticação Supabase. Enquanto isso, use o fluxo de desenvolvimento.
+          Para alterar seu selo com segurança, utilize a recuperação oficial enviada ao seu e-mail cadastrado.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -186,6 +186,13 @@ export default function SettingsPage() {
             onClick={() => saveAccount.mutate()}
           >
             {saveAccount.isPending ? 'Salvando…' : 'Salvar alterações'}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => navigate('/auth/recover')}
+          >
+            Redefinir senha
           </button>
           <button
             type="button"

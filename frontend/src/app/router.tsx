@@ -7,6 +7,8 @@ import { RequireNarrator } from './adminGuards'
 import { PageLoader } from '../components/ui/PageLoader'
 import { Error403Page } from '../pages/errors/Error403Page'
 import { Error404Page } from '../pages/errors/Error404Page'
+import { AppErrorBoundary } from '../components/ui/AppErrorBoundary'
+import { AuthCallbackPage } from '../features/auth/AuthCallbackPage'
 import { Error500Page } from '../pages/errors/Error500Page'
 
 const HomePage = lazy(() => import('../pages/public/HomePage'))
@@ -60,7 +62,8 @@ function LegacyAppRedirect() {
 
 export function AppRouter() {
   return (
-    <Routes>
+    <AppErrorBoundary>
+      <Routes>
       <Route
         path="/"
         element={
@@ -85,14 +88,8 @@ export function AppRouter() {
           </Lazy>
         }
       />
-      <Route
-        path="/auth/recover"
-        element={
-          <Lazy>
-            <RecoverPage />
-          </Lazy>
-        }
-      />
+        <Route path="/auth/recover" element={<Lazy><RecoverPage /></Lazy>} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route
         path="/ajuda/codice"
         element={
@@ -158,5 +155,6 @@ export function AppRouter() {
       <Route path="/500" element={<Error500Page />} />
       <Route path="*" element={<Error404Page />} />
     </Routes>
+    </AppErrorBoundary>
   )
 }

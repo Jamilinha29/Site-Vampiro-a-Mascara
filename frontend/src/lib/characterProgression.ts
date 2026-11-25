@@ -1,83 +1,64 @@
-/** Nível máximo alcançável por XP. */
-export const MAX_CHARACTER_LEVEL = 20
-
-/** Nível em que o jogador escolhe a subclasse. */
-export const SUBCLASS_CHOICE_LEVEL = 7
+export const MIN_CHARACTER_LEVEL = 0
+export const MAX_CHARACTER_LEVEL = 10
+export const SUBCLASS_CHOICE_LEVEL = 5
+export const SECOND_SUBCLASS_CHOICE_LEVEL = 7
+export const STARTING_CHARACTER_XP = 0
+export const VITALS_PER_LEVEL = 5
 
 /**
- * XP necessário para sair do nível `level` e ir para `level + 1`.
- * Exemplos: 1→2 = 50, 2→3 = 150, 3→4 = 300.
+ * Mesmo cálculo do servidor (`progressionRules.ts`):
+ * - Nível 0 -> 1: 25 XP
+ * - Níveis 1..9: 50 * nível * (nível + 1) / 2
+ * - Nível 10: 0 XP (nível máximo)
  */
 export function xpRequiredToAdvance(level: number): number {
-  if (level < 1 || level >= MAX_CHARACTER_LEVEL) return 0
+  if (level < MIN_CHARACTER_LEVEL || level >= MAX_CHARACTER_LEVEL) return 0
+  if (level === 0) return 25
   return (50 * level * (level + 1)) / 2
 }
 
-export type XpPool = {
-  current: number
-  toNext: number
-}
-
-export type ProgressionState = {
+export function needsSubclassChoice(character: {
   level: number
-  xp: XpPool
-  subclass: string | null
-  needsSubclassChoice: boolean
-  leveledUp: boolean
+  subclass?: string | null
+  characterClass?: string | null
+  identity?: { house?: string | null } | null
+}): boolean {
+  const hasClass = Boolean(character.characterClass || character.identity?.house)
+  return character.level >= SUBCLASS_CHOICE_LEVEL && !character.subclass && hasClass
 }
 
-/** Normaliza XP/nível a partir dos dados persistidos (ou defaults). */
+export function needsSecondarySubclassChoice(character: {
+  level: number
+  secondarySubclass?: string | null
+  characterClass?: string | null
+  identity?: { house?: string | null } | null
+}): boolean {
+  const hasClass = Boolean(character.characterClass || character.identity?.house)
+  return character.level >= SECOND_SUBCLASS_CHOICE_LEVEL && !character.secondarySubclass && hasClass
+}
+
 export function normalizeProgression(input: {
-  level?: number
+  level: number
   xp?: { current?: number; toNext?: number } | null
   subclass?: string | null
-}): ProgressionState {
-  const level = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, Math.floor(input.level ?? 1)))
-  const toNext = level >= MAX_CHARACTER_LEVEL ? 0 : xpRequiredToAdvance(level)
+  secondarySubclass?: string | null
+  characterClass?: string | null
+  identity?: { house?: string | null } | null
+}) {
+  const level = Math.max(
+    MIN_CHARACTER_LEVEL,
+    Math.min(MAX_CHARACTER_LEVEL, Math.floor(input.level ?? MIN_CHARACTER_LEVEL)),
+  )
+  const toNext = xpRequiredToAdvance(level)
   const current = Math.max(0, Math.floor(input.xp?.current ?? 0))
-  const subclass = input.subclass ?? null
-  return {
-    level,
-    xp: { current: Math.min(current, toNext || current), toNext },
-    subclass,
-    needsSubclassChoice: level >= SUBCLASS_CHOICE_LEVEL && !subclass,
-    leveledUp: false,
-  }
-}
-
-/**
- * Aplica ganho de XP e sobe de nível automaticamente enquanto a barra estiver cheia.
- * Overflow carrega para o próximo nível.
- */
-export function applyXpGain(
-  state: ProgressionState,
-  amount: number,
-): ProgressionState {
-  if (amount <= 0 || state.level >= MAX_CHARACTER_LEVEL) return state
-
-  let level = state.level
-  let current = state.xp.current + Math.floor(amount)
-  let toNext = xpRequiredToAdvance(level)
-  let leveledUp = false
-  let subclass = state.subclass
-
-  while (level < MAX_CHARACTER_LEVEL && toNext > 0 && current >= toNext) {
-    current -= toNext
-    level += 1
-    leveledUp = true
-    toNext = level >= MAX_CHARACTER_LEVEL ? 0 : xpRequiredToAdvance(level)
-  }
-
-  if (level >= MAX_CHARACTER_LEVEL) {
-    current = 0
-    toNext = 0
-  }
-
+  const hasClass = input.characterClass !== undefined || input.identity !== undefined
+    ? Boolean(input.characterClass || input.identity?.house)
+    : true
   return {
     level,
     xp: { current, toNext },
-    subclass,
-    needsSubclassChoice: level >= SUBCLASS_CHOICE_LEVEL && !subclass,
-    leveledUp,
+    needsSubclassChoice: level >= SUBCLASS_CHOICE_LEVEL && !input.subclass && hasClass,
+    needsSecondarySubclassChoice:
+      level >= SECOND_SUBCLASS_CHOICE_LEVEL && !input.secondarySubclass && hasClass,
   }
 }

@@ -18,8 +18,9 @@ export default function AdminCampaignPage() {
   const [detail, setDetail] = useState('')
   const [kind, setKind] = useState<(typeof kinds)[number]['id']>('mystery')
   const [status, setStatus] = useState<'confirmed' | 'proposed' | 'pending'>('pending')
-  const [maxLevel, setMaxLevel] = useState(20)
-  const [subclassLevel, setSubclassLevel] = useState(7)
+  const [maxLevel, setMaxLevel] = useState(10)
+  const [subclassLevel, setSubclassLevel] = useState(5)
+  const [secondarySubclassLevel, setSecondarySubclassLevel] = useState(7)
   const [startingXp, setStartingXp] = useState(0)
   const [shopBudgetCopper, setShopBudgetCopper] = useState(0)
   const [affected, setAffected] = useState<Array<{ name: string; reason: string }>>([])
@@ -48,7 +49,14 @@ export default function AdminCampaignPage() {
   })
   const saveRules = useMutation({
     mutationFn: (decision: 'keep-existing' | 'mark-review') =>
-      api.adminSaveRules({ maxLevel, subclassLevel, startingXp, shopBudgetCopper, decision }),
+      api.adminSaveRules({
+        maxLevel,
+        subclassLevel,
+        secondarySubclassLevel,
+        startingXp,
+        shopBudgetCopper,
+        decision,
+      }),
     onSuccess: async (result) => {
       setAffected(result.affected)
       await queryClient.invalidateQueries({ queryKey: ['campaign-rules'] })
@@ -112,17 +120,21 @@ export default function AdminCampaignPage() {
       <section className="card-surface space-y-3 p-5">
         <h2 className="text-xs uppercase tracking-wide text-secondary">Regras da campanha</h2>
         <p className="text-sm text-on-surface-variant">
-          Versão atual: {rules.data?.version ?? 1}. Nível máximo {rules.data?.maxLevel ?? 20}. Subclasse no nível{' '}
-          {rules.data?.subclassLevel ?? 7}.
+          Versão atual: {rules.data?.version ?? 1}. Nível máximo {rules.data?.maxLevel ?? 10}. Subclasse I no nível{' '}
+          {rules.data?.subclassLevel ?? 5}. Subclasse II no nível 7.
         </p>
         <div className="flex flex-wrap gap-3">
           <label className="text-xs text-on-surface-variant">
             Nível máximo
-            <input className="input-feudal mt-1 w-28" type="number" min={1} max={20} value={maxLevel} onChange={(event) => setMaxLevel(Number(event.target.value))} />
+            <input className="input-feudal mt-1 w-28" type="number" min={1} max={10} value={maxLevel} onChange={(event) => setMaxLevel(Number(event.target.value))} />
           </label>
           <label className="text-xs text-on-surface-variant">
-            Nível da subclasse
-            <input className="input-feudal mt-1 w-28" type="number" min={1} max={20} value={subclassLevel} onChange={(event) => setSubclassLevel(Number(event.target.value))} />
+            Subclasse I (nível)
+            <input className="input-feudal mt-1 w-28" type="number" min={1} max={10} value={subclassLevel} onChange={(event) => setSubclassLevel(Number(event.target.value))} />
+          </label>
+          <label className="text-xs text-on-surface-variant">
+            Subclasse II (nível)
+            <input className="input-feudal mt-1 w-28" type="number" min={1} max={10} value={secondarySubclassLevel} onChange={(event) => setSecondarySubclassLevel(Number(event.target.value))} />
           </label>
           <label className="text-xs text-on-surface-variant">
             XP inicial (novas fichas)

@@ -5,7 +5,8 @@ import { useToast } from '../../components/ui/ToastProvider'
 
 type Relation = 'none' | 'friend' | 'outgoing' | 'incoming'
 type RosterPlayer = {
-  email: string
+  id: string
+  email?: string
   displayName: string
   handle: string
   characters: number
@@ -79,7 +80,7 @@ export default function AdminUsersPage() {
     if (!q) return []
     return roster
       .filter((player) =>
-        [player.displayName, player.handle, player.email].join(' ').toLowerCase().includes(q),
+        [player.displayName, player.handle, player.id, player.email ?? ''].join(' ').toLowerCase().includes(q),
       )
   }, [inviteQuery, roster])
 
@@ -113,7 +114,7 @@ export default function AdminUsersPage() {
       accept.mutate(target.linkId)
       return
     }
-    invite.mutate(target.email)
+    invite.mutate(target.id || target.email || '')
   }
 
   return (
@@ -166,7 +167,7 @@ export default function AdminUsersPage() {
         {inviteMatches.length > 0 ? (
           <ul className="mt-2 divide-y divide-outline-variant/30 rounded border border-outline-variant/40">
             {inviteMatches.map((player) => (
-              <li key={player.email}>
+              <li key={player.id || player.email}>
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-container-high"
@@ -204,8 +205,10 @@ export default function AdminUsersPage() {
           <p className="px-4 py-6 text-sm text-on-surface-variant">Ninguém nesta lista.</p>
         ) : (
           <ul>
-            {slice.map((player) => (
-              <li key={player.email} className="flex items-center gap-3 border-b border-outline-variant/25 px-4 py-3 last:border-0">
+            {slice.map((player) => {
+              const playerKey = player.id || player.email || player.handle
+              return (
+              <li key={playerKey} className="flex items-center gap-3 border-b border-outline-variant/25 px-4 py-3 last:border-0">
                 <span
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-secondary/40 font-serif text-sm text-on-surface"
                   style={{ background: `hsl(${hue(player.displayName)} 32% 22%)` }}
@@ -220,15 +223,16 @@ export default function AdminUsersPage() {
                 </div>
                 <RowAction
                   player={player}
-                  open={openMenu === player.email}
+                  open={openMenu === playerKey}
                   busy={remove.isPending || accept.isPending || invite.isPending}
-                  onToggle={() => setOpenMenu((current) => (current === player.email ? null : player.email))}
-                  onRemove={() => remove.mutate(player.email)}
+                  onToggle={() => setOpenMenu((current) => (current === playerKey ? null : playerKey))}
+                  onRemove={() => remove.mutate(playerKey)}
                   onAccept={() => player.linkId && accept.mutate(player.linkId)}
-                  onInvite={() => invite.mutate(player.email)}
+                  onInvite={() => invite.mutate(playerKey)}
                 />
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
 

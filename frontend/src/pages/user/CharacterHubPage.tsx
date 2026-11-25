@@ -8,7 +8,11 @@ import { CreatedSkillsPanel } from '../../components/characters/CreatedSkillsPan
 import { useCharacterPortraitEditor } from '../../components/characters/useCharacterPortraitEditor'
 import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
-import { normalizeProgression, SUBCLASS_CHOICE_LEVEL } from '../../lib/characterProgression'
+import {
+  SECOND_SUBCLASS_CHOICE_LEVEL,
+  SUBCLASS_CHOICE_LEVEL,
+  normalizeProgression,
+} from '../../lib/characterProgression'
 import { resolveResourceProfile } from '../../lib/characterSheetKind'
 import { resolveCharacterClass } from '../../lib/characterOptions'
 import { resolveSheetKind } from '../../lib/characterSheetKind'
@@ -56,13 +60,14 @@ export default function CharacterHubPage() {
     name: '',
     clan: '',
     subclass: '',
+    secondarySubclass: '',
   })
 
   const characterClass = character ? resolveCharacterClass(character) : null
   const { data: subclassOptions = [] } = useQuery({
     queryKey: ['catalog-subclasses', characterClass],
     queryFn: () => api.getCatalogSubclasses(characterClass!),
-    enabled: editOpen && (character?.level ?? 1) >= SUBCLASS_CHOICE_LEVEL && Boolean(characterClass),
+    enabled: editOpen && (character?.level ?? 0) >= SUBCLASS_CHOICE_LEVEL && Boolean(characterClass),
   })
 
   function openEdit() {
@@ -71,15 +76,19 @@ export default function CharacterHubPage() {
       name: character.name,
       clan: character.clan ?? '',
       subclass: character.subclass ?? '',
+      secondarySubclass: character.secondarySubclass ?? '',
     })
     setEditOpen(true)
   }
 
   async function saveEdit() {
-    const canSetSubclass = (character?.level ?? 1) >= SUBCLASS_CHOICE_LEVEL
+    const level = character?.level ?? 0
+    const canSetSubclass = level >= SUBCLASS_CHOICE_LEVEL
+    const canSetSecondary = level >= SECOND_SUBCLASS_CHOICE_LEVEL
     await portrait.patchCharacter({
       name: draft.name.trim() || character!.name,
       subclass: canSetSubclass ? draft.subclass.trim() || null : undefined,
+      secondarySubclass: canSetSecondary ? draft.secondarySubclass.trim() || null : undefined,
     })
     setEditOpen(false)
   }
@@ -111,6 +120,9 @@ export default function CharacterHubPage() {
     level: character.level,
     xp: character.xp,
     subclass: character.subclass,
+    secondarySubclass: character.secondarySubclass,
+    characterClass: character.characterClass,
+    identity: character.identity,
   })
 
   const tabClass = ({ isActive }: { isActive: boolean }) =>
@@ -166,7 +178,17 @@ export default function CharacterHubPage() {
               <p className="font-label-sm text-[0.65rem] text-secondary uppercase">Nível {progression.level}</p>
               {progression.needsSubclassChoice ? (
                 <span className="rounded border border-secondary/50 bg-secondary/15 px-2 py-0.5 text-xs font-semibold tracking-wide text-secondary uppercase">
-                  Escolha a subclasse
+                  Escolha a subclasse I
+                </span>
+              ) : null}
+              {progression.needsSecondarySubclassChoice ? (
+                <span className="rounded border border-secondary/50 bg-secondary/15 px-2 py-0.5 text-xs font-semibold tracking-wide text-secondary uppercase">
+                  Escolha a subclasse II
+                </span>
+              ) : null}
+              {character.needsRuleReview ? (
+                <span className="rounded border border-primary/50 bg-primary/15 px-2 py-0.5 text-xs font-semibold tracking-wide text-primary uppercase">
+                  Em revisão de regra
                 </span>
               ) : null}
             </div>
@@ -190,6 +212,7 @@ export default function CharacterHubPage() {
               {character.clan ? ` · ${character.clan}` : ''}
               {character.identity?.faith ? ` · ${character.identity.faith}` : ''}
               {character.subclass ? ` · ${character.subclass}` : ''}
+              {character.secondarySubclass ? ` / ${character.secondarySubclass}` : ''}
             </p>
             <CharacterResourceBars character={character} />
           </div>
@@ -233,7 +256,20 @@ export default function CharacterHubPage() {
 
       </header>
 
-      {portrait.error ? <p className="text-sm text-primary">{portrait.error}</p> : null}
+      {portrait.error ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-primary/40 bg-primary/10 px-4 py-2 text-sm text-primary">
+          <span>{portrait.error}</span>
+          {portrait.conflict ? (
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => portrait.clearConflict()}
+            >
+              Recarregar ficha
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         <nav className="flex flex-wrap items-center justify-end gap-1" aria-label="Seções do personagem">
@@ -315,7 +351,7 @@ export default function CharacterHubPage() {
             </div>
             {progression.level >= SUBCLASS_CHOICE_LEVEL ? (
               <label className="block text-xs uppercase text-on-surface-variant">
-                Subclasse{characterClass ? ` · ${characterClass}` : ''}
+                Subclasse I (nível {SUBCLASS_CHOICE_LEVEL}+){characterClass ? ` · ${characterClass}` : ''}
                 {characterClass && subclassOptions.length > 0 ? (
                   <select
                     className="input-feudal mt-1 pl-4 normal-case"
@@ -336,6 +372,27 @@ export default function CharacterHubPage() {
                       : 'Este personagem não tem classe definida.'}
                   </p>
                 )}
+              </label>
+            ) : null}
+            {progression.level >= SECOND_SUBCLASS_CHOICE_LEVEL ? (
+              <label className="block text-xs uppercase text-on-surface-variant">
+                Subclasse II (nível {SECOND_SUBCLASS_CHOICE_LEVEL}+){characterClass ? ` · ${characterClass}` : ''}
+                {characterClass && subclassOptions.length > 0 ? (
+                  <select
+                    className="input-feudal mt-1 pl-4 normal-case"
+                    value={draft.secondarySubclass}
+                    onChange={(e) => setDraft((d) => ({ ...d, secondarySubclass: e.target.value }))}
+                  >
+                    <option value="">Selecionar…</option>
+                    {subclassOptions
+                      .filter((name) => name !== draft.subclass)
+                      .map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                  </select>
+                ) : null}
               </label>
             ) : null}
             <div className="flex justify-end gap-2">
@@ -359,6 +416,9 @@ function CharacterResourceBars({ character }: { character: ProfileCharacterSumma
     level: character.level,
     xp: character.xp,
     subclass: character.subclass,
+    secondarySubclass: character.secondarySubclass,
+    characterClass: character.characterClass,
+    identity: character.identity,
   })
   const mana = character.mana ?? { current: 8, max: 10 }
   const will = character.will ?? { current: 4, max: 5 }

@@ -1,38 +1,30 @@
-import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
-import { getEntity, listScheduledSessions } from './chronicleStore.js'
-import { creditCoins, debitCoins, entityPriceParts, shopLevelOf } from './courtStore.js'
+import { runExclusive } from './campaignDocuments.js'
+import { ensureHandoutForScheduledSession, getEntity, listScheduledSessions } from './chronicleStore.js'
+import {
+  applyDebitInMemory,
+  commitCourtState,
+  entityPriceParts,
+  hasWallet,
+  restoreCourtSnapshot,
+  shopLevelOf,
+  snapshotCourtState,
+  syncCourtIfStale,
+} from './courtStore.js'
+import { runIdempotent } from './idempotencyStore.js'
 import { grantEntityToCharacter } from './itemGrant.js'
-import { getCharacter } from './profileStore.js'
-import { consumeOwnedItem, purchaseItem } from './shopStore.js'
+import { recordOperationStrict } from './operationLog.js'
+import { getCharacter, getProfile, replaceProfiles } from './profileStore.js'
+import { readRules } from './rulesState.js'
+import { purchaseItem, remainingStock, restoreShopSnapshot, snapshotShopState, syncShopIfStale } from './shopStore.js'
 
-type PurchaseBody = {
+export type PurchaseBody = {
   remaining: number | null
   ownedByYou: number
   itemName: string
   replayed?: boolean
 }
 
-type ErrorBody = { error: { message: string } }
-
-type StoredOp = {
-  key: string
-  email: string
-  status: number
-  body: PurchaseBody
-}
-
-const operations: StoredOp[] = []
-let chain: Promise<void> = Promise.resolve()
-
-export async function hydrateShopOperations() {
-  const doc = await loadDocument<StoredOp[]>('shop-ops')
-  if (!doc || documentWeight(doc.body) === 0) return
-  operations.splice(0, operations.length, ...doc.body.slice(-200))
-}
-
-function rememberOperations() {
-  rememberDocument('shop-ops', operations.slice(-200))
-}
+export type ErrorBody = { error: { code: string; message: string } }
 
 export function openSeatsFor(email: string) {
   const key = email.trim().toLowerCase()
@@ -45,24 +37,26 @@ export function openSeatsFor(email: string) {
   return found
 }
 
-function fail(message: string): { status: 400; body: ErrorBody } {
-  return { status: 400, body: { error: { message } } }
+function fail(status: number, code: string, message: string): { status: number; body: ErrorBody } {
+  return { status, body: { error: { code, message } } }
 }
 
-export function buyAtTable(input: {
+const COIN_TO_COPPER = { gold: 100, silver: 10, copper: 1 } as const
+
+async function executeAtomicBuy(input: {
   email: string
   entityId: string
   quantity: number
   sessionId?: string
   characterId?: string
-  operationId?: string
-}): { status: number; body: PurchaseBody | ErrorBody } {
+}): Promise<{ status: number; body: PurchaseBody | ErrorBody }> {
   const email = input.email.trim()
-  const operationId = input.operationId?.trim()
-  if (operationId) {
-    const prior = operations.find((op) => op.email === email.toLowerCase() && op.key === operationId)
-    if (prior) return { status: prior.status, body: { ...prior.body, replayed: true } }
+  const quantity = Math.floor(input.quantity)
+  if (!Number.isFinite(quantity) || quantity < 1 || quantity > 20) {
+    return fail(400, 'VALIDATION_ERROR', 'Quantidade inválida.')
   }
+
+  await Promise.all([syncCourtIfStale(), syncShopIfStale()])
 
   const seats = openSeatsFor(email.toLowerCase())
   const seat = input.sessionId
@@ -70,77 +64,139 @@ export function buyAtTable(input: {
     : seats.length === 1
       ? seats[0]
       : undefined
+
   if (!seat) {
     if (!input.sessionId && seats.length > 1) {
-      return fail('Há mais de uma mesa aberta. Compre pelo ferreiro da mesa.')
+      return fail(409, 'AMBIGUOUS_SESSION', 'Há mais de uma mesa aberta. Compre pelo ferreiro da mesa.')
     }
-    return fail('A compra só vale com a mesa aberta e você sentado.')
+    return fail(403, 'NOT_SEATED', 'A compra só vale com a mesa aberta e você sentado.')
   }
   if (input.characterId && input.characterId !== seat.characterId) {
-    return fail('O item entra só no personagem sentado nesta mesa.')
+    return fail(403, 'WRONG_CHARACTER', 'O item entra só no personagem sentado nesta mesa.')
+  }
+
+  const handout = await ensureHandoutForScheduledSession(seat.sessionId)
+  if (handout?.restMode) {
+    return fail(409, 'REST_MODE_ACTIVE', 'Mesa em modo descanso — feira restrita.')
   }
 
   const character = getCharacter(email, seat.characterId)
-  if (!character) return fail('O personagem sentado não está nesta conta.')
+  if (!character) return fail(404, 'NOT_FOUND', 'O personagem sentado não está nesta conta.')
 
   const entity = getEntity(input.entityId)
-  if (!entity || entity.visibility !== 'published') return fail('Item indisponível')
+  if (!entity || entity.visibility !== 'published' || (entity.kind !== 'equipment' && entity.kind !== 'consumable')) {
+    return fail(404, 'ITEM_UNAVAILABLE', 'Item indisponível')
+  }
 
   const required = shopLevelOf(entity)
-  if ((character.level ?? 1) < required) {
-    return fail(`Nível ${required} necessário para comprar este item`)
+  if ((character.level ?? 0) < required) {
+    return fail(403, 'LEVEL_TOO_LOW', `Nível ${required} necessário para comprar este item`)
   }
 
-  const parts = entityPriceParts(entity).map((part) => ({ ...part, amount: part.amount * input.quantity }))
-  const charged: typeof parts = []
-  for (const part of parts) {
-    const paid = debitCoins(email, part.coin, part.amount, `Compra · ${entity.name}`, {
-      actorEmail: email,
-      sessionId: seat.sessionId,
-    })
-    if (!paid.ok) {
-      for (const done of charged) creditCoins(email, done.coin, done.amount, `Estorno · ${entity.name}`)
-      return fail(paid.error)
+  const stock = remainingStock(input.entityId)
+  if (stock != null && stock < quantity) {
+    return fail(409, 'OUT_OF_STOCK', 'Estoque esgotado nesta loja')
+  }
+
+  const parts = entityPriceParts(entity).map((part) => ({ ...part, amount: part.amount * quantity }))
+  const totalCopper = parts.reduce((sum, p) => sum + p.amount * COIN_TO_COPPER[p.coin], 0)
+
+  const rules = readRules()
+  if (rules.shopBudgetCopper > 0 && totalCopper > rules.shopBudgetCopper) {
+    return fail(400, 'OVER_BUDGET', 'Valor acima do teto financeiro configurado pela crônica.')
+  }
+
+  // Regra financeira (C05 / T11): se o item tem preço > 0, exige carteira existente e saldo suficiente antes de mutar qualquer dado.
+  if (totalCopper > 0) {
+    if (!hasWallet(email)) {
+      return fail(409, 'WALLET_REQUIRED', 'Carteira ainda não iniciada para esta conta nesta crônica.')
     }
-    charged.push(part)
   }
 
-  const result = purchaseItem(email, input.entityId, input.quantity)
-  if (!result.ok) {
-    for (const done of charged) creditCoins(email, done.coin, done.amount, `Estorno · ${entity.name}`)
-    return fail(result.error)
-  }
+  const courtBackup = snapshotCourtState()
+  const shopBackup = snapshotShopState()
+  const profileBackup = getProfile(email) ? (JSON.parse(JSON.stringify(getProfile(email))) as NonNullable<ReturnType<typeof getProfile>>) : null
 
-  const delivered = grantEntityToCharacter(email, seat.characterId, result.entity, input.quantity)
-  if (!delivered) {
-    consumeOwnedItem(email, input.entityId, input.quantity)
-    for (const done of charged) creditCoins(email, done.coin, done.amount, `Estorno · ${entity.name}`)
-    return fail('Não foi possível entregar o item. Nada foi cobrado.')
-  }
+  try {
+    // 1) Pré-valida e debita moedas em memória
+    for (const part of parts) {
+      const paid = applyDebitInMemory(email, part.coin, part.amount, `Compra · ${entity.name}`)
+      if (!paid.ok) {
+        restoreCourtSnapshot(courtBackup)
+        return fail(400, 'INSUFFICIENT_FUNDS', paid.error)
+      }
+    }
 
-  const body: PurchaseBody = {
-    remaining: result.remaining,
-    ownedByYou: result.owned,
-    itemName: result.entity.name,
+    // 2) Atualiza estoque e entrega item
+    const result = await purchaseItem(email, input.entityId, quantity)
+    if (!result.ok) {
+      restoreCourtSnapshot(courtBackup)
+      restoreShopSnapshot(shopBackup)
+      return fail(409, 'OUT_OF_STOCK', result.error)
+    }
+
+    const delivered = await grantEntityToCharacter(email, seat.characterId, result.entity, quantity)
+    if (!delivered) {
+      restoreCourtSnapshot(courtBackup)
+      restoreShopSnapshot(shopBackup)
+      return fail(500, 'DELIVERY_FAILED', 'Não foi possível entregar o item. Nada foi cobrado.')
+    }
+
+    // 3) Consolida carteira/extrato e trilha de auditoria no banco
+    if (totalCopper > 0) {
+      await commitCourtState()
+    }
+    await recordOperationStrict({
+      email,
+      actorEmail: email,
+      kind: 'purchase',
+      summary: `Compra · ${entity.name} (x${quantity})`,
+      sessionId: seat.sessionId,
+      characterId: seat.characterId,
+      entityId: entity.id,
+      after: String(result.owned),
+    })
+
+    return {
+      status: 200,
+      body: {
+        remaining: result.remaining,
+        ownedByYou: result.owned,
+        itemName: result.entity.name,
+      },
+    }
+  } catch (err) {
+    restoreCourtSnapshot(courtBackup)
+    restoreShopSnapshot(shopBackup)
+    if (profileBackup) {
+      await replaceProfiles([profileBackup]).catch(() => undefined)
+    }
+    throw err
   }
-  if (operationId) {
-    operations.push({ key: operationId, email: email.toLowerCase(), status: 200, body })
-    if (operations.length > 200) operations.splice(0, operations.length - 200)
-    rememberOperations()
-  }
-  return { status: 200, body }
 }
 
-export function buyAtTableQueued(
-  input: Parameters<typeof buyAtTable>[0],
-): Promise<{ status: number; body: PurchaseBody | ErrorBody }> {
-  const run = chain.then(
-    () => buyAtTable(input),
-    () => buyAtTable(input),
+export async function buyAtTable(input: {
+  email: string
+  entityId: string
+  quantity: number
+  sessionId?: string
+  characterId?: string
+  operationId?: string
+}): Promise<{ status: number; body: PurchaseBody | ErrorBody }> {
+  return runExclusive('shop:transaction', () =>
+    runIdempotent({
+      actorEmail: input.email,
+      operationId: input.operationId,
+      kind: 'shop_buy',
+      requestPayload: {
+        entityId: input.entityId,
+        quantity: input.quantity,
+        sessionId: input.sessionId ?? null,
+        characterId: input.characterId ?? null,
+      },
+      execute: () => executeAtomicBuy(input),
+    }),
   )
-  chain = run.then(
-    () => undefined,
-    () => undefined,
-  )
-  return run
 }
+
+export const buyAtTableQueued = buyAtTable

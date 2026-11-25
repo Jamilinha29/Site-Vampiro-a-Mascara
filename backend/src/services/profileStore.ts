@@ -1,20 +1,36 @@
-import { randomUUID } from 'crypto'
-import { documentWeight, loadDocument, rememberDocument } from './campaignDocuments.js'
-import { recordOperation } from './operationLog.js'
+import { createHash, randomUUID } from 'node:crypto'
+import {
+  checkRemoteDocumentRevision,
+  commitDocument,
+  documentWeight,
+  getLoadedDocumentRevision,
+  loadDocument,
+  runExclusive,
+} from './campaignDocuments.js'
+import { recordOperation, recordOperationStrict } from './operationLog.js'
 import { computeCharacterBalanceFromSheet } from './characterBalance.js'
 import { readRules } from './rulesState.js'
-import { scheduleProfileSqlMirror } from './profileSqlMirror.js'
+import { mirrorProfileToSql } from './profileSqlMirror.js'
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from './errors.js'
+import { getSupabaseAdmin } from './supabaseClient.js'
+import {
+  MAX_CHARACTER_LEVEL,
+  MIN_CHARACTER_LEVEL,
+  SECOND_SUBCLASS_CHOICE_LEVEL,
+  STARTING_CHARACTER_XP,
+  SUBCLASS_CHOICE_LEVEL,
+  VITALS_PER_LEVEL,
+  xpRequiredToAdvance,
+} from './progressionRules.js'
 
-export const MAX_CHARACTER_LEVEL = 20
-export const SUBCLASS_CHOICE_LEVEL = 7
-/** XP atual ao criar (barra começa em 0 / toNext). */
-export const STARTING_CHARACTER_XP = 0
-export const VITALS_PER_LEVEL = 5
-
-/** XP para sair do nível L (1→2 = 50, 2→3 = 150, …). */
-export function xpRequiredToAdvance(level: number): number {
-  if (level < 1 || level >= MAX_CHARACTER_LEVEL) return 0
-  return (50 * level * (level + 1)) / 2
+export {
+  MIN_CHARACTER_LEVEL,
+  MAX_CHARACTER_LEVEL,
+  SUBCLASS_CHOICE_LEVEL,
+  SECOND_SUBCLASS_CHOICE_LEVEL,
+  STARTING_CHARACTER_XP,
+  VITALS_PER_LEVEL,
+  xpRequiredToAdvance,
 }
 
 export type CharacterInventoryItem = {
@@ -29,7 +45,6 @@ export type CharacterInventoryItem = {
   status?: 'ok' | 'broken' | 'cooldown' | 'drop'
   statsLabel?: string
   durability?: { current: number; max: number }
-  /** Cargas restantes (consumíveis). */
   charges?: number
 }
 
@@ -76,7 +91,6 @@ export type ProfileCharacter = {
   clan?: string
   level: number
   isPrimary?: boolean
-  /** Destaque na tela Início (máx. 3 quando há mais de 10 personagens). */
   showOnHome?: boolean
   portraitUrl?: string | null
   hp: { current: number; max: number }
@@ -84,10 +98,15 @@ export type ProfileCharacter = {
   mana?: { current: number; max: number }
   will?: { current: number; max: number }
   xp: { current: number; toNext: number }
+  /** Subclasse I (desbloqueada no nível 5). */
   subclass?: string | null
+  /** Subclasse adicional (desbloqueada no nível 7). */
+  secondarySubclass?: string | null
   approval?: 'draft' | 'submitted' | 'changes' | 'approved'
   reviewNote?: string | null
-  /** Classe escolhida na criação. Filtra as subclasses importadas. */
+  /** Marca fichas legadas fora da regra 0–10 sem apagar nível ou subclasse. */
+  needsRuleReview?: boolean
+  ruleReviewNote?: string | null
   characterClass?: string | null
   identity: CharacterIdentity
   inventory: CharacterInventoryItem[]
@@ -109,6 +128,17 @@ export type ActiveEffect = {
   endsAt: string | null
 }
 
+export type CharacterRevisionRecord = {
+  id: string
+  characterId: string
+  profileEmail: string
+  revision: number
+  reason: string
+  actorEmail: string
+  createdAt: string
+  snapshot: ProfileCharacter
+}
+
 export function defaultIdentity(): CharacterIdentity {
   return {
     faith: null,
@@ -126,6 +156,7 @@ export function defaultIdentity(): CharacterIdentity {
 export type UserProfile = {
   userId: string
   email: string
+  publicId?: string
   displayName: string
   handle: string
   role: 'player' | 'narrator' | 'admin'
@@ -162,21 +193,143 @@ export type UserProfile = {
   characters: ProfileCharacter[]
 }
 
+const PROFILES_DOC = 'profiles'
+const REVISIONS_DOC = 'character-revisions'
 const profiles = new Map<string, UserProfile>()
+const revisionsByChar = new Map<string, CharacterRevisionRecord[]>()
 
-function snapshotProfiles() {
-  rememberDocument('profiles', [...profiles.values()])
-  scheduleProfileSqlMirror()
+export function publicPlayerId(email: string): string {
+  const hex = createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
+  return `ply_${hex.slice(0, 16)}`
+}
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function revKey(email: string, characterId: string) {
+  return `${email.trim().toLowerCase()}::${characterId}`
+}
+
+/** Migra ficha legada de forma não destrutiva e idempotente (C12). */
+export function migrateLegacyCharacter(ch: ProfileCharacter): ProfileCharacter {
+  const next: ProfileCharacter = {
+    ...ch,
+    identity: { ...defaultIdentity(), ...(ch.identity ?? {}) },
+    inventory: ch.inventory ?? [],
+    createdSkills: ch.createdSkills ?? [],
+    secondarySubclass: ch.secondarySubclass ?? null,
+    sheetRevision: ch.sheetRevision ?? 0,
+  }
+
+  const reasons: string[] = []
+  if (next.level > MAX_CHARACTER_LEVEL) {
+    reasons.push(`Nível legado (${next.level}) acima do teto atual (${MAX_CHARACTER_LEVEL}).`)
+  }
+  if (next.subclass && next.level < SUBCLASS_CHOICE_LEVEL) {
+    reasons.push(`Subclasse principal (${next.subclass}) registrada abaixo do nível ${SUBCLASS_CHOICE_LEVEL}.`)
+  }
+  if (next.secondarySubclass && next.level < SECOND_SUBCLASS_CHOICE_LEVEL) {
+    reasons.push(`Subclasse adicional (${next.secondarySubclass}) registrada abaixo do nível ${SECOND_SUBCLASS_CHOICE_LEVEL}.`)
+  }
+
+  if (reasons.length > 0) {
+    next.needsRuleReview = true
+    next.ruleReviewNote = next.ruleReviewNote || reasons.join(' ')
+    if (next.level > MAX_CHARACTER_LEVEL) {
+      next.xp = { current: next.xp?.current ?? 0, toNext: 0 }
+    }
+  } else if (next.level >= MIN_CHARACTER_LEVEL && next.level <= MAX_CHARACTER_LEVEL) {
+    const expectedToNext = xpRequiredToAdvance(next.level)
+    if (!next.xp || next.xp.toNext !== expectedToNext) {
+      next.xp = {
+        current: next.level >= MAX_CHARACTER_LEVEL ? 0 : Math.max(0, next.xp?.current ?? 0),
+        toNext: expectedToNext,
+      }
+    }
+  }
+
+  return next
+}
+
+async function commitProfiles(changedProfiles?: UserProfile[]): Promise<void> {
+  await commitDocument(PROFILES_DOC, [...profiles.values()])
+  if (changedProfiles?.length) {
+    for (const p of changedProfiles) {
+      await mirrorProfileToSql(p)
+    }
+  }
+}
+
+async function persistRevisionRecord(record: CharacterRevisionRecord) {
+  const key = revKey(record.profileEmail, record.characterId)
+  const list = revisionsByChar.get(key) ?? []
+  list.unshift(record)
+  if (list.length > 30) list.length = 30
+  revisionsByChar.set(key, list)
+
+  const sb = getSupabaseAdmin()
+  if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+    const { error } = await sb.from('RevisoesPersonagem').insert({
+      id: record.id,
+      character_id: record.characterId,
+      profile_email: record.profileEmail.trim().toLowerCase(),
+      revision: record.revision,
+      snapshot: record.snapshot,
+      reason: record.reason,
+      actor_email: record.actorEmail.trim().toLowerCase(),
+      created_at: record.createdAt,
+    })
+    if (error && !/RevisoesPersonagem|schema cache|does not exist/i.test(error.message)) {
+      console.warn('[revisoes] Falha ao gravar RevisoesPersonagem:', error.message)
+    }
+  }
+
+  const allRevs = [...revisionsByChar.values()].flat().slice(0, 600)
+  await commitDocument(REVISIONS_DOC, allRevs)
+}
+
+export async function syncProfilesIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision(PROFILES_DOC)
+  if (remoteRev > getLoadedDocumentRevision(PROFILES_DOC)) {
+    await hydrateProfiles()
+  }
 }
 
 export async function hydrateProfiles() {
-  const doc = await loadDocument<UserProfile[]>('profiles')
-  if (!doc || documentWeight(doc.body) === 0) return
-  profiles.clear()
-  for (const profile of doc.body) {
-    if (profile?.email) profiles.set(profile.email, profile)
+  const [doc, revDoc] = await Promise.all([
+    loadDocument<UserProfile[]>(PROFILES_DOC),
+    loadDocument<CharacterRevisionRecord[]>(REVISIONS_DOC),
+  ])
+  if (doc && documentWeight(doc.body) > 0) {
+    profiles.clear()
+    for (const profile of doc.body) {
+      if (profile?.email) {
+        const normalized: UserProfile = {
+          ...profile,
+          publicId: profile.publicId ?? publicPlayerId(profile.email),
+          preferences: { ...defaultPreferences(), ...(profile.preferences ?? {}) },
+          characters: (profile.characters ?? []).map(migrateLegacyCharacter),
+        }
+        profiles.set(profile.email, normalized)
+      }
+    }
   }
-  scheduleProfileSqlMirror()
+  if (revDoc && documentWeight(revDoc.body) > 0) {
+    revisionsByChar.clear()
+    for (const rev of revDoc.body) {
+      if (!rev?.characterId || !rev?.profileEmail) continue
+      const k = revKey(rev.profileEmail, rev.characterId)
+      const arr = revisionsByChar.get(k) ?? []
+      arr.push(rev)
+      revisionsByChar.set(k, arr)
+    }
+  }
+}
+
+export function resetProfilesForTests() {
+  profiles.clear()
+  revisionsByChar.clear()
 }
 
 function handleFromEmail(email: string) {
@@ -196,78 +349,121 @@ const defaultPreferences = (): UserProfile['preferences'] => ({
   defaultRpgTitle: null,
 })
 
-export function ensureProfile(
+function findProfileKey(email: string): string | null {
+  if (profiles.has(email)) return email
+  const target = email.trim().toLowerCase()
+  for (const key of profiles.keys()) {
+    if (key.trim().toLowerCase() === target) return key
+  }
+  return null
+}
+
+async function runProfileMutation<T>(fn: () => Promise<T> | T): Promise<T> {
+  return runExclusive('store:profiles', async () => {
+    await syncProfilesIfStale()
+    const backup = clone([...profiles.entries()])
+    try {
+      return await fn()
+    } catch (err) {
+      profiles.clear()
+      for (const [k, v] of backup) profiles.set(k, v)
+      throw err
+    }
+  })
+}
+
+export async function ensureProfile(
   email: string,
   displayName: string,
   role: UserProfile['role'] = 'player',
   options?: { authoritative?: boolean },
-) {
-  if (profiles.has(email)) {
-    const p = profiles.get(email)!
-    const previousName = p.displayName
-    const previousRole = p.role
-    p.preferences = { ...defaultPreferences(), ...p.preferences }
-    p.displayName = displayName
-    if (role === 'narrator' || role === 'admin' || options?.authoritative) {
-      p.role = role
-      if (role === 'narrator' || role === 'admin') {
-        if (!p.badges.includes('Mestre da Mesa')) p.badges.push('Mestre da Mesa')
+): Promise<UserProfile> {
+  return runProfileMutation(async () => {
+    const existingKey = findProfileKey(email)
+    if (existingKey) {
+      const p = profiles.get(existingKey)!
+      const previousName = p.displayName
+      const previousRole = p.role
+      p.preferences = { ...defaultPreferences(), ...p.preferences }
+      p.publicId = p.publicId ?? publicPlayerId(p.email)
+      p.displayName = displayName
+      if (role === 'narrator' || role === 'admin' || options?.authoritative) {
+        p.role = role
+        if (role === 'narrator' || role === 'admin') {
+          if (!p.badges.includes('Mestre da Mesa')) p.badges.push('Mestre da Mesa')
+        }
+      } else if (p.role !== 'narrator' && p.role !== 'admin') {
+        p.role = role
       }
-    } else if (p.role !== 'narrator' && p.role !== 'admin') {
-      p.role = role
+      if (previousName !== p.displayName || previousRole !== p.role) {
+        await commitProfiles([p])
+      }
+      return p
     }
-    if (previousName !== p.displayName || previousRole !== p.role) snapshotProfiles()
-    return p
-  }
-  const profile: UserProfile = {
-    userId: email,
-    email,
-    displayName,
-    handle: handleFromEmail(email),
-    role,
-    memberSince: new Date().toISOString(),
-    avatarUrl: null,
-    bannerUrl: null,
-    badges: role === 'narrator' || role === 'admin' ? ['Mestre da Mesa'] : [],
-    preferences: defaultPreferences(),
-    accountMetrics: {
-      characters: null,
-      sessions: null,
-      chronicles: null,
-      totalXp: null,
-    },
-    lineageStats: {
-      charactersCreated: null,
-      sessionsParticipated: null,
-      hoursPlayed: null,
-      chronicleWins: null,
-      xpAccumulated: null,
-      favoriteClass: null,
-    },
-    characters: [],
-  }
-  profiles.set(email, profile)
-  syncDerivedMetrics(profile)
-  snapshotProfiles()
-  return profile
+    const profile: UserProfile = {
+      userId: email,
+      email,
+      publicId: publicPlayerId(email),
+      displayName,
+      handle: handleFromEmail(email),
+      role,
+      memberSince: new Date().toISOString(),
+      avatarUrl: null,
+      bannerUrl: null,
+      badges: role === 'narrator' || role === 'admin' ? ['Mestre da Mesa'] : [],
+      preferences: defaultPreferences(),
+      accountMetrics: {
+        characters: null,
+        sessions: null,
+        chronicles: null,
+        totalXp: null,
+      },
+      lineageStats: {
+        charactersCreated: null,
+        sessionsParticipated: null,
+        hoursPlayed: null,
+        chronicleWins: null,
+        xpAccumulated: null,
+        favoriteClass: null,
+      },
+      characters: [],
+    }
+    profiles.set(email, profile)
+    syncDerivedMetrics(profile)
+    await commitProfiles([profile])
+    return profile
+  })
 }
 
 function syncDerivedMetrics(profile: UserProfile) {
   const count = profile.characters.length
   profile.accountMetrics.characters = count > 0 ? count : null
   profile.lineageStats.charactersCreated = count > 0 ? count : null
+  const totalXp = profile.characters.reduce((sum, ch) => sum + (ch.xp?.current ?? 0), 0)
+  profile.accountMetrics.totalXp = count > 0 ? totalXp : null
+  profile.lineageStats.xpAccumulated = count > 0 ? totalXp : null
   if (count === 0) {
-    profile.accountMetrics.totalXp = null
-    profile.lineageStats.xpAccumulated = null
     profile.lineageStats.favoriteClass = null
   }
 }
 
 export function getProfile(email: string) {
-  return profiles.get(email) ?? null
+  const key = findProfileKey(email)
+  return key ? profiles.get(key) ?? null : null
 }
 
-/** Fatias para gráfico admin: personagens criados por conta de jogador (role player). */
+export function findProfileByPublicId(publicIdOrEmail: string): UserProfile | null {
+  const direct = getProfile(publicIdOrEmail)
+  if (direct) return direct
+  const needle = publicIdOrEmail.trim()
+  for (const p of profiles.values()) {
+    if ((p.publicId ?? publicPlayerId(p.email)) === needle || p.handle.toLowerCase() === needle.toLowerCase()) {
+      return p
+    }
+  }
+  return null
+}
+
 export function adminPlayerCharactersByUser() {
   const slices: { label: string; count: number }[] = []
   for (const profile of profiles.values()) {
@@ -280,11 +476,11 @@ export function adminPlayerCharactersByUser() {
   return slices
 }
 
-/** Contas inscritas como jogador (role player). */
 export function listRegisteredPlayers() {
   return [...profiles.values()]
     .filter((p) => p.role === 'player')
     .map((p) => ({
+      id: p.publicId ?? publicPlayerId(p.email),
       email: p.email,
       displayName: p.displayName,
       handle: p.handle,
@@ -294,46 +490,52 @@ export function listRegisteredPlayers() {
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
-export function updateProfileMedia(
+export async function updateProfileMedia(
   email: string,
   patch: { avatarUrl?: string | null; bannerUrl?: string | null },
 ) {
-  const p = profiles.get(email)
-  if (!p) return null
-  if (patch.avatarUrl !== undefined) p.avatarUrl = patch.avatarUrl
-  if (patch.bannerUrl !== undefined) p.bannerUrl = patch.bannerUrl
-  snapshotProfiles()
-  return p
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    if (!p) return null
+    if (patch.avatarUrl !== undefined) p.avatarUrl = patch.avatarUrl
+    if (patch.bannerUrl !== undefined) p.bannerUrl = patch.bannerUrl
+    await commitProfiles([p])
+    return p
+  })
 }
 
-export function updateProfilePreferences(
+export async function updateProfilePreferences(
   email: string,
   patch: Partial<UserProfile['preferences']>,
 ) {
-  const p = profiles.get(email)
-  if (!p) return null
-  p.preferences = { ...p.preferences, ...patch }
-  snapshotProfiles()
-  return p
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    if (!p) return null
+    p.preferences = { ...p.preferences, ...patch }
+    await commitProfiles([p])
+    return p
+  })
 }
 
-export function updateProfileDisplayName(email: string, displayName: string) {
-  const p = profiles.get(email)
-  if (!p) return null
-  p.displayName = displayName.trim()
-  snapshotProfiles()
-  return p
+export async function updateProfileDisplayName(email: string, displayName: string) {
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    if (!p) return null
+    p.displayName = displayName.trim()
+    await commitProfiles([p])
+    return p
+  })
 }
 
 export function listCharacters(email: string) {
-  return profiles.get(email)?.characters ?? []
+  return getProfile(email)?.characters ?? []
 }
 
 export function getCharacter(email: string, characterId: string) {
   return listCharacters(email).find((c) => c.id === characterId) ?? null
 }
 
-export function patchCharacter(
+export async function patchCharacter(
   email: string,
   characterId: string,
   patch: Partial<
@@ -347,6 +549,7 @@ export function patchCharacter(
       | 'mana'
       | 'will'
       | 'subclass'
+      | 'secondarySubclass'
       | 'characterClass'
       | 'inventory'
       | 'carryCapacityKg'
@@ -357,174 +560,355 @@ export function patchCharacter(
     >
   > & {
     faith?: string | null
+    expectedRevision?: number
     identityPatch?: Partial<Pick<CharacterIdentity, 'house' | 'nature' | 'demeanor' | 'concept' | 'residence'>>
   },
 ) {
-  const p = profiles.get(email)
-  if (!p) return null
-  const idx = p.characters.findIndex((c) => c.id === characterId)
-  if (idx < 0) return null
-  const current = p.characters[idx]
-  const identity = { ...defaultIdentity(), ...current.identity }
-  if (patch.faith !== undefined) identity.faith = patch.faith
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    if (!p) return null
+    const idx = p.characters.findIndex((c) => c.id === characterId)
+    if (idx < 0) return null
+    const current = p.characters[idx]
 
-  if (patch.identityPatch) {
-    const limit = 2
-    for (const key of ['house', 'nature', 'demeanor', 'concept', 'residence'] as const) {
-      const next = patch.identityPatch[key]
-      if (next === undefined) continue
-      if ((identity.editCounts[key] ?? 0) >= limit) continue
-      if ((identity[key] ?? '') === (next ?? '')) continue
-      identity[key] = next
-      identity.editCounts[key] = (identity.editCounts[key] ?? 0) + 1
+    if (patch.expectedRevision != null && (current.sheetRevision ?? 0) !== patch.expectedRevision) {
+      throw new ConflictError('Outra aba ou dispositivo alterou esta ficha. Recarregue e tente de novo.', {
+        revision: current.sheetRevision ?? 0,
+        character: current,
+      })
     }
-  }
 
-  if (patch.isPrimary === true) {
-    p.characters = p.characters.map((c) => ({ ...c, isPrimary: c.id === characterId }))
-  }
+    const identity = { ...defaultIdentity(), ...current.identity }
+    if (patch.faith !== undefined) identity.faith = patch.faith
 
-  if (patch.showOnHome === true && p.characters.length > 10) {
-    const already = p.characters.filter((c) => c.showOnHome && c.id !== characterId).length
-    if (already >= 3) return null
-  }
-
-  const { faith: _f, identityPatch: _i, ...rest } = patch
-
-  // Após criação: max de HP/Mana não muda aqui (sobe só por nível); current pode mudar (dano, mana, poções).
-  if (current.vitals?.locked) {
-    if (rest.hp) {
-      const nextCurrent = Math.max(0, Math.floor(rest.hp.current))
-      rest.hp = { current: Math.min(nextCurrent, current.hp.max), max: current.hp.max }
+    if (patch.identityPatch) {
+      const limit = 2
+      for (const key of ['house', 'nature', 'demeanor', 'concept', 'residence'] as const) {
+        const next = patch.identityPatch[key]
+        if (next === undefined) continue
+        if ((identity.editCounts[key] ?? 0) >= limit) continue
+        if ((identity[key] ?? '') === (next ?? '')) continue
+        identity[key] = next
+        identity.editCounts[key] = (identity.editCounts[key] ?? 0) + 1
+      }
     }
-    if (rest.mana && current.mana) {
-      const nextCurrent = Math.max(0, Math.floor(rest.mana.current))
-      rest.mana = { current: Math.min(nextCurrent, current.mana.max), max: current.mana.max }
-    } else if (rest.mana && !current.mana) {
-      delete (rest as { mana?: unknown }).mana
-    }
-  }
 
-  const nextInventory = rest.inventory ? mergeOwnedInventory(current.inventory ?? [], rest.inventory) : (current.inventory ?? [])
-  p.characters[idx] = {
-    ...current,
-    ...rest,
-    identity,
-    inventory: nextInventory,
-    createdSkills: guardApprovedSkills(current, rest.createdSkills),
-    vitals: current.vitals,
-    effects: effectsAfterUse(current, nextInventory),
-    sheetRevision: (current.sheetRevision ?? 0) + 1,
-  }
-  snapshotProfiles()
-  return p.characters[idx]
+    if (patch.isPrimary === true) {
+      p.characters = p.characters.map((c) => ({ ...c, isPrimary: c.id === characterId }))
+    }
+
+    if (patch.showOnHome === true && p.characters.length > 10) {
+      const already = p.characters.filter((c) => c.showOnHome && c.id !== characterId).length
+      if (already >= 3) {
+        throw new ConflictError('Já há 3 personagens destacados no Início')
+      }
+    }
+
+    const { faith: _f, identityPatch: _i, expectedRevision: _rev, ...rest } = patch
+
+    // Garante que patch do jogador nunca altera campos controlados pelo narrador
+    delete (rest as Record<string, unknown>).level
+    delete (rest as Record<string, unknown>).xp
+    delete (rest as Record<string, unknown>).approval
+    delete (rest as Record<string, unknown>).reviewNote
+    delete (rest as Record<string, unknown>).needsRuleReview
+    delete (rest as Record<string, unknown>).ruleReviewNote
+
+    if (current.vitals?.locked) {
+      if (rest.hp) {
+        const nextCurrent = Math.max(0, Math.floor(rest.hp.current))
+        rest.hp = { current: Math.min(nextCurrent, current.hp.max), max: current.hp.max }
+      }
+      if (rest.mana && current.mana) {
+        const nextCurrent = Math.max(0, Math.floor(rest.mana.current))
+        rest.mana = { current: Math.min(nextCurrent, current.mana.max), max: current.mana.max }
+      } else if (rest.mana && !current.mana) {
+        delete (rest as { mana?: unknown }).mana
+      }
+    }
+
+    const nextInventory = rest.inventory
+      ? mergeOwnedInventory(current.inventory ?? [], rest.inventory)
+      : (current.inventory ?? [])
+
+    const nextRevision = (current.sheetRevision ?? 0) + 1
+    const updatedChar: ProfileCharacter = {
+      ...current,
+      ...rest,
+      identity,
+      inventory: nextInventory,
+      createdSkills: guardApprovedSkills(current, rest.createdSkills),
+      vitals: current.vitals,
+      effects: effectsAfterUse(current, nextInventory),
+      sheetRevision: nextRevision,
+    }
+
+    p.characters[idx] = updatedChar
+    await commitProfiles([p])
+    const prevRev = current.sheetRevision ?? 1
+    const existingRevs = listCharacterRevisions(p.email, current.id)
+    if (!existingRevs.some((r) => r.revision === prevRev)) {
+      await persistRevisionRecord({
+        id: randomUUID(),
+        characterId: current.id,
+        profileEmail: p.email,
+        revision: prevRev,
+        reason: 'pre_patch',
+        actorEmail: p.email,
+        createdAt: new Date().toISOString(),
+        snapshot: clone(current),
+      })
+    }
+    await persistRevisionRecord({
+      id: randomUUID(),
+      characterId: updatedChar.id,
+      profileEmail: p.email,
+      revision: nextRevision,
+      reason: 'sheet_patch',
+      actorEmail: p.email,
+      createdAt: new Date().toISOString(),
+      snapshot: clone(updatedChar),
+    })
+    return updatedChar
+  })
 }
 
-export function applyCharacterXp(
+export async function applyCharacterXp(
   email: string,
   characterId: string,
   amount: number,
-  meta?: { actorEmail?: string; sessionId?: string },
+  meta?: { actorEmail?: string; sessionId?: string; operationId?: string },
 ) {
-  const p = profiles.get(email)
-  if (!p) return null
-  const idx = p.characters.findIndex((c) => c.id === characterId)
-  if (idx < 0) return null
-  const ch = p.characters[idx]
-  let level = ch.level
-  const previousLevel = level
-  let current = (ch.xp?.current ?? 0) + Math.floor(amount)
-  let toNext = ch.xp?.toNext ?? xpRequiredToAdvance(level)
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    if (!p) return null
+    const idx = p.characters.findIndex((c) => c.id === characterId)
+    if (idx < 0) return null
+    const ch = p.characters[idx]
+    let level = ch.level
+    const previousLevel = level
+    const rules = readRules()
+    const levelCap = Math.min(MAX_CHARACTER_LEVEL, rules.maxLevel)
 
-  const levelCap = Math.min(MAX_CHARACTER_LEVEL, readRules().maxLevel)
-  while (level < levelCap && toNext > 0 && current >= toNext) {
-    current -= toNext
-    level += 1
-    toNext = level >= levelCap ? 0 : xpRequiredToAdvance(level)
-  }
-  if (level >= levelCap) {
-    current = 0
-    toNext = 0
-  }
+    let current = (ch.xp?.current ?? 0) + Math.floor(amount)
+    let toNext = ch.xp?.toNext ?? xpRequiredToAdvance(level)
 
-  const levelsGained = Math.max(0, level - previousLevel)
-  const bonus = levelsGained * VITALS_PER_LEVEL
-  const hp = {
-    current: ch.hp.current + bonus,
-    max: ch.hp.max + bonus,
-  }
-  const mana = ch.mana
-    ? {
-        current: ch.mana.current + bonus,
-        max: ch.mana.max + bonus,
-      }
-    : ch.mana
+    while (level < levelCap && toNext > 0 && current >= toNext) {
+      current -= toNext
+      level += 1
+      toNext = level >= levelCap ? 0 : xpRequiredToAdvance(level)
+    }
+    if (level >= levelCap) {
+      current = 0
+      toNext = 0
+    }
 
-  p.characters[idx] = {
-    ...ch,
-    level,
-    xp: { current, toNext },
-    hp,
-    mana,
-  }
-  syncDerivedMetrics(p)
-  snapshotProfiles()
-  recordOperation({
-    email,
-    actorEmail: meta?.actorEmail?.trim() || email,
-    kind: 'xp',
-    summary: `XP ${amount >= 0 ? '+' : ''}${amount}`,
-    before: String(previousLevel),
-    after: String(level),
-    sessionId: meta?.sessionId,
+    const levelsGained = Math.max(0, level - previousLevel)
+    const bonus = levelsGained * VITALS_PER_LEVEL
+    const hp = {
+      current: ch.hp.current + bonus,
+      max: ch.hp.max + bonus,
+    }
+    const mana = ch.mana
+      ? {
+          current: ch.mana.current + bonus,
+          max: ch.mana.max + bonus,
+        }
+      : ch.mana
+
+    const nextRevision = (ch.sheetRevision ?? 0) + 1
+    const updatedChar: ProfileCharacter = {
+      ...ch,
+      level,
+      xp: { current, toNext },
+      hp,
+      mana,
+      sheetRevision: nextRevision,
+    }
+    p.characters[idx] = updatedChar
+    syncDerivedMetrics(p)
+    await commitProfiles([p])
+    await persistRevisionRecord({
+      id: randomUUID(),
+      characterId: updatedChar.id,
+      profileEmail: p.email,
+      revision: nextRevision,
+      reason: `xp:${amount}`,
+      actorEmail: meta?.actorEmail?.trim() || p.email,
+      createdAt: new Date().toISOString(),
+      snapshot: clone(updatedChar),
+    })
+    await recordOperationStrict({
+      email: p.email,
+      actorEmail: meta?.actorEmail?.trim() || p.email,
+      kind: 'xp',
+      summary: `XP ${amount >= 0 ? '+' : ''}${amount}`,
+      before: String(previousLevel),
+      after: String(level),
+      sessionId: meta?.sessionId,
+      characterId: updatedChar.id,
+      operationId: meta?.operationId,
+    })
+    return updatedChar
   })
-  return p.characters[idx]
 }
 
 export function listProfiles() {
   return [...profiles.values()]
 }
 
-export function submitCharacter(email: string, characterId: string) {
-  const p = profiles.get(email)
-  const ch = p?.characters.find((item) => item.id === characterId)
-  if (!p || !ch) return null
-  ch.approval = 'submitted'
-  ch.reviewNote = null
-  snapshotProfiles()
-  recordOperation({ email, actorEmail: email, kind: 'approval', summary: `Ficha enviada: ${ch.name}` })
-  return ch
+export async function submitCharacter(email: string, characterId: string) {
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    const ch = p?.characters.find((item) => item.id === characterId)
+    if (!p || !ch) return null
+    ch.approval = 'submitted'
+    ch.reviewNote = null
+    ch.sheetRevision = (ch.sheetRevision ?? 0) + 1
+    await commitProfiles([p])
+    await recordOperationStrict({
+      email: p.email,
+      actorEmail: p.email,
+      kind: 'approval',
+      summary: `Ficha enviada: ${ch.name}`,
+      characterId: ch.id,
+    })
+    return ch
+  })
 }
 
-export function reviewCharacter(
+export async function reviewCharacter(
   email: string,
   characterId: string,
   status: 'approved' | 'changes',
   note: string,
   actorEmail: string,
 ) {
-  const p = profiles.get(email)
-  const ch = p?.characters.find((item) => item.id === characterId)
-  if (!p || !ch) return null
-  ch.approval = status
-  ch.reviewNote = note.trim() || null
-  snapshotProfiles()
-  recordOperation({
-    email,
-    actorEmail,
-    kind: 'approval',
-    summary: status === 'approved' ? `Ficha aprovada: ${ch.name}` : `Ajustes pedidos: ${ch.name}`,
-    after: note.trim() || undefined,
+  return runProfileMutation(async () => {
+    const p = getProfile(email)
+    const ch = p?.characters.find((item) => item.id === characterId)
+    if (!p || !ch) return null
+    ch.approval = status
+    ch.reviewNote = note.trim() || null
+    ch.needsRuleReview = false
+    ch.ruleReviewNote = null
+    ch.sheetRevision = (ch.sheetRevision ?? 0) + 1
+    await commitProfiles([p])
+    await persistRevisionRecord({
+      id: randomUUID(),
+      characterId: ch.id,
+      profileEmail: p.email,
+      revision: ch.sheetRevision,
+      reason: `review:${status}`,
+      actorEmail,
+      createdAt: new Date().toISOString(),
+      snapshot: clone(ch),
+    })
+    await recordOperationStrict({
+      email: p.email,
+      actorEmail,
+      kind: 'approval',
+      summary: status === 'approved' ? `Ficha aprovada: ${ch.name}` : `Ajustes pedidos: ${ch.name}`,
+      after: note.trim() || undefined,
+      characterId: ch.id,
+    })
+    return ch
   })
-  return ch
 }
 
-/** Localiza personagem em qualquer perfil (ADM concede XP na mesa). */
+export function listCharacterRevisions(email: string, characterId: string): CharacterRevisionRecord[] {
+  const key = revKey(email, characterId)
+  return [...(revisionsByChar.get(key) ?? [])].sort((a, b) => b.revision - a.revision)
+}
+
+export async function restoreCharacterRevision(params: {
+  email: string
+  characterId: string
+  revisionId: string
+  actorEmail: string
+  dryRun?: boolean
+  confirm?: string
+}) {
+  return runProfileMutation(async () => {
+    const p = getProfile(params.email)
+    if (!p) throw new NotFoundError('Perfil não encontrado.')
+    const idx = p.characters.findIndex((c) => c.id === params.characterId)
+    if (idx < 0) throw new NotFoundError('Personagem não encontrado.')
+
+    const revs = listCharacterRevisions(p.email, params.characterId)
+    const target = revs.find((r) => r.id === params.revisionId || String(r.revision) === params.revisionId)
+    if (!target) throw new NotFoundError('Revisão da ficha não encontrada.')
+
+    const current = p.characters[idx]
+    const snap = clone(target.snapshot)
+    if (snap.id !== current.id) {
+      throw new ValidationError('Revisão incompatível com este personagem.')
+    }
+
+    // Preserva inventário atual adquirido por compra/leilão e vínculos legítimos se solicitado
+    const currentOwnedIds = new Set((current.inventory ?? []).map((i) => i.id))
+    const mergedInventory = [...(snap.inventory ?? [])]
+    for (const item of current.inventory ?? []) {
+      if (!mergedInventory.some((x) => x.id === item.id) && currentOwnedIds.has(item.id)) {
+        mergedInventory.push(item)
+      }
+    }
+
+    const preview = {
+      dryRun: Boolean(params.dryRun),
+      characterId: current.id,
+      fromRevision: current.sheetRevision ?? 0,
+      toRevision: target.revision,
+      levelBefore: current.level,
+      levelAfter: snap.level,
+      inventoryCountBefore: (current.inventory ?? []).length,
+      inventoryCountAfter: mergedInventory.length,
+    }
+
+    if (params.dryRun) {
+      return { ...preview, restored: false as const }
+    }
+    if (params.confirm !== 'restaurar-revisao') {
+      throw new ValidationError('Confirmação explícita obrigatória para restaurar revisão.')
+    }
+
+    const nextRevision = (current.sheetRevision ?? 0) + 1
+    const restoredChar: ProfileCharacter = {
+      ...snap,
+      inventory: mergedInventory,
+      sheetRevision: nextRevision,
+    }
+    p.characters[idx] = restoredChar
+    syncDerivedMetrics(p)
+    await commitProfiles([p])
+    await persistRevisionRecord({
+      id: randomUUID(),
+      characterId: restoredChar.id,
+      profileEmail: p.email,
+      revision: nextRevision,
+      reason: `restore_from:${target.revision}`,
+      actorEmail: params.actorEmail,
+      createdAt: new Date().toISOString(),
+      snapshot: clone(restoredChar),
+    })
+    await recordOperationStrict({
+      email: p.email,
+      actorEmail: params.actorEmail,
+      kind: 'restore',
+      summary: `Revisão ${target.revision} restaurada em ${restoredChar.name}`,
+      before: String(current.sheetRevision ?? 0),
+      after: String(nextRevision),
+      characterId: restoredChar.id,
+    })
+    return { ...preview, restored: true as const, character: restoredChar }
+  })
+}
+
 export function findCharacterOwnerBySeat(characterId: string, emailHint?: string) {
   if (emailHint) {
-    const p = profiles.get(emailHint)
+    const p = getProfile(emailHint)
     const ch = p?.characters.find((c) => c.id === characterId)
-    if (p && ch) return { email: emailHint, character: ch }
+    if (p && ch) return { email: p.email, character: ch }
   }
   for (const [email, p] of profiles.entries()) {
     const ch = p.characters.find((c) => c.id === characterId)
@@ -533,7 +917,7 @@ export function findCharacterOwnerBySeat(characterId: string, emailHint?: string
   return null
 }
 
-export function upsertCharacter(
+export async function upsertCharacter(
   email: string,
   character: Omit<
     ProfileCharacter,
@@ -548,38 +932,65 @@ export function upsertCharacter(
     vitals?: CharacterVitalsMeta | null
   },
 ) {
-  const p = ensureProfile(email, pDisplayName(email), 'player')
-  const id = character.id ?? randomUUID()
-  const idx = p.characters.findIndex((c) => c.id === id)
-  const level = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, character.level || 1))
-  const toNext = xpRequiredToAdvance(level)
-  const row: ProfileCharacter = {
-    id,
-    name: character.name,
-    species: character.species,
-    clan: character.clan,
-    level,
-    isPrimary: character.isPrimary,
-    portraitUrl: character.portraitUrl ?? null,
-    hp: character.hp,
-    blood: character.blood,
-    mana: character.mana,
-    will: character.will,
-    xp: character.xp ?? { current: readRules().startingXp ?? STARTING_CHARACTER_XP, toNext },
-    subclass: character.subclass ?? null,
-    characterClass: character.characterClass ?? null,
-    identity: character.identity ?? defaultIdentity(),
-    inventory: character.inventory ?? [],
-    createdSkills: character.createdSkills ?? [],
-    carryCapacityKg: character.carryCapacityKg ?? 28,
-    balanceStats: character.balanceStats ?? null,
-    vitals: character.vitals ?? null,
-  }
-  if (idx >= 0) p.characters[idx] = row
-  else p.characters.push(row)
-  syncDerivedMetrics(p)
-  snapshotProfiles()
-  return row
+  const p = await ensureProfile(email, pDisplayName(email), 'player')
+  return runProfileMutation(async () => {
+    const profile = getProfile(p.email)!
+    const id = character.id ?? randomUUID()
+    const idx = profile.characters.findIndex((c) => c.id === id)
+    const rawLevel = Number.isFinite(character.level) ? Math.floor(character.level) : 1
+    const level = Math.min(MAX_CHARACTER_LEVEL, Math.max(MIN_CHARACTER_LEVEL, rawLevel))
+    const toNext = xpRequiredToAdvance(level)
+    const prevRev = idx >= 0 ? (profile.characters[idx].sheetRevision ?? 0) : 0
+    const nextRev = idx >= 0 ? prevRev + 1 : 0
+    const row: ProfileCharacter = {
+      id,
+      name: character.name,
+      species: character.species,
+      clan: character.clan,
+      level,
+      isPrimary: character.isPrimary,
+      showOnHome: character.showOnHome,
+      portraitUrl: character.portraitUrl ?? null,
+      hp: character.hp,
+      blood: character.blood,
+      mana: character.mana,
+      will: character.will,
+      xp: character.xp ?? { current: readRules().startingXp ?? STARTING_CHARACTER_XP, toNext },
+      subclass: character.subclass ?? null,
+      secondarySubclass: character.secondarySubclass ?? null,
+      characterClass: character.characterClass ?? null,
+      identity: character.identity ?? defaultIdentity(),
+      inventory: character.inventory ?? [],
+      createdSkills: character.createdSkills ?? [],
+      carryCapacityKg: character.carryCapacityKg ?? 28,
+      balanceStats: character.balanceStats ?? null,
+      vitals: character.vitals ?? null,
+      effects: character.effects,
+      approval: character.approval,
+      reviewNote: character.reviewNote,
+      needsRuleReview: character.needsRuleReview,
+      ruleReviewNote: character.ruleReviewNote,
+      sheetRevision: nextRev,
+    }
+    if (character.isPrimary) {
+      profile.characters = profile.characters.map((c) => ({ ...c, isPrimary: c.id === id }))
+    }
+    if (idx >= 0) profile.characters[idx] = row
+    else profile.characters.push(row)
+    syncDerivedMetrics(profile)
+    await commitProfiles([profile])
+    await persistRevisionRecord({
+      id: randomUUID(),
+      characterId: row.id,
+      profileEmail: profile.email,
+      revision: nextRev,
+      reason: idx >= 0 ? 'upsert' : 'created',
+      actorEmail: profile.email,
+      createdAt: new Date().toISOString(),
+      snapshot: clone(row),
+    })
+    return row
+  })
 }
 
 function skillPower(skill: CreatedSkill) {
@@ -597,7 +1008,7 @@ function guardApprovedSkills(current: ProfileCharacter, incoming: CreatedSkill[]
         return previous && skillPower(previous) === skillPower(skill)
       })
     if (!same) {
-      throw new Error('Habilidade aprovada não pode ser trocada. Peça revisão ao mestre.')
+      throw new ForbiddenError('Habilidade aprovada não pode ser trocada. Peça revisão ao mestre.')
     }
     return incoming
   }
@@ -619,14 +1030,22 @@ function mergeOwnedInventory(
         equipped: item.equipped ?? previous.equipped,
         slot: item.slot === undefined ? previous.slot : item.slot,
         status: item.status ?? previous.status,
-        durability: item.durability ?? previous.durability,
+        durability: previous.durability
+          ? {
+              current: Math.max(
+                0,
+                Math.min(previous.durability.max, item.durability?.current ?? previous.durability.current),
+              ),
+              max: previous.durability.max,
+            }
+          : undefined,
       },
     ]
   })
 }
 
 function pDisplayName(email: string) {
-  return profiles.get(email)?.displayName ?? email.split('@')[0] ?? 'Cainita'
+  return getProfile(email)?.displayName ?? email.split('@')[0] ?? 'Cainita'
 }
 
 export const BALANCE_AXES = [
@@ -693,59 +1112,76 @@ function effectsAfterUse(current: ProfileCharacter, inventory: CharacterInventor
   return kept
 }
 
-export function refreshEffects(email: string) {
-  const profile = profiles.get(email)
-  if (!profile) return
-  let changed = false
-  for (const character of profile.characters) {
-    const next = liveEffects(character.effects)
-    if (next.length !== (character.effects ?? []).length) {
-      character.effects = next
-      changed = true
-    }
-  }
-  if (changed) snapshotProfiles()
-}
-
-export function advanceTurnEffects(targets: Array<{ email: string; characterId: string }>) {
-  let changed = 0
-  for (const target of targets) {
-    const character = profiles.get(target.email)?.characters.find((item) => item.id === target.characterId)
-    if (!character?.effects?.length) continue
-    character.effects = character.effects.flatMap((effect) => {
-      if (effect.pausedAt) return [effect]
-      if (effect.remainingTurns == null) return [effect]
-      changed += 1
-      const remainingTurns = effect.remainingTurns - 1
-      return remainingTurns > 0 ? [{ ...effect, remainingTurns }] : []
-    })
-  }
-  if (changed > 0) snapshotProfiles()
-  return changed
-}
-
-export function pauseEffectsForSeats(
-  seats: Array<{ email: string; characterId: string; leftAt?: string | null }>,
-) {
-  const stamp = new Date().toISOString()
-  let changed = 0
-  for (const seat of seats) {
-    if (seat.leftAt) continue
-    const profile = profiles.get(seat.email)
-    const character = profile?.characters.find((item) => item.id === seat.characterId)
-    if (!character?.effects?.length) continue
-    for (const effect of character.effects) {
-      if (!effect.pausedAt) {
-        effect.pausedAt = stamp
-        changed += 1
+export async function refreshEffects(email: string) {
+  return runProfileMutation(async () => {
+    const profile = getProfile(email)
+    if (!profile) return
+    let changed = false
+    for (const character of profile.characters) {
+      const next = liveEffects(character.effects)
+      if (next.length !== (character.effects ?? []).length) {
+        character.effects = next
+        changed = true
       }
     }
-  }
-  if (changed > 0) snapshotProfiles()
-  return changed
+    if (changed) await commitProfiles([profile])
+  })
 }
 
-export function charactersOutsideRules(maxLevel: number, subclassLevel: number) {
+export async function advanceTurnEffects(targets: Array<{ email: string; characterId: string }>) {
+  return runProfileMutation(async () => {
+    let changed = 0
+    const dirtyProfiles: UserProfile[] = []
+    for (const target of targets) {
+      const profile = getProfile(target.email)
+      const character = profile?.characters.find((item) => item.id === target.characterId)
+      if (!profile || !character?.effects?.length) continue
+      let charChanged = false
+      character.effects = character.effects.flatMap((effect) => {
+        if (effect.pausedAt) return [effect]
+        if (effect.remainingTurns == null) return [effect]
+        changed += 1
+        charChanged = true
+        const remainingTurns = effect.remainingTurns - 1
+        return remainingTurns > 0 ? [{ ...effect, remainingTurns }] : []
+      })
+      if (charChanged && !dirtyProfiles.includes(profile)) dirtyProfiles.push(profile)
+    }
+    if (changed > 0) await commitProfiles(dirtyProfiles)
+    return changed
+  })
+}
+
+export async function pauseEffectsForSeats(
+  seats: Array<{ email: string; characterId: string; leftAt?: string | null }>,
+) {
+  return runProfileMutation(async () => {
+    const stamp = new Date().toISOString()
+    let changed = 0
+    const dirtyProfiles: UserProfile[] = []
+    for (const seat of seats) {
+      if (seat.leftAt) continue
+      const profile = getProfile(seat.email)
+      const character = profile?.characters.find((item) => item.id === seat.characterId)
+      if (!profile || !character?.effects?.length) continue
+      for (const effect of character.effects) {
+        if (!effect.pausedAt) {
+          effect.pausedAt = stamp
+          changed += 1
+          if (!dirtyProfiles.includes(profile)) dirtyProfiles.push(profile)
+        }
+      }
+    }
+    if (changed > 0) await commitProfiles(dirtyProfiles)
+    return changed
+  })
+}
+
+export function charactersOutsideRules(
+  maxLevel: number,
+  subclassLevel: number,
+  secondarySubclassLevel = SECOND_SUBCLASS_CHOICE_LEVEL,
+) {
   const rows: Array<{ email: string; characterId: string; name: string; reason: string }> = []
   for (const profile of profiles.values()) {
     for (const character of profile.characters) {
@@ -765,25 +1201,46 @@ export function charactersOutsideRules(maxLevel: number, subclassLevel: number) 
           reason: `Subclasse escolhida antes do nível ${subclassLevel}.`,
         })
       }
+      if (character.secondarySubclass && character.level < secondarySubclassLevel) {
+        rows.push({
+          email: profile.email,
+          characterId: character.id,
+          name: character.name,
+          reason: `Subclasse adicional escolhida antes do nível ${secondarySubclassLevel}.`,
+        })
+      }
     }
   }
   return rows
 }
 
-export function noteRuleChange(email: string, characterId: string, note: string) {
-  const character = profiles.get(email)?.characters.find((item) => item.id === characterId)
-  if (!character) return
-  character.reviewNote = note
-  if (character.approval === 'approved') character.approval = 'changes'
-  snapshotProfiles()
+export async function noteRuleChange(email: string, characterId: string, note: string) {
+  return runProfileMutation(async () => {
+    const profile = getProfile(email)
+    const character = profile?.characters.find((item) => item.id === characterId)
+    if (!profile || !character) return
+    character.reviewNote = note
+    character.needsRuleReview = true
+    character.ruleReviewNote = note
+    if (character.approval === 'approved') character.approval = 'changes'
+    await commitProfiles([profile])
+  })
 }
 
-export function replaceProfiles(rows: UserProfile[]) {
-  profiles.clear()
-  for (const profile of rows) {
-    if (profile?.email) profiles.set(profile.email, profile)
-  }
-  snapshotProfiles()
+export async function replaceProfiles(rows: UserProfile[]) {
+  return runProfileMutation(async () => {
+    profiles.clear()
+    for (const profile of rows) {
+      if (profile?.email) {
+        profiles.set(profile.email, {
+          ...profile,
+          publicId: profile.publicId ?? publicPlayerId(profile.email),
+          characters: (profile.characters ?? []).map(migrateLegacyCharacter),
+        })
+      }
+    }
+    await commitProfiles([...profiles.values()])
+  })
 }
 
 function labelForAxis(key: string) {
@@ -799,3 +1256,5 @@ function labelForAxis(key: string) {
   }
   return map[key] ?? key
 }
+
+export { labelForAxis }

@@ -92,7 +92,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
           <input
             type="number"
             min={1}
-            max={20}
+            max={10}
             className="input-feudal mt-1 w-full py-2 pl-3 text-sm normal-case"
             value={requiredLevel}
             onChange={(e) => setRequiredLevel(Number(e.target.value) || 1)}

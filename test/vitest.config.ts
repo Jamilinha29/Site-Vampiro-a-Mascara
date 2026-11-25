@@ -25,11 +25,12 @@ export default defineConfig({
       },
       {
         plugins: [react(), tailwindcss()],
+        esbuild: { jsx: 'automatic' },
         test: {
           name: 'frontend',
           root: repoRoot,
           environment: 'jsdom',
-          include: ['test/frontend/**/*.test.ts'],
+          include: ['test/frontend/**/*.test.{ts,tsx}'],
           setupFiles: [path.join(repoRoot, 'frontend/src/test/setup.ts')],
         },
       },

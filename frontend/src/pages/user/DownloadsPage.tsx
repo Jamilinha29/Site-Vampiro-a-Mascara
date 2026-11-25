@@ -1,7 +1,23 @@
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../services/api'
+import type { SessionHandout } from '../../types/chronicle'
 
 export default function DownloadsPage() {
+  const [inspectAct, setInspectAct] = useState<{
+    handout: SessionHandout
+    tab: 'summary' | 'deeds'
+  } | null>(null)
+
+  useEffect(() => {
+    if (!inspectAct) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInspectAct(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inspectAct])
+
   const { data: rules } = useQuery({
     queryKey: ['content-downloads', 'rules'],
     queryFn: () => api.getDownloadsContent('rules'),
@@ -41,11 +57,19 @@ export default function DownloadsPage() {
                 {h.closedAt ? new Date(h.closedAt).toLocaleDateString('pt-BR') : 'Em andamento'}
               </p>
               <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                <button type="button" className="btn-secondary text-[10px]" disabled>
+                <button
+                  type="button"
+                  className="btn-secondary text-[10px]"
+                  onClick={() => setInspectAct({ handout: h, tab: 'summary' })}
+                >
                   Ver resumo narrativo
                 </button>
-                <button type="button" className="btn-secondary text-[10px]" disabled>
-                  Registrar mortes e feitos
+                <button
+                  type="button"
+                  className="btn-secondary text-[10px]"
+                  onClick={() => setInspectAct({ handout: h, tab: 'deeds' })}
+                >
+                  Mortes e feitos do ato
                 </button>
               </div>
             </article>
@@ -55,6 +79,75 @@ export default function DownloadsPage() {
           ) : null}
         </div>
       </section>
+
+      {inspectAct ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={inspectAct.handout.chronicleName ?? inspectAct.handout.title}
+          onClick={() => setInspectAct(null)}
+        >
+          <div
+            className="mesa-panel max-h-[85vh] w-full max-w-2xl overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-outline-variant/40 pb-3">
+              <div>
+                <p className="text-xs uppercase text-secondary">
+                  {inspectAct.tab === 'summary' ? 'Resumo narrativo do ato' : 'Mortes, feitos e recompensas'}
+                </p>
+                <h3 className="font-serif text-xl text-on-surface">
+                  {inspectAct.handout.chronicleName ?? inspectAct.handout.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                autoFocus
+                onClick={() => setInspectAct(null)}
+              >
+                Fechar
+              </button>
+            </div>
+            {inspectAct.tab === 'summary' ? (
+              <div className="mt-4 space-y-3 text-sm leading-relaxed text-on-surface-variant whitespace-pre-wrap">
+                {inspectAct.handout.narrativeSummary || 'Nenhum resumo narrativo publicado para este ato.'}
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4 text-sm">
+                <div>
+                  <p className="text-xs uppercase text-secondary">Criaturas abatidas</p>
+                  {inspectAct.handout.monstersSlain?.length ? (
+                    <ul className="mt-1 space-y-1 text-on-surface-variant">
+                      {inspectAct.handout.monstersSlain.map((m, idx) => (
+                        <li key={`${m.entityId}-${idx}`}>• {m.name}{m.statsText ? ` (${m.statsText})` : ''}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-on-surface-variant">Sem criaturas abatidas registradas.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-secondary">Participantes e espólios</p>
+                  {inspectAct.handout.participants?.length ? (
+                    <ul className="mt-1 space-y-1.5 text-on-surface-variant">
+                      {inspectAct.handout.participants.map((p, idx) => (
+                        <li key={`${p.displayName}-${idx}`}>
+                          <strong className="text-on-surface">{p.characterName || p.displayName}</strong>
+                          {p.rewards?.length ? ` — ${p.rewards.map((r) => r.label).join(', ')}` : ' — Sem recompensas listadas'}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-on-surface-variant">Sem participantes registrados.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <section className="space-y-4">
         <h2 className="font-headline-sm text-lg text-on-surface">Fichas oficiais imprimíveis</h2>
