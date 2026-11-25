@@ -42,11 +42,11 @@ export function ProfileMediaSettings({ avatarUrl, bannerUrl, compact = false }: 
         )}
       </div>
       <div className="flex flex-wrap items-end gap-3">
-        <div className="h-16 w-16 overflow-hidden rounded-lg border-2 border-primary/50 bg-surface-container-high">
+        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border-2 border-primary/50 bg-surface-container-high">
           {avatarUrl ? (
             <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="material-symbols-outlined flex h-full w-full items-center justify-center text-2xl text-outline">
+            <span className="material-symbols-outlined text-2xl text-outline">
               person
             </span>
           )}

@@ -75,125 +75,125 @@ export default function ProfilePage() {
   const hasBalanceData = balanceProfile?.hasData === true
 
   return (
-    <div className="space-y-8 pb-10">
-      <section className="relative">
-        <div className="relative h-40 overflow-hidden rounded-lg border border-outline-variant sm:h-48 md:h-56">
+    <div className="space-y-4 pb-4">
+      <section className="overflow-hidden rounded-lg border border-outline-variant/50 bg-surface-container shadow-lg">
+        <div className="relative h-28 sm:h-32">
           {profile.bannerUrl ? (
             <img src={profile.bannerUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-surface-container-high via-[#1a1218] to-surface-container-lowest px-4 text-center">
-              <span className="material-symbols-outlined text-3xl text-outline-variant">panorama</span>
-              <p className="text-sm text-on-surface-variant">Banner da conta — edite em Configurações</p>
-            </div>
+            <div className="h-full bg-gradient-to-br from-[#1a0f14] via-surface-container-high to-[#0f1218]" />
           )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/15 to-transparent" />
         </div>
 
-        <div className="-mt-14 flex flex-col items-center px-4 sm:-mt-16">
-          <div className="relative">
-            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-lg border-4 border-primary/70 bg-surface-container-high shadow-lg sm:h-32 sm:w-32">
-              {profile.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="material-symbols-outlined text-5xl text-outline-variant">person</span>
-              )}
-            </div>
+        <div className="flex flex-col gap-4 px-4 pb-4 sm:flex-row sm:items-start sm:px-5">
+          <div className="-mt-12 relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border-4 border-primary/80 bg-surface-container-high shadow-xl sm:-mt-14 sm:h-28 sm:w-28">
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="material-symbols-outlined text-4xl text-outline">person</span>
+            )}
             <span className="absolute right-1 bottom-1 h-3 w-3 rounded-full border-2 border-surface bg-success" title="Online" />
           </div>
-          <h1 className="font-headline-lg mt-4 text-center text-2xl text-on-surface">{profile.displayName}</h1>
-          <p className="text-sm text-secondary">{profile.handle}</p>
-          {profile.badges.length > 0 ? (
-            <div className="mt-2 flex flex-wrap justify-center gap-2">
+
+          <div className="min-w-0 flex-1 pt-1 sm:pt-2.5">
+            <p className="font-label-sm text-[0.65rem] tracking-[0.22em] text-secondary uppercase">Jogador da Corte</p>
+            <h1 className="font-headline-lg mt-0.5 break-words text-xl text-on-surface sm:text-2xl">{profile.displayName}</h1>
+            <p className="mt-1 text-sm text-secondary">{profile.handle}</p>
+            <p className="break-all text-xs text-on-surface-variant">
+              {profile.email} · Membro desde {formatMemberSince(profile.memberSince)}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5 text-[10px] tracking-wide text-secondary uppercase">
+                {profile.role === 'narrator' || profile.role === 'admin' ? 'Jogador · Mestre' : 'Jogador'}
+              </span>
               {profile.badges.map((b) => (
                 <span
                   key={b}
-                  className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5 text-[11px] tracking-wide text-secondary uppercase"
+                  className="rounded-full border border-outline-variant/60 bg-surface-container-high px-2 py-0.5 text-[10px] tracking-wide text-on-surface-variant uppercase"
                 >
                   {b}
                 </span>
               ))}
+              {profile.publicId ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/60 bg-surface-container-lowest/70 px-2.5 py-0.5 font-mono text-[11px] text-on-surface transition hover:border-secondary/60"
+                  title="Clique para copiar seu Código ID de amigo"
+                  onClick={() => {
+                    const code = profile.publicId!
+                    void navigator.clipboard?.writeText(code).then(
+                      () => push('Código ID copiado para a área de transferência.', 'success'),
+                      () => push(`Seu Código ID: ${code}`, 'info'),
+                    )
+                  }}
+                >
+                  <span className="font-sans text-[10px] text-secondary uppercase">ID:</span>
+                  <span>{profile.publicId}</span>
+                </button>
+              ) : null}
             </div>
-          ) : null}
-          <p className="mt-2 text-xs text-on-surface-variant">
-            Membro desde {formatMemberSince(profile.memberSince)}
-            {profile.accountMetrics.sessions != null ? ` · ${profile.accountMetrics.sessions} sessões` : ''}
-            {profile.accountMetrics.characters != null ? ` · ${profile.accountMetrics.characters} personagens` : ''}
-          </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: 'Personagens', value: profile.accountMetrics.characters },
+          { label: 'Sessões', value: profile.accountMetrics.sessions },
+          { label: 'Crônicas', value: profile.accountMetrics.chronicles },
+          { label: 'XP total', value: profile.accountMetrics.totalXp },
+        ].map((m) => (
+          <div key={m.label} className="card-surface p-3.5 text-center">
+            <p className="text-[0.65rem] text-on-surface-variant uppercase">{m.label}</p>
+            <div className="mt-1">
+              <MetricValue value={m.value} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-3.5 lg:grid-cols-2">
+        <section className="card-surface p-4">
+          <h2 className="font-label-sm text-xs text-secondary uppercase">Dados pessoais e feudais</h2>
+          <dl className="mt-3 grid gap-2.5 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-[0.65rem] text-on-surface-variant uppercase">Feudo de origem</dt>
+              <dd className="text-on-surface">{profile.preferences.fiefOrigin ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-[0.65rem] text-on-surface-variant uppercase">Preferência narrativa</dt>
+              <dd className="text-on-surface">{profile.preferences.narrativePreference ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-[0.65rem] text-on-surface-variant uppercase">Endereço canônico</dt>
+              <dd className="break-all text-xs text-on-surface">{profile.email}</dd>
+            </div>
+            <div>
+              <dt className="text-[0.65rem] text-on-surface-variant uppercase">Código ID (amigos)</dt>
+              <dd className="font-mono text-xs text-secondary">{profile.publicId || '—'}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="card-surface p-4">
+          <h2 className="font-label-sm text-xs text-secondary uppercase">Juramento &amp; biografia</h2>
           {profile.preferences.bio?.trim() ? (
-            <p className="mt-3 max-w-xl text-center text-sm text-on-surface-variant">{profile.preferences.bio}</p>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="card-surface p-6">
-        <h2 className="font-label-sm text-xs text-secondary uppercase">Dados pessoais e feudais</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded border border-secondary/35 bg-surface-container-lowest/40 p-3 text-sm">
-            <p className="text-[10px] uppercase text-secondary">Código ID (amigos)</p>
-            <p className="mt-1 break-all font-mono text-xs text-on-surface">
-              {profile.publicId ?? profile.userId}
+            <p className="mt-2.5 whitespace-pre-wrap font-serif text-sm leading-relaxed text-on-surface-variant">
+              {profile.preferences.bio}
             </p>
-            <button
-              type="button"
-              className="btn-secondary mt-2 px-2.5 py-1 text-[10px]"
-              onClick={() => {
-                const code = profile.publicId ?? profile.userId
-                void navigator.clipboard?.writeText(code).then(
-                  () => push('Código ID copiado para a área de transferência.', 'success'),
-                  () => push(`Seu Código ID: ${code}`, 'info'),
-                )
-              }}
-            >
-              Copiar ID
-            </button>
-          </div>
-          <div className="rounded border border-outline-variant/40 p-3 text-sm">
-            <p className="text-[10px] uppercase text-on-surface-variant">Endereço canônico</p>
-            <p className="mt-1 break-all text-on-surface">{profile.email}</p>
-            <p className="text-xs text-on-surface-variant">Criptografado por direito de sangue</p>
-          </div>
-          <div className="rounded border border-outline-variant/40 p-3 text-sm">
-            <p className="text-[10px] uppercase text-on-surface-variant">Feudo de origem</p>
-            <p className="mt-1 text-on-surface">{profile.preferences.fiefOrigin ?? '—'}</p>
-          </div>
-          <div className="rounded border border-outline-variant/40 p-3 text-sm">
-            <p className="text-[10px] uppercase text-on-surface-variant">Preferência narrativa</p>
-            <p className="mt-1 text-on-surface">{profile.preferences.narrativePreference ?? '—'}</p>
-          </div>
-          <div className="rounded border border-outline-variant/40 p-3 text-sm">
-            <p className="text-[10px] uppercase text-on-surface-variant">Papel na mesa</p>
-            <p className="mt-1 text-on-surface">
-              {profile.role === 'narrator' || profile.role === 'admin' ? 'Jogador · também Mestre' : 'Jogador'}
+          ) : (
+            <p className="mt-2.5 text-sm text-on-surface-variant">
+              Banner, retrato, feudo e biografia podem ser definidos em Configurações no menu lateral.
             </p>
-          </div>
-        </div>
-      </section>
+          )}
+        </section>
+      </div>
 
-      <section className="card-surface p-6">
-        <h2 className="font-label-sm text-xs text-secondary uppercase">Resumo da conta</h2>
-        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { label: 'Personagens', value: profile.accountMetrics.characters },
-            { label: 'Sessões', value: profile.accountMetrics.sessions },
-            { label: 'Crônicas', value: profile.accountMetrics.chronicles },
-            { label: 'XP total', value: profile.accountMetrics.totalXp },
-          ].map((m) => (
-            <div key={m.label} className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 p-4 text-center">
-              <p className="text-xs text-on-surface-variant">{m.label}</p>
-              <div className="mt-1">
-                <MetricValue value={m.value} />
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-xs text-on-surface-variant">
-          Os números aparecem conforme sua atividade real na plataforma — sem valores fictícios.
-        </p>
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="card-surface p-6">
+      <div className="grid gap-3.5 lg:grid-cols-2">
+        <section className="card-surface p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Estatísticas da linhagem</h2>
-          <ul className="mt-4 space-y-3 text-sm">
+          <ul className="mt-3 space-y-2 text-sm">
             {[
               { label: 'Personagens criados', value: profile.lineageStats.charactersCreated },
               { label: 'Sessões participadas', value: profile.lineageStats.sessionsParticipated },
@@ -202,7 +202,7 @@ export default function ProfilePage() {
               { label: 'XP acumulado', value: profile.lineageStats.xpAccumulated },
               { label: 'Classe favorita', text: profile.lineageStats.favoriteClass },
             ].map((row) => (
-              <li key={row.label} className="flex items-center justify-between border-b border-outline-variant/30 pb-2">
+              <li key={row.label} className="flex items-center justify-between border-b border-outline-variant/30 pb-1.5">
                 <span className="text-on-surface-variant">{row.label}</span>
                 {'text' in row ? (
                   <span className="text-on-surface">{row.text ?? '—'}</span>
@@ -214,14 +214,14 @@ export default function ProfilePage() {
           </ul>
         </section>
 
-        <section className="card-surface p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <section className="card-surface p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-label-sm text-xs text-secondary uppercase">Perfil de jogo</h2>
             {profile.characters.length > 0 ? (
               <label className="flex items-center gap-2 text-xs text-on-surface-variant">
                 Personagem
                 <select
-                  className="rounded border border-outline-variant bg-surface-container-high px-2 py-1 text-sm text-on-surface"
+                  className="rounded border border-outline-variant bg-surface-container-high px-2 py-1 text-xs text-on-surface"
                   value={effectiveCharacterId}
                   onChange={(e) => setSelectedCharacterId(e.target.value)}
                 >
@@ -235,11 +235,11 @@ export default function ProfilePage() {
             ) : null}
           </div>
           {profile.characters.length === 0 ? (
-            <div className="mt-4">
+            <div className="mt-3">
               <EmptyBlock>Crie ou vincule um personagem para ver o radar de equilíbrio aqui.</EmptyBlock>
             </div>
           ) : (
-            <div className="mt-4">
+            <div className="mt-3">
               <RadarChart
                 axes={
                   hasBalanceData && balanceProfile
@@ -249,7 +249,7 @@ export default function ProfilePage() {
                 empty={!hasBalanceData}
               />
               {hasBalanceData && balanceProfile ? (
-                <p className="mt-2 text-center text-sm text-on-surface-variant">
+                <p className="mt-2 text-center text-xs text-on-surface-variant">
                   Índice de equilíbrio: <strong className="text-secondary">{balanceProfile.balancePercent}%</strong> —{' '}
                   {balanceProfile.characterName}
                 </p>
@@ -263,26 +263,26 @@ export default function ProfilePage() {
         </section>
       </div>
 
-      <section className="card-surface p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="card-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Personagens vinculados à linhagem</h2>
           <Link to="/user/characters/new/lineage" className="btn-primary text-xs">
             Criar novo cainita
           </Link>
         </div>
         {profile.characters.length === 0 ? (
-          <div className="mt-4">
+          <div className="mt-3">
             <EmptyBlock>Nenhum personagem vinculado à sua conta. Forje sua linhagem para vê-los aqui.</EmptyBlock>
           </div>
         ) : (
-          <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {profile.characters.map((ch) => (
               <li
                 key={ch.id}
-                className="flex flex-col rounded border border-outline-variant/50 bg-surface-container-lowest/30 p-4"
+                className="flex flex-col rounded border border-outline-variant/50 bg-surface-container-lowest/30 p-3.5"
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant bg-surface-container-high">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant bg-surface-container-high">
                     {ch.portraitUrl ? (
                       <img src={ch.portraitUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
@@ -290,19 +290,19 @@ export default function ProfilePage() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate font-serif text-lg text-on-surface">{ch.name}</p>
+                    <p className="truncate font-serif text-base text-on-surface">{ch.name}</p>
                     <p className="text-xs text-on-surface-variant">
                       {ch.species}
                       {ch.clan ? ` · ${ch.clan}` : ''} · Nv. {ch.level}
                     </p>
                     {ch.isPrimary ? (
-                      <span className="mt-1 inline-block text-[10px] tracking-wide text-secondary uppercase">
+                      <span className="mt-0.5 inline-block text-[10px] tracking-wide text-secondary uppercase">
                         Principal
                       </span>
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Link to={`/user/characters/${ch.id}?view=ficha`} className="btn-secondary flex-1 text-center text-xs">
                     Ficha completa
                   </Link>

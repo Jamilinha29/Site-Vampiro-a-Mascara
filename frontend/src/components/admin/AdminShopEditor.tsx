@@ -211,7 +211,7 @@ export function AdminShopEditor() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (
           <button

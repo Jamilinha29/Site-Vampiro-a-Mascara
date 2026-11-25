@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import { Router } from 'express'
 import { z } from 'zod'
 import { errorPayload } from '../services/errors.js'
@@ -13,6 +12,7 @@ import { checkSharedRateLimit } from '../services/rateLimitStore.js'
 import {
   allowDevAuth,
   devLogin,
+  getSupabaseAnonClient,
   isSupabaseAuthConfigured,
   loginWithSupabase,
   registerWithSupabase,
@@ -55,7 +55,6 @@ authRouter.post('/login', async (req, res, next) => {
         res.status(401).json(errorPayload('UNAUTHORIZED', result.message, { requestId: req.requestId }))
         return
       }
-      await ensureProfile(result.session.email, result.session.displayName)
       res.json(result.session)
       return
     }
@@ -89,7 +88,6 @@ authRouter.post('/register', async (req, res, next) => {
         )
         return
       }
-      await ensureProfile(result.session.email, result.session.displayName)
       res.status(201).json(result.session)
       return
     }
@@ -151,13 +149,11 @@ authRouter.post('/recover/confirm', async (req, res, next) => {
 authRouter.post('/refresh', async (req, res, next) => {
   try {
     const body = z.object({ refreshToken: z.string().min(10) }).parse(req.body)
-    if (!isSupabaseAuthConfigured()) {
+    const sb = getSupabaseAnonClient()
+    if (!sb) {
       res.status(401).json(errorPayload('UNAUTHORIZED', 'Sessão encerrada. Entre de novo.', { requestId: req.requestId }))
       return
     }
-    const sb = createClient(process.env.SUPABASE_URL!.trim(), process.env.SUPABASE_ANON_KEY!.trim(), {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
     const { data, error } = await sb.auth.refreshSession({ refresh_token: body.refreshToken })
     if (error || !data.session) {
       res.status(401).json(errorPayload('UNAUTHORIZED', 'Sessão encerrada. Entre de novo.', { requestId: req.requestId }))

@@ -34,11 +34,11 @@ function CharacterCard({
       }`}
     >
       <div className="flex gap-3">
-        <div className="h-20 w-16 shrink-0 overflow-hidden rounded border border-outline-variant/50 bg-surface-container-high">
+        <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant/50 bg-surface-container-high">
           {item.portraitUrl ? (
             <img src={item.portraitUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="material-symbols-outlined flex h-full w-full items-center justify-center text-2xl text-outline">
+            <span className="material-symbols-outlined text-2xl text-outline">
               face
             </span>
           )}
@@ -125,13 +125,13 @@ export default function PlayerCharactersPage() {
   ]
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-headline-lg text-2xl tracking-wide text-on-surface uppercase">
             Meus personagens ({counts.all})
           </h1>
-          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+          <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
             Escolha o personagem ativo da mesa.
             {needPickHome
               ? ` Com mais de 10 fichas, selecione até 3 para aparecerem no Início (${homeCount}/3).`

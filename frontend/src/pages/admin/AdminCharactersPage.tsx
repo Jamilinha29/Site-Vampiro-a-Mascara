@@ -80,11 +80,11 @@ export default function AdminCharactersPage() {
   const pageItems = all.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-headline-lg text-2xl text-on-surface">Monstros & NPCs</h1>
-          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+          <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
             Cadastros do mestre. Rascunhos ficam só aqui até serem publicados; use Editar para completar a ficha.
           </p>
         </div>

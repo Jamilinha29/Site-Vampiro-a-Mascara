@@ -713,6 +713,19 @@ export const api = {
     ),
   getScheduledSessions: () =>
     request<import('../types/chronicle').ScheduledSession[]>('/api/v1/content/scheduled-sessions'),
+  getSessionLiveState: (sessionId: string) =>
+    request<{
+      threats: import('../types/chronicle').SceneThreat[]
+      liveBrief: {
+        narrativeSummary: string
+        restMode: boolean
+        chronicleAmbience: import('../types/chronicle').ChronicleAmbience
+        sceneNpcs: Array<{ id: string; name: string; description: string }>
+      } | null
+      myBag: { rewards: import('../types/chronicle').HandoutReward[] }
+      actions: import('../types/chronicle').SessionActionRecord[]
+      rolls: Array<{ id: string; at: string; characterName: string; formula: string; total: number; secret: boolean }>
+    }>(`/api/v1/content/sessions/${encodeURIComponent(sessionId)}/live-state`),
   getSessionSceneThreats: (sessionId: string) =>
     request<import('../types/chronicle').SceneThreat[]>(`/api/v1/content/sessions/${sessionId}/scene-threats`),
   getSessionLiveBrief: (sessionId: string) =>

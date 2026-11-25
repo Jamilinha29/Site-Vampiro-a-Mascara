@@ -419,7 +419,8 @@ export function friendEmails(email: string) {
 /** Projeção pública sem expor e-mail de terceiros (C26). */
 function publicPlayer(email: string) {
   const profile = getProfile(email)
-  const id = profile?.publicId ?? publicPlayerId(email)
+  const stored = profile?.publicId?.trim()
+  const id = stored && /^\d{8,12}$/.test(stored) ? stored : publicPlayerId(email)
   return {
     id,
     displayName: profile?.displayName ?? 'Cainita',
@@ -629,7 +630,19 @@ async function settleAuction(auction: Auction, force = false) {
   return auction
 }
 
+function auctionMaySettleNow(auction: Auction, nowMs: number) {
+  if (auction.status !== 'open') return false
+  if (new Date(auction.endsAt).getTime() <= nowMs) return true
+  const activeCount = auction.bids.filter((b) => !b.withdrawn).length
+  const someoneLeft = auction.bids.some((b) => b.withdrawn)
+  return someoneLeft && activeCount === 1
+}
+
 export async function settleOpenAuctions() {
+  const nowMs = Date.now()
+  if (!state.auctions.some((a) => auctionMaySettleNow(a, nowMs))) {
+    return
+  }
   return runCourtMutation(async () => {
     let changed = false
     for (const auction of state.auctions) {

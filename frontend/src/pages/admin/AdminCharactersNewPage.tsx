@@ -21,11 +21,12 @@ export default function AdminCharactersNewPage() {
           Ver lista
         </Link>
       </header>
-      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <div className="grid items-start gap-3.5 lg:grid-cols-2">
       <AdminEntityPanel
         kind="npc"
         registryVariant="npc"
         syncGlossary
+        showImageUpload
         title="NPC"
         description="Mortais, vampiros, anões, fantasmas e outros tipos de elenco narrativo."
         showCreatureType
@@ -36,6 +37,7 @@ export default function AdminCharactersNewPage() {
         kind="monster"
         registryVariant="monster"
         syncGlossary
+        showImageUpload
         title="Monstro"
         description="Vampiros hostis, lobisomens, ghosts e demais ameaças do bestiário."
         showCreatureType

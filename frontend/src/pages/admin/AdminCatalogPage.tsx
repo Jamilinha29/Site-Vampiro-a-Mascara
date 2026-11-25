@@ -3,10 +3,10 @@ import { AdminGlossaryEditor } from '../../components/admin/AdminGlossaryEditor'
 
 export default function AdminCatalogPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Glossário</h1>
-        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
           Crie, edite ou importe grimórios, amuletos, relíquias e o bestiário. O que for publicado aparece no Glossário dos
           jogadores.
         </p>

@@ -34,7 +34,7 @@ const CODEX_SECTIONS = [
     icon: 'group',
     title: '4. Amigos, narradores e código ID',
     items: [
-      'Cada conta recebe um Código ID único (ex.: ply_...) visível no seu Perfil.',
+      'Cada conta recebe um Código ID numérico exclusivo (10 dígitos) visível no seu Perfil.',
       'Você pode procurar amigos — tanto jogadores quanto narradores — pelo nome, @handle ou Código ID.',
       'Mesas privadas de amigos ficam visíveis na sua busca de sessões (ainda exigindo o código de sala).',
     ],

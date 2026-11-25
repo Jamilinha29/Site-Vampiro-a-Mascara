@@ -26,7 +26,9 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
   const { data: auctions = [] } = useQuery({
     queryKey: ['mesa-auctions', sessionId],
     queryFn: () => api.adminListAuctions(sessionId),
-    refetchInterval: (query) => (query.state.data?.some((a) => a.status === 'open') ? 4000 : 30_000),
+    refetchInterval: (query) =>
+      !live ? false : query.state.data?.some((a) => a.status === 'open') ? 8_000 : 60_000,
+    refetchIntervalInBackground: false,
   })
 
   const published = gear.filter((item) => item.visibility === 'published')

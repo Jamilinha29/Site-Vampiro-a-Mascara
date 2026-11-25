@@ -245,7 +245,7 @@ export type NarratorSessionDTO = ScheduledSession
 const SESSIONS_DOC = 'sessions'
 const ACTIONS_DOC = 'session-actions'
 const ENTITY_FILE = 'chronicle-entities.json'
-const ENTITIES_REFRESH_TTL_MS = 15_000
+const ENTITIES_REFRESH_TTL_MS = 60_000
 const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
 
 const entities = new Map<string, ChronicleEntity>()
@@ -352,6 +352,42 @@ export function toNarratorSessionDTO(row: ScheduledSession): NarratorSessionDTO 
   return clone(ensureSessionDefaults(row))
 }
 
+function mergeLoadedEntities(loaded: ChronicleEntity[], spells: ChronicleEntity[]) {
+  const rows = [...loaded, ...spells]
+  lastEntitiesRefreshAt = Date.now()
+  if (!rows.length) return
+  let changed = false
+  for (const row of rows) {
+    if (!row.name || !row.id) continue
+    const byId = entities.get(row.id)
+    if (byId) {
+      if (row.updatedAt >= byId.updatedAt) {
+        entities.set(byId.id, { ...byId, ...row, id: byId.id })
+        changed = true
+      }
+      continue
+    }
+    const same = [...entities.values()].find(
+      (item) => item.kind === row.kind && sameEntityText(item.name, row.name),
+    )
+    if (!same) {
+      entities.set(row.id, row)
+      changed = true
+      continue
+    }
+    if (row.updatedAt >= same.updatedAt) {
+      entities.set(same.id, {
+        ...same,
+        description: row.description || same.description,
+        visibility: row.visibility,
+        updatedAt: row.updatedAt,
+      })
+      changed = true
+    }
+  }
+  if (changed) writeEntityFile()
+}
+
 /** Junta o que o banco confirmou. Consulta falha ou tabela vazia não apaga o que já está na memória. */
 export async function refreshEntitiesFromDatabase(force = false) {
   if (!force && Date.now() - lastEntitiesRefreshAt < ENTITIES_REFRESH_TTL_MS) return
@@ -360,39 +396,7 @@ export async function refreshEntitiesFromDatabase(force = false) {
     const loaded = await dbLoadEntities()
     if (loaded === null) return
     const spells = await dbLoadGrimoireSpells()
-    const rows = [...loaded, ...spells]
-    lastEntitiesRefreshAt = Date.now()
-    if (!rows.length) return
-    let changed = false
-    for (const row of rows) {
-      if (!row.name || !row.id) continue
-      const byId = entities.get(row.id)
-      if (byId) {
-        if (row.updatedAt >= byId.updatedAt) {
-          entities.set(byId.id, { ...byId, ...row, id: byId.id })
-          changed = true
-        }
-        continue
-      }
-      const same = [...entities.values()].find(
-        (item) => item.kind === row.kind && sameEntityText(item.name, row.name),
-      )
-      if (!same) {
-        entities.set(row.id, row)
-        changed = true
-        continue
-      }
-      if (row.updatedAt >= same.updatedAt) {
-        entities.set(same.id, {
-          ...same,
-          description: row.description || same.description,
-          visibility: row.visibility,
-          updatedAt: row.updatedAt,
-        })
-        changed = true
-      }
-    }
-    if (changed) writeEntityFile()
+    mergeLoadedEntities(loaded, spells)
   })().finally(() => {
     entitiesRefreshInFlight = null
   })
@@ -402,10 +406,12 @@ export async function refreshEntitiesFromDatabase(force = false) {
 export async function hydrateEntitiesFromDatabase() {
   const rows = await dbLoadEntities()
   if (rows && rows.length > 0) {
-    await refreshEntitiesFromDatabase(true)
+    const spells = await dbLoadGrimoireSpells()
+    mergeLoadedEntities(rows, spells)
     console.log(`[persistência] ${entities.size} entidade(s) após juntar o Supabase`)
     return
   }
+  lastEntitiesRefreshAt = Date.now()
   const local = readJsonFile<ChronicleEntity[]>(ENTITY_FILE)
   if (local?.length) {
     replaceAllEntities(local)

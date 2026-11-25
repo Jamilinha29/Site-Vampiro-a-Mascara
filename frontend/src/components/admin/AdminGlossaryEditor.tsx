@@ -705,17 +705,17 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {importSlot ? (
-        <div className="grid items-start gap-6 xl:grid-cols-12">
-          <div className="min-w-0 xl:col-span-7">{formPanel}</div>
-          <div className="min-w-0 xl:col-span-5">{importSlot}</div>
+        <div className="grid items-start gap-4 lg:grid-cols-12">
+          <div className="min-w-0 lg:col-span-7">{formPanel}</div>
+          <div className="min-w-0 lg:col-span-5">{importSlot}</div>
         </div>
       ) : (
         formPanel
       )}
 
-      <section className="mesa-panel p-5">
+      <section className="mesa-panel p-3.5 sm:p-4">
         <h3 className="font-label-sm text-xs text-secondary uppercase">Registros do glossário</h3>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)_minmax(9rem,auto)] sm:items-center">
           <div className="relative min-w-0">

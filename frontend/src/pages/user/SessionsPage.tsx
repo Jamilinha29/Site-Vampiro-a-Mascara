@@ -93,16 +93,16 @@ export default function SessionsPage() {
   }
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="space-y-4 pb-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de sessões</h1>
-        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
           Procure mesas públicas e mesas de amigos. Mesas privadas pedem o código de sala.
         </p>
       </header>
 
-      <section className="mesa-panel space-y-4 p-5">
-        <h2 className="font-headline-sm text-lg">Procurar sessão</h2>
+      <section className="mesa-panel space-y-3 p-3.5 sm:p-4">
+        <h2 className="font-headline-sm text-base">Procurar sessão</h2>
         <form
           className="flex flex-wrap gap-2"
           onSubmit={(e) => {
@@ -120,7 +120,7 @@ export default function SessionsPage() {
             Procurar
           </button>
         </form>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <div>
             <p className="text-xs uppercase text-secondary">Abertas ao público</p>
             <ul className="mt-2 space-y-2">
@@ -215,9 +215,9 @@ export default function SessionsPage() {
 
       {next ? (
         <section className="mesa-panel overflow-hidden">
-          <div className="bg-gradient-to-r from-primary-container/40 to-surface-container-high px-5 py-6 sm:px-8">
+          <div className="bg-gradient-to-r from-primary-container/40 to-surface-container-high px-4 py-4 sm:px-5">
             <p className="font-label-sm text-[0.65rem] text-secondary uppercase">Próxima sessão · {statusLabel(next)}</p>
-            <h2 className="font-headline-lg mt-2 text-xl text-on-surface sm:text-2xl">
+            <h2 className="font-headline-lg mt-1 text-lg text-on-surface sm:text-xl">
               {next.chronicleName ?? next.title}
             </h2>
             <p className="mt-2 text-sm text-on-surface-variant">
@@ -280,7 +280,7 @@ export default function SessionsPage() {
 
       <section>
         <h2 className="font-headline-sm mb-4 text-lg">Todas as mesas</h2>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {history.map((s, i) => (
             <article key={s.id} className="mesa-panel p-5">
               <p className="text-xs text-secondary uppercase">

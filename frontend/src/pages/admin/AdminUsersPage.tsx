@@ -113,15 +113,15 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-5 pb-8">
+    <div className="space-y-3.5 pb-4">
       <header className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-secondary/40 bg-primary-container/25 text-secondary">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-secondary/40 bg-primary-container/25 text-secondary">
           <span className="material-symbols-outlined">groups</span>
         </span>
         <div>
-          <h1 className="font-headline-lg text-3xl text-on-surface">Amigos e jogadores</h1>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            Gerencie suas amizades com jogadores e narradores, envie convites por nome ou Código ID e acompanhe solicitações.
+          <h1 className="font-headline-lg text-2xl text-on-surface">Amigos e jogadores</h1>
+          <p className="mt-0.5 text-sm text-on-surface-variant">
+            Gerencie suas amizades com jogadores e narradores, envie convites por nome ou Código ID numérico e acompanhe solicitações.
           </p>
         </div>
       </header>
@@ -171,6 +171,9 @@ export default function AdminUsersPage() {
                   <span>
                     <span className="font-serif text-on-surface">{player.displayName}</span>
                     <span className="ml-2 text-xs text-on-surface-variant">{player.handle}</span>
+                    {player.id ? (
+                      <span className="ml-2 font-mono text-[11px] text-outline">ID: {player.id}</span>
+                    ) : null}
                   </span>
                   <span className="text-[10px] uppercase text-secondary">
                     {player.relation === 'friend'
@@ -219,7 +222,7 @@ export default function AdminUsersPage() {
                   <p className="truncate text-xs text-on-surface-variant">
                     {player.handle} · {player.characters} personagem(ns)
                   </p>
-                  <p className="truncate font-mono text-[11px] text-outline">{player.id}</p>
+                  <p className="truncate font-mono text-[11px] text-outline">ID: {player.id}</p>
                 </div>
                 <RowAction
                   player={player}

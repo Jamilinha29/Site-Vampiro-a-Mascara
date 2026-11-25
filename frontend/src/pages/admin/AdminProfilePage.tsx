@@ -43,38 +43,36 @@ export default function AdminProfilePage() {
   const mesasOpen = scheduled.filter((s) => s.status === 'open').length
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-4 pb-4">
       <section className="overflow-hidden rounded-lg border border-outline-variant/50 bg-surface-container shadow-lg">
-        <div className="relative h-40 sm:h-48">
+        <div className="relative h-28 sm:h-32">
           {profile.bannerUrl ? (
             <img src={profile.bannerUrl} alt="" className="h-full w-full object-cover" />
           ) : (
             <div className="h-full bg-gradient-to-br from-[#1a0f14] via-surface-container-high to-[#0f1218]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/20 to-transparent" />
-          <div className="absolute bottom-3 left-4 right-4 sm:left-6">
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/15 to-transparent" />
+        </div>
+
+        <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-start sm:px-6">
+          <div className="-mt-12 relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border-4 border-primary/80 bg-surface-container-high shadow-xl sm:-mt-14 sm:h-28 sm:w-28">
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="material-symbols-outlined text-4xl text-outline">
+                theater_comedy
+              </span>
+            )}
+          </div>
+          <div className="min-w-0 flex-1 pt-1 sm:pt-3">
             <p className="font-label-sm text-[0.65rem] tracking-[0.25em] text-secondary uppercase">Mestre da Crônica</p>
-            <h1 className="font-headline-lg text-2xl text-on-surface sm:text-3xl">
+            <h1 className="font-headline-lg mt-0.5 break-words text-2xl text-on-surface sm:text-3xl">
               {prefs.courtTitle?.trim() || profile.displayName}
             </h1>
             {prefs.chronicleSlogan?.trim() ? (
               <p className="mt-1 max-w-2xl font-serif text-sm text-on-surface-variant">{prefs.chronicleSlogan}</p>
             ) : null}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-6">
-          <div className="-mt-12 relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border-4 border-primary/80 bg-surface-container-high shadow-xl sm:h-28 sm:w-28">
-            {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <span className="material-symbols-outlined flex h-full w-full items-center justify-center text-4xl text-outline">
-                theater_comedy
-              </span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-secondary">{profile.handle}</p>
+            <p className="mt-2 text-sm text-secondary">{profile.handle}</p>
             <p className="break-all text-xs text-on-surface-variant">{profile.email}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5 text-[10px] tracking-wide text-secondary uppercase">

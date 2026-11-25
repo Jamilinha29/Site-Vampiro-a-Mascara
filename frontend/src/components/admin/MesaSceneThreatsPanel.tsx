@@ -28,6 +28,7 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
     qc.setQueryData(adminQueryKeys.mesaHandout(sessionId), handout)
     void qc.invalidateQueries({ queryKey: adminQueryKeys.sceneThreats(sessionId) })
     void qc.invalidateQueries({ queryKey: ['session-scene-threats', sessionId] })
+    void qc.invalidateQueries({ queryKey: ['session-live-state', sessionId] })
   }
 
   const addThreat = useMutation({

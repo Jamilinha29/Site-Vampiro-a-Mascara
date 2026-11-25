@@ -16,6 +16,7 @@ type Props = {
   showStats?: boolean
   showPrices?: boolean
   showFileUpload?: boolean
+  showImageUpload?: boolean
   showCreatureType?: boolean
   creatureTypeOptions?: string[]
   defaultArchiveCategory?: ChronicleEntity['archiveCategory']
@@ -46,6 +47,7 @@ export function AdminEntityPanel({
   showStats,
   showPrices,
   showFileUpload,
+  showImageUpload,
   showCreatureType,
   creatureTypeOptions = [],
   defaultArchiveCategory,
@@ -77,6 +79,8 @@ export function AdminEntityPanel({
   const [priceSilver, setPriceSilver] = useState(0)
   const [fileName, setFileName] = useState('')
   const [fileUrl, setFileUrl] = useState<string | undefined>()
+  const [imageUrl, setImageUrl] = useState<string | undefined>()
+  const canUploadImage = showImageUpload ?? (kind === 'npc' || kind === 'monster')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -108,6 +112,7 @@ export function AdminEntityPanel({
     setPriceSilver(item.priceSilver ?? 0)
     setFileName(item.fileName ?? '')
     setFileUrl(item.fileUrl)
+    setImageUrl(item.imageUrl)
     setError(null)
     setNotice(null)
   }, [editId, items])
@@ -120,6 +125,7 @@ export function AdminEntityPanel({
       setHpMax(saved.hpMax ?? '')
       setManaMax(saved.manaMax ?? '')
       setLocation(saved.location ?? '')
+      setImageUrl(saved.imageUrl)
       setNotice('Alterações salvas.')
       setError(null)
       void qc.invalidateQueries({ queryKey: ['admin-entities', kind] })
@@ -152,6 +158,7 @@ export function AdminEntityPanel({
       setStatsText('')
       setFileName('')
       setFileUrl(undefined)
+      setImageUrl(undefined)
       setError(null)
     },
     onError: (e: Error) => setError(e.message),
@@ -209,6 +216,9 @@ export function AdminEntityPanel({
     if (showFileUpload && fileName && fileUrl) {
       body.fileName = fileName
       body.fileUrl = fileUrl
+    }
+    if (canUploadImage && imageUrl) {
+      body.imageUrl = imageUrl
     }
     if (editingId) update.mutate({ id: editingId, body })
     else create.mutate(body)
@@ -365,6 +375,41 @@ export function AdminEntityPanel({
         <textarea className="input-feudal textarea-compact mt-1 pl-4" value={desc} onChange={(e) => setDesc(e.target.value)} />
       </label>
 
+      {canUploadImage ? (
+        <div className="space-y-2">
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Foto / ilustração
+            <input
+              type="file"
+              accept="image/*"
+              className="mt-2 block w-full text-xs text-on-surface-variant file:mr-3 file:rounded file:border file:border-secondary/40 file:bg-secondary/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-secondary hover:file:bg-secondary/20"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                try {
+                  setImageUrl(await readProfileImageFile(file))
+                  setError(null)
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Falha ao importar imagem')
+                }
+              }}
+            />
+          </label>
+          {imageUrl ? (
+            <div className="flex items-center gap-3">
+              <img src={imageUrl} alt="" className="h-20 w-20 rounded border border-outline-variant/40 object-cover" />
+              <button
+                type="button"
+                className="text-xs text-on-surface-variant underline hover:text-primary"
+                onClick={() => setImageUrl(undefined)}
+              >
+                Limpar imagem
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {showFileUpload ? (
         <label className="block text-xs uppercase text-on-surface-variant">
           Arquivo (PDF/imagem)
@@ -420,6 +465,7 @@ export function AdminEntityPanel({
               setStatsText('')
               setFileName('')
               setFileUrl(undefined)
+              setImageUrl(undefined)
             }}
           >
             Novo cadastro
@@ -443,8 +489,8 @@ export function AdminEntityPanel({
           ) : (
             <p className="mt-1 text-[11px] text-on-surface-variant">
               {registryVariant === 'npc'
-                ? 'NPCs publicados entram no glossário — complete lá foto e notas narrativas.'
-                : 'Monstros publicados alimentam o glossário — complete lá imagem e camadas do bestiário.'}
+                ? 'NPCs publicados entram no glossário — use o glossário também para notas narrativas extras.'
+                : 'Monstros publicados alimentam o glossário — use o glossário também para camadas e golpes avançados.'}
             </p>
           )}
           {isLoading ? <p className="mt-2 text-sm text-on-surface-variant">Carregando…</p> : null}

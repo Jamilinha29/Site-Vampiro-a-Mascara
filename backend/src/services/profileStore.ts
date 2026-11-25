@@ -202,7 +202,14 @@ let revisionsTableUnavailableUntil = 0
 
 export function publicPlayerId(email: string): string {
   const hex = createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
-  return `ply_${hex.slice(0, 16)}`
+  const num = (BigInt(`0x${hex.slice(0, 15)}`) % 9_000_000_000n) + 1_000_000_000n
+  return num.toString()
+}
+
+function resolveNumericPublicId(email: string, stored?: string | null): string {
+  const trimmed = stored?.trim()
+  if (trimmed && /^\d{8,12}$/.test(trimmed)) return trimmed
+  return publicPlayerId(email)
 }
 
 function clone<T>(value: T): T {
@@ -317,7 +324,7 @@ export async function hydrateProfiles() {
       if (profile?.email) {
         const normalized: UserProfile = {
           ...profile,
-          publicId: profile.publicId ?? publicPlayerId(profile.email),
+          publicId: resolveNumericPublicId(profile.email, profile.publicId),
           preferences: { ...defaultPreferences(), ...(profile.preferences ?? {}) },
           characters: (profile.characters ?? []).map(migrateLegacyCharacter),
         }
@@ -394,8 +401,9 @@ export async function ensureProfile(
       const p = profiles.get(existingKey)!
       const previousName = p.displayName
       const previousRole = p.role
+      const previousPublicId = p.publicId
       p.preferences = { ...defaultPreferences(), ...p.preferences }
-      p.publicId = p.publicId ?? publicPlayerId(p.email)
+      p.publicId = resolveNumericPublicId(p.email, p.publicId)
       p.displayName = displayName
       if (role === 'narrator' || role === 'admin' || options?.authoritative) {
         p.role = role
@@ -405,7 +413,7 @@ export async function ensureProfile(
       } else if (p.role !== 'narrator' && p.role !== 'admin') {
         p.role = role
       }
-      if (previousName !== p.displayName || previousRole !== p.role) {
+      if (previousName !== p.displayName || previousRole !== p.role || previousPublicId !== p.publicId) {
         await commitProfiles([p])
       }
       return p
@@ -468,7 +476,7 @@ export function findProfileByPublicId(publicIdOrEmail: string): UserProfile | nu
   const needle = publicIdOrEmail.trim().toLowerCase()
   if (!needle) return null
   for (const p of profiles.values()) {
-    const pub = (p.publicId ?? publicPlayerId(p.email)).toLowerCase()
+    const pub = resolveNumericPublicId(p.email, p.publicId).toLowerCase()
     if (pub === needle || p.handle.toLowerCase() === needle) {
       return p
     }
@@ -492,7 +500,7 @@ export function listRegisteredPlayers() {
   return [...profiles.values()]
     .filter((p) => p.role === 'player')
     .map((p) => ({
-      id: p.publicId ?? publicPlayerId(p.email),
+      id: resolveNumericPublicId(p.email, p.publicId),
       email: p.email,
       displayName: p.displayName,
       handle: p.handle,
@@ -507,7 +515,7 @@ export function listRegisteredPlayers() {
 export function listSearchableAccounts() {
   return [...profiles.values()]
     .map((p) => ({
-      id: p.publicId ?? publicPlayerId(p.email),
+      id: resolveNumericPublicId(p.email, p.publicId),
       email: p.email,
       displayName: p.displayName,
       handle: p.handle,
@@ -1262,7 +1270,7 @@ export async function replaceProfiles(rows: UserProfile[]) {
       if (profile?.email) {
         profiles.set(profile.email, {
           ...profile,
-          publicId: profile.publicId ?? publicPlayerId(profile.email),
+          publicId: resolveNumericPublicId(profile.email, profile.publicId),
           characters: (profile.characters ?? []).map(migrateLegacyCharacter),
         })
       }

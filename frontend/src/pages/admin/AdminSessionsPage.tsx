@@ -158,25 +158,25 @@ export default function AdminSessionsPage() {
   const sortedHandouts = [...handouts].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="space-y-4 pb-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Sessões</h1>
-        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
           Crie mesas, acompanhe a agenda e publique resumos narrativos para os jogadores.
         </p>
       </header>
 
       <section className="admin-form-panel">
         <p className="font-label-sm text-xs text-secondary uppercase">Criar outra mesa</p>
-        <p className="text-sm text-on-surface-variant">
+        <p className="text-xs text-on-surface-variant sm:text-sm">
           Nova sessão agendada para hoje às 20h (horário local). Preencha a ficha da mesa — os jogadores veem a mesma
           tabela na sala ao vivo.
         </p>
         <SessionTableMetaForm columns="row" value={tableMeta} onChange={setTableMeta} />
-        <label className="mt-3 block text-xs uppercase text-on-surface-variant">
+        <label className="mt-2 block text-xs uppercase text-on-surface-variant">
           Acesso
           <select
-            className="input-feudal mt-1 py-2 pl-3 text-sm normal-case"
+            className="input-feudal mt-1 pl-3 normal-case"
             value={listing}
             onChange={(e) => setListing(e.target.value as 'public' | 'private')}
           >
@@ -186,7 +186,7 @@ export default function AdminSessionsPage() {
         </label>
         <button
           type="button"
-          className="btn-primary mt-4 text-xs"
+          className="btn-primary mt-3 text-xs"
           disabled={createTable.isPending || !tableMeta.campaignName.trim()}
           onClick={() => createTable.mutate()}
         >
@@ -197,16 +197,16 @@ export default function AdminSessionsPage() {
         ) : null}
       </section>
 
-      <section className="mesa-panel p-5">
-        <h2 className="font-headline-sm text-lg">Mesas em andamento</h2>
-        <ul className="mt-4 space-y-3 text-sm">
+      <section className="mesa-panel p-3.5 sm:p-4">
+        <h2 className="font-headline-sm text-base sm:text-lg">Mesas em andamento</h2>
+        <ul className="mt-3 grid gap-2.5 text-sm md:grid-cols-2">
           {[...scheduled]
             .filter((s) => s.status !== 'closed')
             .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
             .map((s) => (
               <li
                 key={s.id}
-                className="rounded border border-outline-variant/40 px-3 py-3"
+                className="flex flex-col justify-between rounded border border-outline-variant/40 px-3 py-2.5"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>

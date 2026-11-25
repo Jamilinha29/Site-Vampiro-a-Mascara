@@ -81,24 +81,24 @@ export function AppSidebarShell({
 
   const sidebarContent = (
     <div className="flex h-full min-h-0 flex-col bg-surface-container-lowest">
-      <div className="border-b border-outline-variant/30 px-4 py-4">
-        <Link to={homePath} className="flex items-center gap-2.5 transition hover:opacity-90">
-          <BrandLogo size="xs" withGlow className="h-9 w-9 shrink-0" />
+      <div className="border-b border-outline-variant/30 px-3.5 py-2.5">
+        <Link to={homePath} className="flex items-center gap-2 transition hover:opacity-90">
+          <BrandLogo size="xs" withGlow className="h-8 w-8 shrink-0" />
           <div className="min-w-0 leading-tight">
-            <p className="truncate font-label-sm text-[10px] font-semibold tracking-[0.16em] text-secondary uppercase">
+            <p className="truncate font-label-sm text-[9px] font-semibold tracking-[0.16em] text-secondary uppercase">
               As Crônicas de
             </p>
-            <p className="truncate font-serif text-base font-semibold text-on-surface">Beladona</p>
+            <p className="truncate font-serif text-sm font-semibold text-on-surface">Beladona</p>
           </div>
         </Link>
       </div>
 
-      <div className="border-b border-outline-variant/25 px-3 py-3">
+      <div className="border-b border-outline-variant/25 px-2.5 py-2">
         <Link
           to={profilePath}
-          className="group relative block overflow-hidden rounded-lg border border-outline-variant/35 bg-surface-container-low/80 p-3 text-center transition hover:border-secondary/50"
+          className="group relative block overflow-hidden rounded-lg border border-outline-variant/35 bg-surface-container-low/80 p-2.5 text-center transition hover:border-secondary/50"
         >
-          <div className="absolute inset-x-0 top-0 h-14 overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-11 overflow-hidden">
             {profile?.bannerUrl ? (
               <img src={profile.bannerUrl} alt="" className="h-full w-full object-cover opacity-65 transition group-hover:scale-105" />
             ) : (
@@ -106,33 +106,33 @@ export function AppSidebarShell({
             )}
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-surface-container-low" />
           </div>
-          <div className="relative z-10 mt-3 flex flex-col items-center">
-            <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-secondary/75 bg-surface-container-high shadow-lg">
+          <div className="relative z-10 mt-1.5 flex flex-col items-center">
+            <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-secondary/75 bg-surface-container-high shadow-lg">
               {profile?.avatarUrl ? (
                 <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
               ) : (
-                <span className="material-symbols-outlined text-2xl text-secondary">person</span>
+                <span className="material-symbols-outlined text-xl text-secondary">person</span>
               )}
               <span
                 className="absolute right-0.5 bottom-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
                 title="Online"
               />
             </div>
-            <p className="mt-2 max-w-full truncate text-sm font-semibold text-on-surface">
+            <p className="mt-1.5 max-w-full truncate text-xs font-semibold text-on-surface">
               {profile?.displayName ?? session?.displayName ?? 'Conta'}
             </p>
-            <p className="font-label-sm text-[10px] tracking-[0.14em] text-secondary uppercase">
+            <p className="font-label-sm text-[9px] tracking-[0.14em] text-secondary uppercase">
               {context === 'admin' ? 'Mestre de Mesa' : 'Jogador da Corte'}
             </p>
           </div>
         </Link>
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label={`Navegação ${breadcrumbRoot}`}>
-        <p className="mb-2 px-2.5 font-label-sm text-[10px] font-semibold tracking-[0.16em] text-outline uppercase">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5" aria-label={`Navegação ${breadcrumbRoot}`}>
+        <p className="mb-1.5 px-2 font-label-sm text-[9px] font-semibold tracking-[0.16em] text-outline uppercase">
           {sectionLabel}
         </p>
-        <ul className="space-y-1">
+        <ul className="space-y-0.5">
           {navItems.map((item) => (
             <li key={item.to}>
               <NavLink
@@ -140,7 +140,7 @@ export function AppSidebarShell({
                 end={item.end}
                 className={({ isActive }) =>
                   [
-                    'flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition',
+                    'flex items-center gap-2 rounded-md border px-2 py-1.5 text-[13px] transition',
                     isActive
                       ? 'border-primary-container/50 bg-primary-container/20 font-medium text-on-surface shadow-[inset_0_0_0_1px_rgba(255,179,179,0.08)]'
                       : 'border-transparent text-on-surface-variant hover:bg-surface-container-low/80 hover:text-on-surface',
@@ -150,7 +150,7 @@ export function AppSidebarShell({
                 {({ isActive }) => (
                   <>
                     <span
-                      className={`material-symbols-outlined text-[18px] ${isActive ? 'text-primary' : 'text-outline'}`}
+                      className={`material-symbols-outlined text-[17px] ${isActive ? 'text-primary' : 'text-outline'}`}
                       aria-hidden
                     >
                       {item.icon}
@@ -164,23 +164,21 @@ export function AppSidebarShell({
         </ul>
       </nav>
 
-      <div className="space-y-1 border-t border-outline-variant/25 px-3 py-3 text-sm">
-        {canSwitchToAdmin ? (
+      <div className="space-y-0.5 border-t border-outline-variant/25 px-2.5 py-2 text-[13px]">
+        {context === 'player' && canSwitchToAdmin ? (
           <Link
-            to={context === 'player' ? '/admin' : '/user'}
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-secondary transition hover:bg-surface-container-low"
+            to="/admin"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-secondary transition hover:bg-surface-container-low"
           >
-            <span className="material-symbols-outlined text-[18px]">
-              {context === 'player' ? 'shield_person' : 'stadia_controller'}
-            </span>
-            <span className="truncate">{context === 'player' ? 'Painel do narrador' : 'Área do jogador'}</span>
+            <span className="material-symbols-outlined text-[17px]">shield_person</span>
+            <span className="truncate">Painel do narrador</span>
           </Link>
         ) : null}
         <Link
           to="/ajuda/codice"
-          className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
         >
-          <span className="material-symbols-outlined text-[18px] text-outline">help</span>
+          <span className="material-symbols-outlined text-[17px] text-outline">help</span>
           <span>Ajuda &amp; códice</span>
         </Link>
         <button
@@ -189,9 +187,9 @@ export function AppSidebarShell({
             logout()
             navigate('/auth/login')
           }}
-          className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary"
         >
-          <span className="material-symbols-outlined text-[18px] text-outline">logout</span>
+          <span className="material-symbols-outlined text-[17px] text-outline">logout</span>
           <span>Sair</span>
         </button>
       </div>
@@ -226,11 +224,11 @@ export function AppSidebarShell({
         ) : null}
 
         <header className="sticky top-0 z-30 border-b border-outline-variant/30 bg-surface-container-lowest/90 backdrop-blur-md">
-          <div className="safe-px flex h-14 items-center justify-between gap-3">
+          <div className="safe-px flex h-12 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <button
                 type="button"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-outline-variant/40 text-on-surface-variant hover:border-secondary/50 hover:text-on-surface lg:hidden"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-outline-variant/40 text-on-surface-variant hover:border-secondary/50 hover:text-on-surface lg:hidden"
                 onClick={() => setDrawerOpen(true)}
                 aria-label="Abrir navegação"
               >
@@ -251,12 +249,12 @@ export function AppSidebarShell({
           </div>
         </header>
 
-        <main className="safe-px mx-auto w-full min-h-0 min-w-0 max-w-7xl flex-1 py-6">
+        <main className="safe-px mx-auto w-full min-h-0 min-w-0 max-w-[1440px] flex-1 py-3.5 sm:py-4">
           <Outlet />
         </main>
 
-        <footer className="safe-px safe-pb mt-auto border-t border-outline-variant/25 py-3 text-xs text-outline">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
+        <footer className="safe-px safe-pb mt-auto border-t border-outline-variant/25 py-2 text-[11px] text-outline">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2">
             <span>As Crônicas de Beladona</span>
             <span className="italic">Uma história que continua.</span>
           </div>

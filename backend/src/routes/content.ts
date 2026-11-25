@@ -121,6 +121,22 @@ function denySession(res: import('express').Response, reason: 'not_found' | 'for
   res.status(403).json(errorPayload('FORBIDDEN', 'Você não está nesta mesa.'))
 }
 
+contentRouter.get('/sessions/:sessionId/live-state', (req, res) => {
+  const access = sessionAccess(req.params.sessionId, req.user!)
+  if (!access.ok) {
+    denySession(res, access.reason)
+    return
+  }
+  const sid = req.params.sessionId
+  res.json({
+    threats: listSceneThreatsForSession(sid) ?? [],
+    liveBrief: getSessionLiveBrief(sid),
+    myBag: getSessionBagForPlayer(sid, req.user!.email) ?? { rewards: [] },
+    actions: listSessionActions(sid, 60),
+    rolls: listRolls(sid, req.user!) ?? [],
+  })
+})
+
 contentRouter.get('/sessions/:sessionId/scene-threats', (req, res) => {
   const access = sessionAccess(req.params.sessionId, req.user!)
   if (!access.ok) {

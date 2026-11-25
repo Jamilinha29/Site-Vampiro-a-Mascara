@@ -34,7 +34,8 @@ export function NotificationBell({ className = '' }: { className?: string }) {
   const { data: countData } = useQuery({
     queryKey: playerQueryKeys.notificationsUnread,
     queryFn: () => api.getUnreadNotificationCount(),
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   })
 
   const { data: items = [], isLoading, isFetching } = useQuery({

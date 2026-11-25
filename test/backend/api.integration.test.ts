@@ -121,3 +121,55 @@ describe('auth login', () => {
     expect(res.status).toBeGreaterThanOrEqual(400)
   })
 })
+
+describe('unified live session state endpoint', () => {
+  const narratorToken = `dev-${Buffer.from('narrador.live@test.local').toString('base64url')}`
+  const playerToken = `dev-${Buffer.from('jogador.live@test.local').toString('base64url')}`
+  const outsiderToken = `dev-${Buffer.from('outsider.live@test.local').toString('base64url')}`
+
+  it('returns consolidated live state for seated participant and blocks outsiders', async () => {
+    await ensureProfile('narrador.live@test.local', 'Narrador Live', 'narrator')
+    await ensureProfile('jogador.live@test.local', 'Jogador Live', 'player')
+    await ensureProfile('outsider.live@test.local', 'Outsider Live', 'player')
+
+    const charRes = await request(app)
+      .post('/api/v1/me/characters')
+      .set('Authorization', `Bearer ${playerToken}`)
+      .send({ name: 'Helena', species: 'Vampiro', hp: { current: 10, max: 10 } })
+    expect(charRes.status).toBe(201)
+
+    const sessRes = await request(app)
+      .post('/api/v1/admin/chronicle/scheduled-sessions')
+      .set('Authorization', `Bearer ${narratorToken}`)
+      .send({ title: 'Ato da Névoa', scheduledAt: new Date().toISOString(), listing: 'private' })
+    expect(sessRes.status).toBe(201)
+    const sessionId = sessRes.body.id as string
+    const accessCode = sessRes.body.accessCode as string
+
+    await request(app)
+      .post(`/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/open`)
+      .set('Authorization', `Bearer ${narratorToken}`)
+      .expect(200)
+
+    await request(app)
+      .post(`/api/v1/me/sessions/${sessionId}/join`)
+      .set('Authorization', `Bearer ${playerToken}`)
+      .send({ accessCode, characterId: charRes.body.id })
+      .expect(200)
+
+    await request(app)
+      .get(`/api/v1/content/sessions/${sessionId}/live-state`)
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .expect(403)
+
+    const liveRes = await request(app)
+      .get(`/api/v1/content/sessions/${sessionId}/live-state`)
+      .set('Authorization', `Bearer ${playerToken}`)
+      .expect(200)
+
+    expect(Array.isArray(liveRes.body.threats)).toBe(true)
+    expect(Array.isArray(liveRes.body.actions)).toBe(true)
+    expect(Array.isArray(liveRes.body.rolls)).toBe(true)
+    expect(Array.isArray(liveRes.body.myBag?.rewards)).toBe(true)
+  })
+})

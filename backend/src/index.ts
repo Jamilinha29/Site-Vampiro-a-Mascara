@@ -18,6 +18,7 @@ import { registrationsRouter } from './routes/registrations.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { walletsRouter } from './routes/wallets.js'
 import { hydrateCampaignExtras } from './services/campaignExtras.js'
+import { primeDocumentsCache } from './services/campaignDocuments.js'
 import { hydrateEntitiesFromDatabase, hydrateSessions } from './services/chronicleStore.js'
 import { hydrateCourt } from './services/courtStore.js'
 import { errorPayload } from './services/errors.js'
@@ -54,6 +55,25 @@ app.use('/api/v1/registrations', rateLimit({ windowMs: 60 * 1000, max: 20 }), re
 
 let readyError: unknown = null
 
+const STARTUP_DOCUMENT_IDS = [
+  'profiles',
+  'character-revisions',
+  'sessions',
+  'session-actions',
+  'court',
+  'shop',
+  'idempotency-ops',
+  'notices',
+  'notification-reads',
+  'operations',
+  'rolls',
+  'campaign-board',
+  'mesa-secrets',
+  'player-filters',
+  'campaign-rules',
+  'backup-metadata',
+] as const
+
 async function initializeBackend() {
   const envCheck = validateStartupEnvironment()
   for (const warning of envCheck.warnings) {
@@ -65,6 +85,7 @@ async function initializeBackend() {
   if (process.env.NODE_ENV === 'test') {
     return
   }
+  await primeDocumentsCache(STARTUP_DOCUMENT_IDS)
   await Promise.all([
     hydrateEntitiesFromDatabase(),
     hydrateReferenceCatalog(),

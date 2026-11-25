@@ -36,19 +36,19 @@ export default function DownloadsPage() {
   const tomeFiles = [...(rules?.files ?? []), ...(handouts?.files ?? [])]
 
   return (
-    <div className="space-y-10 pb-8">
+    <div className="space-y-5 pb-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de downloads</h1>
-        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
           Histórico de atos, fichas imprimíveis e tratados da crônica publicados pelo narrador.
         </p>
       </header>
 
-      <section className="space-y-4">
+      <section className="space-y-3">
         <h2 className="font-headline-sm text-lg text-on-surface">Histórico de atos da crônica</h2>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
           {actCards.map((h) => (
-            <article key={h.id} className="mesa-panel flex flex-col p-5">
+            <article key={h.id} className="mesa-panel flex flex-col p-3.5 sm:p-4">
               <p className="font-serif text-lg text-on-surface">{h.chronicleName ?? h.title}</p>
               <p className="mt-2 line-clamp-3 text-sm text-on-surface-variant">
                 {h.narrativeSummary || 'Resumo narrativo ainda não publicado.'}

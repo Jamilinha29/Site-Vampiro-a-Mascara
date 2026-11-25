@@ -62,7 +62,8 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
   const sessionActions = useQuery({
     queryKey: ['admin-session-actions', session.id],
     queryFn: () => api.adminGetSessionActions(session.id),
-    refetchInterval: session.status !== 'closed' ? 5000 : false,
+    refetchInterval: session.status === 'open' ? 10_000 : false,
+    refetchIntervalInBackground: false,
   })
 
   useEffect(() => {
@@ -247,9 +248,9 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
   }
 
   return (
-    <div className="min-w-0 space-y-4 pb-8">
+    <div className="min-w-0 space-y-3 pb-4">
       <header className="mesa-panel overflow-hidden">
-        <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-3 px-3.5 py-3 sm:px-4">
           <div>
             <p className="text-xs text-on-surface-variant uppercase tracking-wider">Centro de comando</p>
             <h1 className="font-headline-lg text-xl text-primary sm:text-2xl">
@@ -327,7 +328,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
       </header>
 
       <section className="mesa-panel overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/30 bg-surface-container-low/60 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/30 bg-surface-container-low/60 px-3.5 py-2.5 sm:px-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Ficha da mesa</h2>
           <button
             type="button"
@@ -345,7 +346,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
             {editTableMeta ? 'Cancelar' : 'Editar ficha'}
           </button>
         </div>
-        <div className="space-y-3 p-4 sm:p-6">
+        <div className="space-y-2.5 p-3.5 sm:p-4">
           {editTableMeta ? (
             <>
               <SessionTableMetaForm
@@ -379,16 +380,16 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         <MetricCard label="NPCs em cena" value={String(sceneNpcs.length)} hint="Missões / diálogo" />
       </div>
 
-      <section className="mesa-panel p-4 sm:p-5">
+      <section className="mesa-panel p-3.5 sm:p-4">
         <h2 className="font-label-sm text-xs text-secondary uppercase">Governança da crônica</h2>
         <p className="mt-1 text-xs text-on-surface-variant">{EXTERNAL_MAP_NOTICE_ADMIN}</p>
         <p className="mt-1 text-xs text-on-surface-variant">Clima e tom — refletidos na sala dos jogadores (sem mapa embutido).</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           {(Object.keys(CHRONICLE_AMBIENCE_OPTIONS) as Array<keyof ChronicleAmbience>).map((field) => (
             <label key={field} className="text-[0.65rem] uppercase text-on-surface-variant">
               {AMBIENCE_FIELD_LABELS[field]}
               <select
-                className="input-feudal mt-1 w-full py-2 pl-3 text-sm normal-case"
+                className="input-feudal mt-1 w-full pl-3 normal-case"
                 value={ambience[field]}
                 disabled={!live || ambienceMutation.isPending}
                 onChange={(e) => patchAmbienceField(field, e.target.value)}
@@ -404,22 +405,22 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="mesa-panel p-4 sm:p-5">
+      <div className="grid gap-3 md:grid-cols-2">
+        <section className="mesa-panel p-3.5 sm:p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Ameaças em cena</h2>
           <p className="mt-1 text-xs text-on-surface-variant">Escolha monstros publicados no acervo — sem sair da mesa.</p>
-          <div className="mt-4">
+          <div className="mt-3">
             <MesaSceneThreatsPanel sessionId={session.id} live={live} threats={threats} />
           </div>
         </section>
-        <section className="mesa-panel p-4 sm:p-5">
+        <section className="mesa-panel p-3.5 sm:p-4">
           <MesaSceneNpcsPanel sessionId={session.id} live={live} npcs={sceneNpcs} layout="standalone" />
         </section>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-        <section className="mesa-panel flex h-full flex-col p-4 sm:p-6">
-          <div className="flex min-h-0 flex-1 flex-col rounded border border-secondary/40 bg-secondary/5 p-3 text-xs">
+      <div className="grid gap-3 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col p-3.5 sm:p-4">
+          <div className="flex min-h-0 flex-1 flex-col rounded border border-secondary/40 bg-secondary/5 p-2.5 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-secondary uppercase">Sussurro do narrador</span>
               <button
@@ -432,7 +433,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
               </button>
             </div>
             <textarea
-              className="input-feudal mt-2 min-h-[8rem] flex-1 w-full pl-3 text-sm normal-case lg:min-h-[10rem]"
+              className="input-feudal mt-2 min-h-[6rem] flex-1 w-full pl-3 text-sm normal-case lg:min-h-[7rem]"
               placeholder="Notas secretas, corrupção interna, gatilhos…"
               value={whisper}
               onChange={(e) => setWhisper(e.target.value)}
@@ -440,12 +441,12 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
           </div>
         </section>
 
-        <section className="mesa-panel flex h-full flex-col p-4 sm:p-5">
+        <section className="mesa-panel flex h-full flex-col p-3.5 sm:p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Iniciativa & ordem de turnos</h2>
           <p className="mt-1 text-xs text-on-surface-variant">
             Rodada {round} · personagens e ameaças colocados em cena.
           </p>
-          <div className="mt-4 flex min-h-[8rem] flex-1 gap-3 overflow-x-auto pb-2 lg:min-h-[10rem]">
+          <div className="mt-3 flex min-h-[6rem] flex-1 gap-2.5 overflow-x-auto pb-1.5 lg:min-h-[7rem]">
             {handout.participants.map((p, i) => (
               <InitiativeCard
                 key={p.characterName}

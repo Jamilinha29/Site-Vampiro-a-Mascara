@@ -105,7 +105,7 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
       .set('Authorization', `Bearer ${token}`)
     expect(match.status).toBe(200)
     expect(match.body).toHaveLength(1)
-    expect(match.body[0].id).toMatch(/^ply_/)
+    expect(match.body[0].id).toMatch(/^\d{10}$/)
     expect(match.body[0].email).toBeUndefined()
   })
 
@@ -244,7 +244,8 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
     const tokenMain = signDevToken(narMain, 'Mestre Principal', 'narrator').accessToken
     const tokenSec = signDevToken(narSec, 'Mestre Secundário', 'narrator').accessToken
 
-    // Jogador encontra narrador pelo Código ID (ply_...) e envia pedido de amizade
+    // Jogador encontra narrador pelo Código ID numérico e envia pedido de amizade
+    expect(narProfile.publicId).toMatch(/^\d{10}$/)
     const searchNar = await request(app)
       .get(`/api/v1/court/players?q=${encodeURIComponent(narProfile.publicId!)}`)
       .set('Authorization', `Bearer ${tokenPlayer}`)

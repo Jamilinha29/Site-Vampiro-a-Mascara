@@ -147,15 +147,25 @@ export function profileObjectPath(slot: 'avatar' | 'banner', ext: string) {
   return `${randomUUID()}/${slot}.${ext}`
 }
 
+let bucketsChecked = false
+
 export async function ensureMediaBuckets() {
+  if (bucketsChecked) return
   const sb = getSupabaseAdmin()
   if (!sb) return
-  const publicBuckets = [
+  bucketsChecked = true
+  const requiredBuckets = [
     { id: PROFILE_BUCKET, isPublic: true, mimes: [...ALLOWED_IMAGES] },
     { id: CATALOG_BUCKET, isPublic: true, mimes: [...ALLOWED_IMAGES] },
     { id: PRIVATE_BUCKET, isPublic: false, mimes: [...ALLOWED_DOWNLOADS] },
   ]
-  for (const bucket of publicBuckets) {
+  const { data: existing, error: listError } = await sb.storage.listBuckets()
+  const existingIds = new Set((existing ?? []).map((b) => b.id))
+  if (!listError && requiredBuckets.every((b) => existingIds.has(b.id))) {
+    return
+  }
+  for (const bucket of requiredBuckets) {
+    if (existingIds.has(bucket.id)) continue
     const { error } = await sb.storage.createBucket(bucket.id, {
       public: bucket.isPublic,
       fileSizeLimit: MAX_BYTES,

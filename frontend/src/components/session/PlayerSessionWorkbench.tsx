@@ -20,6 +20,9 @@ import {
   sumEquippedBonuses,
 } from '../../lib/equipmentMods'
 import type { CreatedSkill, ProfileCharacterSummary } from '../../types/profile'
+import type { SceneThreat } from '../../types/chronicle'
+
+const EMPTY_THREATS: SceneThreat[] = []
 
 type Props = {
   sessionId: string
@@ -48,28 +51,19 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     queryFn: () => api.getMeProfile(),
   })
   const session = scheduled.find((s) => s.id === sessionId)
-  const isLive = !session || session.status !== 'closed'
+  const isLive = session?.status === 'open'
 
-  const { data: threats = [] } = useQuery({
-    queryKey: playerQueryKeys.sceneThreats(sessionId),
-    queryFn: () => api.getSessionSceneThreats(sessionId),
-    refetchInterval: isLive ? 5000 : false,
+  const { data: liveState } = useQuery({
+    queryKey: ['session-live-state', sessionId],
+    queryFn: () => api.getSessionLiveState(sessionId),
+    refetchInterval: isLive ? 10_000 : false,
+    refetchIntervalInBackground: false,
   })
-  const { data: liveBrief } = useQuery({
-    queryKey: ['session-live-brief', sessionId],
-    queryFn: () => api.getSessionLiveBrief(sessionId),
-    refetchInterval: isLive ? 5000 : false,
-  })
-  const { data: myBag } = useQuery({
-    queryKey: ['session-my-bag', sessionId],
-    queryFn: () => api.getSessionMyBag(sessionId),
-    refetchInterval: isLive ? 15_000 : false,
-  })
-  const { data: persistedActions = [] } = useQuery({
-    queryKey: ['session-actions', sessionId],
-    queryFn: () => api.getSessionActions(sessionId),
-    refetchInterval: isLive ? 5000 : false,
-  })
+  const threats = liveState?.threats ?? EMPTY_THREATS
+  const liveBrief = liveState?.liveBrief ?? null
+  const myBag = liveState?.myBag
+  const persistedActions = liveState?.actions ?? []
+  const sessionRolls = liveState?.rolls ?? []
 
   const seat = session?.mySeat ?? session?.seats?.find((s) => s.email === auth?.email && !s.leftAt)
   const character: ProfileCharacterSummary | undefined =
@@ -174,7 +168,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         summary,
         detail,
       })
-      void qc.invalidateQueries({ queryKey: ['session-actions', sessionId] })
+      void qc.invalidateQueries({ queryKey: ['session-live-state', sessionId] })
     } catch {
       /* ação local já registrada caso rede oscile */
     }
@@ -353,11 +347,11 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 </p>
               ) : null}
               <div className="flex gap-4">
-                <div className="h-28 w-24 shrink-0 overflow-hidden rounded border border-secondary/40 bg-surface-container-high">
+                <div className="flex h-28 w-24 shrink-0 items-center justify-center overflow-hidden rounded border border-secondary/40 bg-surface-container-high">
                   {character.portraitUrl ? (
                     <img src={character.portraitUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="material-symbols-outlined flex h-full w-full items-center justify-center text-3xl text-outline">
+                    <span className="material-symbols-outlined text-3xl text-outline">
                       face
                     </span>
                   )}
@@ -446,7 +440,12 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 </div>
               ) : null}
 
-              <SessionRollBox sessionId={sessionId} characterName={character.name} isLive={isLive} />
+              <SessionRollBox
+                sessionId={sessionId}
+                characterName={character.name}
+                rolls={sessionRolls}
+                onRolled={() => void qc.invalidateQueries({ queryKey: ['session-live-state', sessionId] })}
+              />
 
               <div className="flex flex-wrap gap-2">
                 <Link to={`/user/characters/${character.id}?view=ficha`} className="btn-secondary text-xs">
@@ -595,7 +594,12 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </div>
       </div>
 
-      <FerreiroPanel sessionId={sessionId} characterId={character?.id} characterLevel={character?.level ?? 1} />
+      <FerreiroPanel
+        sessionId={sessionId}
+        characterId={character?.id}
+        characterLevel={character?.level ?? 1}
+        isLive={isLive}
+      />
 
       <SessionPanel title="Ameaças em cena" icon="pest_control">
         {threats.length === 0 ? (
@@ -655,20 +659,16 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
 function SessionRollBox({
   sessionId,
   characterName,
-  isLive = true,
+  rolls,
+  onRolled,
 }: {
   sessionId: string
   characterName: string
-  isLive?: boolean
+  rolls: Array<{ id: string; at: string; characterName: string; formula: string; total: number; secret: boolean }>
+  onRolled: () => void
 }) {
   const [formula, setFormula] = useState('1d10')
   const { push } = useToast()
-  const qc = useQueryClient()
-  const rolls = useQuery({
-    queryKey: ['session-rolls', sessionId],
-    queryFn: () => api.listSessionRolls(sessionId),
-    refetchInterval: isLive ? 5000 : false,
-  })
   return (
     <div className="space-y-2 rounded border border-outline-variant/35 p-3">
       <p className="text-xs font-semibold tracking-wider text-secondary uppercase">Rolagem</p>
@@ -680,7 +680,7 @@ function SessionRollBox({
             .rollAtSession(sessionId, { formula, characterName })
             .then((row) => {
               push(`${row.formula} = ${row.total}`, 'success')
-              void qc.invalidateQueries({ queryKey: ['session-rolls', sessionId] })
+              onRolled()
             })
             .catch((error: Error) => push(error.message, 'error'))
         }}
@@ -694,7 +694,7 @@ function SessionRollBox({
         </button>
       </form>
       <ul className="space-y-1 text-xs text-on-surface-variant">
-        {(rolls.data ?? []).slice(-5).reverse().map((row) => (
+        {rolls.slice(-5).reverse().map((row) => (
           <li key={row.id}>
             {row.characterName}: {row.formula} = {row.secret ? 'secreta' : row.total}
           </li>

@@ -1,5 +1,4 @@
 import { NotificationBell } from '../domain/NotificationBell'
-import { UserProfileMenu } from '../domain/UserProfileMenu'
 import { AppSidebarShell, type SidebarNavItem } from './AppSidebarShell'
 
 const PLAYER_NAV: readonly SidebarNavItem[] = [
@@ -26,12 +25,7 @@ export function PlayerShell() {
       navItems={PLAYER_NAV}
       breadcrumbRoot="Jogador"
       routeLabels={PLAYER_LABELS}
-      headerRight={
-        <>
-          <NotificationBell />
-          <UserProfileMenu context="player" />
-        </>
-      }
+      headerRight={<NotificationBell />}
     />
   )
 }

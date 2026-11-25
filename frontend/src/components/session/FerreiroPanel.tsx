@@ -8,6 +8,7 @@ type Props = {
   sessionId: string
   characterId?: string
   characterLevel: number
+  isLive?: boolean
 }
 
 const coinLabel: Record<CoinCode, string> = { gold: 'ouro', silver: 'prata', copper: 'bronze' }
@@ -22,7 +23,7 @@ function priceOf(item: { priceGold: number; priceSilver: number; priceCopper: nu
   return { coin: parts[0].coin, amount: parts[0].amount, label: parts.map((part) => part.label).join(' + ') }
 }
 
-export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props) {
+export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive = true }: Props) {
   const [tab, setTab] = useState<'comercio' | 'leilao'>('comercio')
   const [bidAmount, setBidAmount] = useState(1)
   const [bidCoin, setBidCoin] = useState<CoinCode>('silver')
@@ -31,7 +32,8 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props)
   const { data, isLoading } = useQuery({
     queryKey: ['ferreiro', sessionId, characterId],
     queryFn: () => api.getFerreiro(sessionId, characterId),
-    refetchInterval: tab === 'leilao' ? 5000 : 30_000,
+    refetchInterval: !isLive ? false : tab === 'leilao' ? 10_000 : 60_000,
+    refetchIntervalInBackground: false,
   })
   const { data: wallet } = useQuery({
     queryKey: ['wallet', 'active'],

@@ -48,15 +48,15 @@ export default function FriendsPage() {
   })
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-4 pb-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Amigos</h1>
-        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
-          Procure jogadores ou narradores pelo nome, @handle ou Código ID. Amigos aparecem na busca de mesas, inclusive as privadas que pedem código de sala.
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
+          Procure jogadores ou narradores pelo nome, @handle ou Código ID numérico. Amigos aparecem na busca de mesas, inclusive as privadas que pedem código de sala.
         </p>
       </header>
 
-      <section className="mesa-panel p-5">
+      <section className="mesa-panel p-3.5 sm:p-4">
         <form
           className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
           onSubmit={(e) => {
@@ -98,7 +98,7 @@ export default function FriendsPage() {
                     </span>
                   ) : null}
                   {player.id ? (
-                    <p className="mt-0.5 break-all font-mono text-[11px] text-outline">{player.id}</p>
+                    <p className="mt-0.5 font-mono text-[11px] text-outline">ID: {player.id}</p>
                   ) : null}
                 </div>
                 {player.relation === 'none' ? (
@@ -146,7 +146,7 @@ export default function FriendsPage() {
         </section>
       ) : null}
 
-      <section className="mesa-panel p-5">
+      <section className="mesa-panel p-3.5 sm:p-4">
         <h2 className="font-headline-sm text-lg">Seus amigos</h2>
         {(book?.friends.length ?? 0) === 0 ? (
           <p className="mt-2 text-sm text-on-surface-variant">Você ainda não tem amigos na corte.</p>
@@ -166,7 +166,7 @@ export default function FriendsPage() {
                       </span>
                     ) : null}
                     {friend.id ? (
-                      <p className="mt-0.5 break-all font-mono text-[11px] text-outline">{friend.id}</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-outline">ID: {friend.id}</p>
                     ) : null}
                   </div>
                   {confirming ? (

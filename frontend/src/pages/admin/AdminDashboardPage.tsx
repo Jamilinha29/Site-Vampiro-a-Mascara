@@ -33,10 +33,10 @@ export default function AdminDashboardPage() {
   const openMesas = handouts.filter((h) => h.status === 'pending_close')
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Início</h1>
-        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
           Mesa do narrador: mesas abertas, agenda e estatísticas. Crie novas mesas em Sessões.
         </p>
       </header>
@@ -62,20 +62,20 @@ export default function AdminDashboardPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         {todayMesa ? (
-          <section className="card-surface border-secondary/35 p-5">
+          <section className="card-surface border-secondary/35 p-3.5 sm:p-4">
             <p className="font-label-sm text-xs text-secondary uppercase">Mesa de hoje</p>
-            <p className="mt-1 font-serif text-xl text-on-surface">{mesaDisplayName(todayMesa)}</p>
-            <p className="mt-1 text-xs text-on-surface-variant">
+            <p className="mt-1 font-serif text-lg text-on-surface">{mesaDisplayName(todayMesa)}</p>
+            <p className="mt-0.5 text-xs text-on-surface-variant">
               {new Date(todayMesa.scheduledAt).toLocaleString('pt-BR')}
             </p>
-            <Link to={`/admin/mesa/${todayMesa.id}`} className="btn-primary mt-4 inline-flex text-xs">
+            <Link to={`/admin/mesa/${todayMesa.id}`} className="btn-primary mt-3 inline-flex text-xs">
               Abrir mesa
             </Link>
           </section>
         ) : (
-          <section className="card-surface p-5">
+          <section className="card-surface p-3.5 sm:p-4">
             <p className="font-label-sm text-xs text-secondary uppercase">Nenhuma mesa hoje</p>
             <p className="mt-1 text-sm text-on-surface-variant">
               Crie uma mesa em <Link to="/admin/sessions" className="text-secondary underline">Sessões</Link>.
@@ -83,40 +83,40 @@ export default function AdminDashboardPage() {
           </section>
         )}
 
-        <section className="card-surface p-5">
+        <section className="card-surface p-3.5 sm:p-4">
           <p className="font-label-sm text-xs text-secondary uppercase">Nova mesa</p>
           <p className="mt-1 text-sm text-on-surface-variant">
             O formulário <strong className="text-on-surface">Criar outra mesa</strong> agora fica em Sessões.
           </p>
-          <Link to="/admin/sessions" className="btn-secondary mt-4 inline-flex text-xs">
+          <Link to="/admin/sessions" className="btn-secondary mt-3 inline-flex text-xs">
             Ir para sessões
           </Link>
         </section>
       </div>
 
-      <section className="card-surface p-5">
-        <h2 className="font-headline-sm text-lg">Próximas sessões marcadas</h2>
-        <p className="mt-1 text-sm text-on-surface-variant">
+      <section className="card-surface p-3.5 sm:p-4">
+        <h2 className="font-headline-sm text-base sm:text-lg">Próximas sessões marcadas</h2>
+        <p className="mt-1 text-xs text-on-surface-variant sm:text-sm">
           Calendário da agenda, atividade recente e personagens criados pelos jogadores.
         </p>
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
           <AdminSessionCalendar sessions={scheduled} />
           <AdminLineChart series={lineSeries} />
           <AdminCharacterPieChart series={playerCharacterSeries} />
         </div>
       </section>
 
-      <section className="card-surface p-5">
+      <section className="card-surface p-3.5 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-headline-sm text-lg">Mesas não encerradas</h2>
+          <h2 className="font-headline-sm text-base sm:text-lg">Mesas não encerradas</h2>
           <Link to="/admin/sessions" className="btn-secondary text-xs">
             Ver todos os resumos
           </Link>
         </div>
         {openMesas.length === 0 ? (
-          <p className="mt-3 text-sm text-on-surface-variant">Nenhuma mesa em andamento.</p>
+          <p className="mt-2.5 text-sm text-on-surface-variant">Nenhuma mesa em andamento.</p>
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-2.5 grid gap-2 md:grid-cols-2">
             {openMesas.map((h) => (
               <li
                 key={h.id}
@@ -140,10 +140,10 @@ export default function AdminDashboardPage() {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="card-surface p-4">
+    <div className="card-surface p-3">
       <p className="text-[0.65rem] uppercase tracking-wider text-on-surface-variant">{label}</p>
-      <p className="mt-1 font-serif text-2xl text-on-surface">{value}</p>
-      <p className="mt-1 text-xs text-secondary">{hint}</p>
+      <p className="mt-0.5 font-serif text-xl text-on-surface">{value}</p>
+      <p className="mt-0.5 text-xs text-secondary">{hint}</p>
     </div>
   )
 }

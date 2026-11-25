@@ -122,11 +122,11 @@ export default function ShopPage() {
       selected.stockTotal <= 0)
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-headline-lg text-2xl text-on-surface">Loja da sessão</h1>
-          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+          <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
             Vitrine feudal publicada pelo mestre. A compra entra no inventário do personagem ativo.
           </p>
         </div>

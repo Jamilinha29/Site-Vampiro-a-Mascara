@@ -47,32 +47,32 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 pb-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-4 pb-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="font-label-sm text-[11px] font-semibold tracking-[0.18em] text-secondary uppercase">
             Sua história continua
           </p>
-          <h1 className="font-headline-lg mt-1 text-2xl text-on-surface sm:text-3xl">
+          <h1 className="font-headline-lg mt-0.5 text-xl text-on-surface sm:text-2xl">
             Bem-vindo, {session?.displayName ?? 'jogador'}.
           </h1>
-          <p className="mt-1 text-sm text-on-surface-variant">
+          <p className="mt-0.5 text-xs text-on-surface-variant sm:text-sm">
             Seus personagens, seus vínculos e o próximo capítulo da crônica.
           </p>
         </div>
-        <Link to="/user/characters/new/lineage" className="btn-secondary rounded-md px-4 py-2 text-xs">
+        <Link to="/user/characters/new/lineage" className="btn-secondary text-xs">
           <span className="material-symbols-outlined text-base text-secondary">person_add</span>
           Novo personagem
         </Link>
       </div>
 
       <header className="mesa-panel overflow-hidden">
-        <div className="border-b border-outline-variant/30 bg-surface-container-low/60 px-4 py-4 sm:px-6">
+        <div className="border-b border-outline-variant/30 bg-surface-container-low/60 px-3.5 py-3 sm:px-4">
           <p className="font-label-sm text-[0.65rem] text-secondary uppercase tracking-[0.2em]">{chronicleTitle}</p>
-          <h1 className="font-headline-lg mt-1 text-xl text-on-surface sm:text-2xl">
+          <h1 className="font-headline-lg mt-0.5 text-lg text-on-surface sm:text-xl">
             {data.activeChronicle?.act ?? 'Início da crônica'}
           </h1>
-          <div className="mt-2 flex flex-wrap gap-3 text-xs text-on-surface-variant">
+          <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-on-surface-variant">
             <span>
               Narrador · <span className="text-on-surface">{session?.displayName ?? '—'}</span>
             </span>
@@ -90,12 +90,12 @@ export default function DashboardPage() {
             ) : null}
           </div>
           {active ? (
-            <p className="mt-2 text-sm text-on-surface-variant">
+            <p className="mt-1.5 text-xs text-on-surface-variant sm:text-sm">
               Personagem vinculado · <strong className="text-secondary">{active.name}</strong>
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 sm:px-4">
           <p className="text-xs text-secondary">Modo descanso pode restringir combates e feira — conforme mesa ao vivo.</p>
           <Link to="/user/sessions" className="btn-secondary text-xs">
             Ver sessões
@@ -103,8 +103,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-12">
-        <section className="mesa-panel p-5 xl:col-span-8">
+      <div className="grid gap-4 xl:grid-cols-12">
+        <section className="mesa-panel p-3.5 sm:p-4 xl:col-span-8">
           {active ? (
             <div className="flex flex-col gap-5 sm:flex-row">
               <div className="mx-auto flex h-40 w-32 shrink-0 items-center justify-center overflow-hidden rounded border border-secondary/35 bg-surface-container-high sm:mx-0">
@@ -149,15 +149,15 @@ export default function DashboardPage() {
           )}
         </section>
 
-        <aside className="space-y-4 xl:col-span-4">
-          <div className="mesa-panel p-5">
+        <aside className="space-y-3.5 xl:col-span-4">
+          <div className="mesa-panel p-3.5 sm:p-4">
             <h3 className="font-label-sm text-xs text-secondary uppercase">Carteira imperial</h3>
             <p className="mt-1 text-[11px] text-on-surface-variant">Recebimentos e gastos recentes</p>
-            <div className="mt-3">
+            <div className="mt-2.5">
               <WalletLedgerPanel />
             </div>
           </div>
-          <div className="mesa-panel p-5">
+          <div className="mesa-panel p-3.5 sm:p-4">
             <h3 className="font-label-sm text-xs text-secondary uppercase">Próxima sessão</h3>
             {data.nextSession ? (
               <>
@@ -194,11 +194,11 @@ export default function DashboardPage() {
                 }`}
               >
                 <div className="flex gap-3">
-                  <div className="h-16 w-12 shrink-0 overflow-hidden rounded border border-outline-variant/50 bg-surface-container-high">
+                  <div className="flex h-16 w-12 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant/50 bg-surface-container-high">
                     {full?.portraitUrl ? (
                       <img src={full.portraitUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <span className="material-symbols-outlined flex h-full w-full items-center justify-center text-2xl text-outline">
+                      <span className="material-symbols-outlined text-2xl text-outline">
                         face
                       </span>
                     )}

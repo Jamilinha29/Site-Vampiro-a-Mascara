@@ -112,16 +112,16 @@ export default function AdminMesaPage() {
   // Mais de 1 mesa ao vivo (ou mesa ao vivo de outro narrador disponível para co-narrar / participar)
   if (liveMesas.length >= 1) {
     return (
-      <div className="space-y-6 pb-8">
+      <div className="space-y-4 pb-4">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="font-label-sm text-[11px] font-semibold tracking-[0.18em] text-secondary uppercase">
               Mesas confirmadas ao vivo
             </p>
-            <h1 className="font-headline-lg mt-1 text-2xl text-on-surface">
+            <h1 className="font-headline-lg mt-0.5 text-xl text-on-surface sm:text-2xl">
               Selecionar mesa ao vivo ({liveMesas.length})
             </h1>
-            <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
+            <p className="mt-1 max-w-3xl text-xs text-on-surface-variant sm:text-sm">
               Escolha a mesa que deseja conduzir, entrar como narrador secundário (se o narrador principal permitir) ou participar como jogador.
             </p>
           </div>
@@ -130,13 +130,13 @@ export default function AdminMesaPage() {
           </Link>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {liveMesas.map((m) => {
             const title = m.chronicleName?.trim() || m.title
             const isPublic = m.listing === 'public'
             const defaultCharId = characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? ''
             return (
-              <article key={m.id} className="mesa-panel flex flex-col justify-between gap-4 p-5">
+              <article key={m.id} className="mesa-panel flex flex-col justify-between gap-3 p-3.5 sm:p-4">
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-300 uppercase">
