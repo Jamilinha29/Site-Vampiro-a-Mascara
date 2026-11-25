@@ -4,10 +4,10 @@ import type { ReactNode } from 'react'
 export function ViewportPageShell({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={`flex min-h-svh min-h-dvh max-h-dvh w-full min-w-0 flex-col overflow-hidden bg-surface-container-lowest ${className}`}
+      className={`flex min-h-svh min-h-dvh w-full min-w-0 flex-col overflow-x-clip bg-surface-container-lowest ${className}`}
     >
-      <main className="safe-px safe-pb safe-pt flex min-h-0 w-full min-w-0 flex-1 flex-col items-center justify-center overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-3">
-        {children}
+      <main className="safe-px safe-pb safe-pt flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-x-clip overflow-y-auto px-4 py-4">
+        <div className="my-auto flex w-full min-w-0 flex-col items-center">{children}</div>
       </main>
     </div>
   )

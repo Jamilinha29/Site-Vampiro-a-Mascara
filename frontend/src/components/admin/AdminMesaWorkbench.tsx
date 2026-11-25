@@ -17,13 +17,14 @@ import {
   EXTERNAL_MAP_NOTICE_ADMIN,
 } from '../../lib/chronicleAmbience'
 import { api } from '../../services/api'
-import { adminQueryKeys } from '../../lib/queryKeys'
+import { adminQueryKeys, invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import { SessionTableInfoPanel, SessionTableMetaForm } from '../session/SessionTableInfoPanel'
 import {
   isCampaignLocked,
   resolveSessionTableMeta,
   suggestSessionLabel,
   syncCampaignFields,
+  trimSessionTableMeta,
 } from '../../lib/sessionTableMeta'
 import type { SessionTableMeta } from '../../types/chronicle'
 
@@ -32,13 +33,20 @@ const PRIORITY_LABEL = { baixa: 'Secundária', media: 'Principal', alta: 'Urgent
 type Props = {
   session: ScheduledSession
   actNumber: number
+  liveCount?: number
 }
 
-export function AdminMesaWorkbench({ session, actNumber }: Props) {
+export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const chronicle = mesaDisplayName(session)
   const narrator = useAuthStore((s) => s.session?.displayName ?? 'Mestre')
+  const currentUserEmail = useAuthStore((s) => s.session?.email?.toLowerCase() ?? '')
+  const currentUserRole = useAuthStore((s) => s.session?.role ?? 'narrator')
+  const isPrimaryOwner =
+    currentUserRole === 'admin' ||
+    !session.narratorEmail ||
+    session.narratorEmail.toLowerCase() === currentUserEmail
   const mesa = useMesaHandout(session.id)
   const [round, setRound] = useState(1)
   const [activeTurnIdx, setActiveTurnIdx] = useState(0)
@@ -54,7 +62,7 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
   const sessionActions = useQuery({
     queryKey: ['admin-session-actions', session.id],
     queryFn: () => api.adminGetSessionActions(session.id),
-    refetchInterval: 4000,
+    refetchInterval: session.status !== 'closed' ? 5000 : false,
   })
 
   useEffect(() => {
@@ -82,6 +90,37 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
     mutationFn: (restMode: boolean) => api.adminSetMesaRestMode(session.id, restMode),
     onSuccess: (handout) => {
       qc.setQueryData(adminQueryKeys.mesaHandout(session.id), handout)
+    },
+  })
+
+  const listingMutation = useMutation({
+    mutationFn: (next: 'public' | 'private') => api.adminPatchScheduledSession(session.id, { listing: next }),
+    onSuccess: (_updated, next) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
+      invalidatePlayerPublishedContent(qc)
+      logAudit(next === 'public' ? 'Mesa alterada para pública' : 'Mesa alterada para privada')
+    },
+  })
+
+  const coNarratorMutation = useMutation({
+    mutationFn: (allowCoNarrator: boolean) => api.adminPatchScheduledSession(session.id, { allowCoNarrator }),
+    onSuccess: (_updated, allow) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
+      logAudit(allow ? 'Narrador secundário liberado nesta mesa' : 'Narrador secundário bloqueado nesta mesa')
+    },
+  })
+
+  const closeSessionMutation = useMutation({
+    mutationFn: () => api.adminCloseScheduledSession(session.id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaHandout(session.id) })
+      invalidatePlayerPublishedContent(qc)
+      logAudit('Sessão encerrada')
     },
   })
 
@@ -245,6 +284,36 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
             >
               Modo descanso
             </button>
+            <button
+              type="button"
+              className={`btn-secondary text-xs ${
+                (session.listing ?? 'private') === 'public' ? 'border-secondary text-secondary' : ''
+              }`}
+              disabled={session.status === 'closed' || listingMutation.isPending}
+              onClick={() =>
+                listingMutation.mutate((session.listing ?? 'private') === 'public' ? 'private' : 'public')
+              }
+            >
+              <span className="material-symbols-outlined text-sm">
+                {(session.listing ?? 'private') === 'public' ? 'public' : 'lock'}
+              </span>
+              {(session.listing ?? 'private') === 'public' ? 'Pública · Tornar privada' : 'Privada · Tornar pública'}
+            </button>
+            {isPrimaryOwner ? (
+              <button
+                type="button"
+                className={`btn-secondary text-xs ${session.allowCoNarrator ? 'border-secondary text-secondary' : ''}`}
+                disabled={session.status === 'closed' || coNarratorMutation.isPending}
+                onClick={() => coNarratorMutation.mutate(!session.allowCoNarrator)}
+              >
+                {session.allowCoNarrator ? 'Co-narrador: Liberado' : 'Permitir co-narrador'}
+              </button>
+            ) : null}
+            {liveCount > 1 ? (
+              <Link to="/admin/mesa?select=1" className="btn-secondary text-xs">
+                Trocar mesa ({liveCount})
+              </Link>
+            ) : null}
             <Link to="/admin" className="btn-secondary text-xs">
               Início
             </Link>
@@ -291,7 +360,7 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
                 type="button"
                 className="btn-primary text-xs"
                 disabled={patchTableMeta.isPending}
-                onClick={() => patchTableMeta.mutate(syncCampaignFields(tableMetaDraft))}
+                onClick={() => patchTableMeta.mutate(trimSessionTableMeta(tableMetaDraft))}
               >
                 {patchTableMeta.isPending ? 'Salvando…' : 'Salvar ficha'}
               </button>
@@ -537,10 +606,10 @@ export function AdminMesaWorkbench({ session, actNumber }: Props) {
             <button
               type="button"
               className="btn-secondary text-xs"
-              disabled={mesa.patchHandout.isPending}
-              onClick={() => mesa.patchHandout.mutate({ status: 'closed' })}
+              disabled={closeSessionMutation.isPending}
+              onClick={() => closeSessionMutation.mutate()}
             >
-              Encerrar sessão
+              {closeSessionMutation.isPending ? 'Encerrando…' : 'Encerrar sessão'}
             </button>
           ) : null}
           {live ? (

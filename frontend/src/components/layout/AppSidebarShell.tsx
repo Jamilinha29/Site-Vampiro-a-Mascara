@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { BrandLogo } from '../brand/BrandLogo'
+import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 
 export type SidebarNavItem = {
@@ -42,6 +44,11 @@ export function AppSidebarShell({
   const navigate = useNavigate()
   const session = useAuthStore((s) => s.session)
   const logout = useAuthStore((s) => s.logout)
+  const { data: profile } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api.getMeProfile(),
+    enabled: !!session,
+  })
 
   useEffect(() => {
     const markOffline = () => setOffline(true)
@@ -86,13 +93,38 @@ export function AppSidebarShell({
         </Link>
       </div>
 
-      <div className="border-b border-outline-variant/25 px-4 py-3">
+      <div className="border-b border-outline-variant/25 px-3 py-3">
         <Link
           to={profilePath}
-          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 text-sm text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
+          className="group relative block overflow-hidden rounded-lg border border-outline-variant/35 bg-surface-container-low/80 p-3 text-center transition hover:border-secondary/50"
         >
-          <span className="material-symbols-outlined text-lg text-secondary">person</span>
-          <span className="truncate font-medium text-on-surface">{session?.displayName ?? 'Conta'}</span>
+          <div className="absolute inset-x-0 top-0 h-14 overflow-hidden">
+            {profile?.bannerUrl ? (
+              <img src={profile.bannerUrl} alt="" className="h-full w-full object-cover opacity-65 transition group-hover:scale-105" />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-br from-primary-container/40 via-[#1f1318] to-surface-container-lowest" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-surface-container-low" />
+          </div>
+          <div className="relative z-10 mt-3 flex flex-col items-center">
+            <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-secondary/75 bg-surface-container-high shadow-lg">
+              {profile?.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="material-symbols-outlined text-2xl text-secondary">person</span>
+              )}
+              <span
+                className="absolute right-0.5 bottom-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
+                title="Online"
+              />
+            </div>
+            <p className="mt-2 max-w-full truncate text-sm font-semibold text-on-surface">
+              {profile?.displayName ?? session?.displayName ?? 'Conta'}
+            </p>
+            <p className="font-label-sm text-[10px] tracking-[0.14em] text-secondary uppercase">
+              {context === 'admin' ? 'Mestre de Mesa' : 'Jogador da Corte'}
+            </p>
+          </div>
         </Link>
       </div>
 

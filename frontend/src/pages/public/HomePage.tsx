@@ -1,7 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import { BrandLogo } from '../../components/brand/BrandLogo'
-import { api } from '../../services/api'
 
 const PILLARS = [
   {
@@ -24,9 +22,28 @@ const PILLARS = [
   },
 ] as const
 
-export default function HomePage() {
-  const newsQuery = useQuery({ queryKey: ['news'], queryFn: () => api.getNews() })
+const CHRONICLE_STEPS = [
+  {
+    step: '01',
+    icon: 'person_edit',
+    title: 'Forje sua linhagem',
+    text: 'Crie sua conta, monte a ficha guiada por etapas e registre atributos, fé, habilidades e equipamentos.',
+  },
+  {
+    step: '02',
+    icon: 'diversity_3',
+    title: 'Conecte-se à corte',
+    text: 'Adicione amigos e narradores pelo nome ou código ID, confirme presença e entre em mesas públicas ou privadas.',
+  },
+  {
+    step: '03',
+    icon: 'auto_stories',
+    title: 'Viva cada ato ao vivo',
+    text: 'Role dados na sala, acompanhe ameaças em tempo real, negocie no ferreiro e guarde a história da campanha.',
+  },
+] as const
 
+export default function HomePage() {
   return (
     <div className="min-h-svh min-h-dvh w-full min-w-0 bg-surface-container-lowest text-on-surface">
       <header className="safe-pt sticky top-0 z-50 border-b border-outline-variant/25 bg-surface-container-lowest/90 backdrop-blur-md">
@@ -48,18 +65,10 @@ export default function HomePage() {
             <a href="#plataforma" className="transition hover:text-on-surface">
               A plataforma
             </a>
-            <a href="#editos" className="transition hover:text-on-surface">
-              Éditos
+            <a href="#jornada" className="transition hover:text-on-surface">
+              Como jogar
             </a>
           </nav>
-
-          <Link
-            to="/auth/login"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-outline-variant/50 bg-surface-container-low px-3.5 py-2 text-xs font-medium text-on-surface transition hover:border-secondary/60 hover:text-secondary"
-          >
-            <span className="material-symbols-outlined text-base text-secondary">vpn_key</span>
-            Entrar
-          </Link>
         </div>
       </header>
 
@@ -92,16 +101,6 @@ export default function HomePage() {
               >
                 Criar minha conta
               </Link>
-            </div>
-            <div className="mt-10 flex items-start gap-3 text-xs leading-relaxed text-outline">
-              <span className="material-symbols-outlined mt-0.5 text-base text-secondary/80" aria-hidden>
-                history_edu
-              </span>
-              <p>
-                Uma mesa. Muitas escolhas.
-                <br />
-                Uma história que vocês escrevem juntos.
-              </p>
             </div>
           </div>
 
@@ -207,45 +206,44 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="editos" className="safe-px mx-auto max-w-6xl py-12 md:py-16">
+      <section id="jornada" className="safe-px mx-auto max-w-6xl py-12 md:py-16">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="font-label-sm text-[11px] font-semibold tracking-[0.18em] text-secondary uppercase">
-              Da mesa para a crônica
+              Ritual da mesa
             </p>
-            <h2 className="mt-1.5 font-serif text-2xl font-semibold text-on-surface">Notícias &amp; éditos</h2>
+            <h2 className="mt-1.5 font-serif text-2xl font-semibold text-on-surface">
+              Do primeiro registro à mesa ao vivo
+            </h2>
           </div>
-          <span className="font-label-sm text-[10px] tracking-[0.16em] text-outline uppercase">
-            Publicações do narrador
-          </span>
+          <Link
+            to="/ajuda/codice"
+            className="font-label-sm text-[11px] tracking-[0.14em] text-secondary uppercase transition hover:underline"
+          >
+            Ler o códice completo →
+          </Link>
         </div>
 
-        <div className="mt-6">
-          {newsQuery.isLoading ? (
-            <p className="text-sm text-on-surface-variant">Carregando éditos…</p>
-          ) : newsQuery.data?.length ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {newsQuery.data.map((post) => (
-                <article key={post.id} className="rounded-lg border border-outline-variant/35 bg-surface-container-low p-5">
-                  <time className="text-xs text-outline">{new Date(post.publishedAt).toLocaleDateString('pt-BR')}</time>
-                  <h3 className="mt-2 font-serif text-lg text-on-surface">{post.title}</h3>
-                  <p className="mt-2 text-sm text-on-surface-variant">{post.excerpt}</p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="flex items-start gap-3 rounded-lg border border-dashed border-outline-variant/40 bg-surface-container-low/40 p-6">
-              <span className="material-symbols-outlined mt-0.5 text-lg text-secondary/80" aria-hidden>
-                history_edu
-              </span>
-              <div>
-                <p className="font-serif text-sm text-on-surface">O próximo édito ainda será escrito.</p>
-                <p className="mt-1 text-xs text-outline">
-                  As publicações aparecerão aqui quando o narrador as disponibilizar.
-                </p>
+        <div className="mt-6 grid gap-5 md:grid-cols-3">
+          {CHRONICLE_STEPS.map((item) => (
+            <article
+              key={item.step}
+              className="rounded-lg border border-outline-variant/30 bg-surface-container-low/70 p-6 transition hover:border-secondary/45"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-outline-variant/40 bg-surface-container text-secondary">
+                  <span className="material-symbols-outlined text-lg" aria-hidden>
+                    {item.icon}
+                  </span>
+                </span>
+                <span className="font-label-sm text-xs font-semibold tracking-[0.2em] text-outline">
+                  ATO {item.step}
+                </span>
               </div>
-            </div>
-          )}
+              <h3 className="mt-4 font-serif text-lg font-semibold text-on-surface">{item.title}</h3>
+              <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">{item.text}</p>
+            </article>
+          ))}
         </div>
       </section>
 

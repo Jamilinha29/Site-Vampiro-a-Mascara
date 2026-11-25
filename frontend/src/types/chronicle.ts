@@ -137,6 +137,8 @@ export type ScheduledSession = {
   chronicleName?: string
   narratorEmail?: string
   narratorName?: string
+  allowCoNarrator?: boolean
+  coNarratorEmails?: string[]
   mySeat?: SessionSeat | null
   myPresenceConfirmed?: boolean
   tableMeta?: SessionTableMeta
@@ -153,6 +155,22 @@ export type ScheduledSession = {
   presence: SessionPresence[]
   seats: SessionSeat[]
   createdAt: string
+}
+
+export type LiveMesaSummary = {
+  id: string
+  title: string
+  chronicleName?: string
+  scheduledAt: string
+  listing: 'public' | 'private'
+  status: 'scheduled' | 'open' | 'closed'
+  narratorName: string
+  isOwner: boolean
+  isCoNarrator: boolean
+  allowCoNarrator: boolean
+  isSeated: boolean
+  seatedCount: number
+  presenceCount: number
 }
 
 export type SceneThreat = {

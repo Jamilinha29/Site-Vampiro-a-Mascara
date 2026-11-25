@@ -9,7 +9,6 @@ const PLAYER_NAV: readonly SidebarNavItem[] = [
   { to: '/user/friends', label: 'Amigos', icon: 'group' },
   { to: '/user/shop', label: 'Loja', icon: 'storefront' },
   { to: '/user/archive', label: 'Glossário', icon: 'menu_book' },
-  { to: '/user/bestiary', label: 'Bestiário', icon: 'pets' },
   { to: '/user/downloads', label: 'Downloads', icon: 'folder' },
   { to: '/user/settings', label: 'Configurações', icon: 'tune' },
 ]

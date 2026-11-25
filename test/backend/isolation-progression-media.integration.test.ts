@@ -230,4 +230,75 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
       { status: 'closed' },
     )
   })
+
+  it('T18/T19: allows friend search by publicId including narrators, and co-narrator join only when allowed', async () => {
+    const narMain = 'nar.main@ci.local'
+    const narSec = 'nar.sec@ci.local'
+    const playerEmail = 'jog.friend@ci.local'
+
+    const narProfile = await ensureProfile(narMain, 'Mestre Principal', 'narrator')
+    await ensureProfile(narSec, 'Mestre Secundário', 'narrator')
+    await ensureProfile(playerEmail, 'Jogador Amigo', 'player')
+
+    const tokenPlayer = signDevToken(playerEmail, 'Jogador Amigo', 'player').accessToken
+    const tokenMain = signDevToken(narMain, 'Mestre Principal', 'narrator').accessToken
+    const tokenSec = signDevToken(narSec, 'Mestre Secundário', 'narrator').accessToken
+
+    // Jogador encontra narrador pelo Código ID (ply_...) e envia pedido de amizade
+    const searchNar = await request(app)
+      .get(`/api/v1/court/players?q=${encodeURIComponent(narProfile.publicId!)}`)
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+    expect(searchNar.status).toBe(200)
+    expect(searchNar.body).toHaveLength(1)
+    expect(searchNar.body[0].id).toBe(narProfile.publicId)
+    expect(searchNar.body[0].role).toBe('narrator')
+
+    const reqFriend = await request(app)
+      .post('/api/v1/court/friends')
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+      .send({ playerId: narProfile.publicId })
+    expect(reqFriend.status).toBe(201)
+
+    // Mesa privada ao vivo: bloqueia co-narrador enquanto allowCoNarrator=false
+    const mesa = await createScheduledSession({
+      title: 'Crônica Conjunta',
+      scheduledAt: '2026-11-26T20:00:00.000Z',
+      narratorEmail: narMain,
+      listing: 'private',
+      allowCoNarrator: false,
+    })
+    await updateScheduledSession(mesa.id, { status: 'open' })
+
+    const deniedCo = await request(app)
+      .post(`/api/v1/admin/chronicle/scheduled-sessions/${mesa.id}/join-co-narrator`)
+      .set('Authorization', `Bearer ${tokenSec}`)
+      .send({ accessCode: mesa.accessCode })
+    expect(deniedCo.status).toBe(403)
+
+    // Principal libera co-narrador; código errado falha, código certo entra
+    await request(app)
+      .patch(`/api/v1/admin/chronicle/scheduled-sessions/${mesa.id}`)
+      .set('Authorization', `Bearer ${tokenMain}`)
+      .send({ allowCoNarrator: true })
+
+    const wrongCodeCo = await request(app)
+      .post(`/api/v1/admin/chronicle/scheduled-sessions/${mesa.id}/join-co-narrator`)
+      .set('Authorization', `Bearer ${tokenSec}`)
+      .send({ accessCode: 'WRONG1' })
+    expect(wrongCodeCo.status).toBe(403)
+
+    const okCo = await request(app)
+      .post(`/api/v1/admin/chronicle/scheduled-sessions/${mesa.id}/join-co-narrator`)
+      .set('Authorization', `Bearer ${tokenSec}`)
+      .send({ accessCode: mesa.accessCode })
+    expect(okCo.status).toBe(200)
+
+    const liveList = await request(app)
+      .get('/api/v1/admin/chronicle/live-mesas')
+      .set('Authorization', `Bearer ${tokenSec}`)
+    expect(liveList.status).toBe(200)
+    const entry = liveList.body.find((m: { id: string }) => m.id === mesa.id)
+    expect(entry?.isCoNarrator).toBe(true)
+    expect(entry?.accessCode).toBeUndefined()
+  })
 })

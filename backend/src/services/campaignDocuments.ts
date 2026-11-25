@@ -10,22 +10,50 @@ export type Envelope<T> = {
 
 export type RemoteDocumentBackend = {
   load: (id: string) => Promise<Envelope<unknown> | null>
+  loadRevision?: (id: string) => Promise<number | null>
   save: (id: string, envelope: Envelope<unknown>, expectedRevision: number | null) => Promise<Envelope<unknown>>
 }
 
 const TABLE = 'DocumentosCampanha'
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
+const REVISION_TTL_MS = 2_500
 const loadedRevisions = new Map<string, number>()
+const loadedUpdatedAt = new Map<string, string>()
+const revisionCache = new Map<string, { rev: number; at: number }>()
+const inFlightRevisionChecks = new Map<string, Promise<number>>()
 const locks = new Map<string, Promise<unknown>>()
 let warnedMissing = false
 let customRemoteBackend: RemoteDocumentBackend | null = null
+let revisionColUnavailableUntil = 0
+let casRpcUnavailableUntil = 0
+let tableUnavailableUntil = 0
+
+function isMissingSchemaError(err: { message?: string; code?: string } | null | undefined, pattern: RegExp) {
+  if (!err) return false
+  return pattern.test(err.message ?? '') || err.code === 'PGRST205' || err.code === 'PGRST204' || err.code === '42703'
+}
 
 export function setRemoteDocumentBackendForTests(backend: RemoteDocumentBackend | null) {
   customRemoteBackend = backend
   loadedRevisions.clear()
+  loadedUpdatedAt.clear()
+  revisionCache.clear()
+  inFlightRevisionChecks.clear()
 }
 
 export function resetDocumentRevisionsForTests() {
   loadedRevisions.clear()
+  loadedUpdatedAt.clear()
+  revisionCache.clear()
+  inFlightRevisionChecks.clear()
+  revisionColUnavailableUntil = 0
+  casRpcUnavailableUntil = 0
+  tableUnavailableUntil = 0
+}
+
+export function invalidateDocumentRevisionCache(id?: string) {
+  if (id) revisionCache.delete(id)
+  else revisionCache.clear()
 }
 
 export function getLoadedDocumentRevision(id: string) {
@@ -85,8 +113,22 @@ function normalizeEnvelope<T>(raw: unknown, fallbackRev = 1): Envelope<T> | null
 
 async function defaultRemoteLoad(id: string): Promise<Envelope<unknown> | null> {
   if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return null
+  if (Date.now() < tableUnavailableUntil) return null
   const sb = getSupabaseAdmin()
   if (!sb) return null
+
+  if (Date.now() < revisionColUnavailableUntil) {
+    const legacy = await sb.from(TABLE).select('payload, updated_at').eq('id', id).maybeSingle()
+    if (legacy.error) {
+      if (isMissingSchemaError(legacy.error, /DocumentosCampanha|campaign_documents|schema cache|does not exist/i)) {
+        tableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      }
+      return null
+    }
+    if (!legacy.data?.payload) return null
+    if (typeof legacy.data.updated_at === 'string') loadedUpdatedAt.set(id, legacy.data.updated_at)
+    return normalizeEnvelope(legacy.data.payload, 1)
+  }
 
   const { data, error } = await sb
     .from(TABLE)
@@ -96,23 +138,65 @@ async function defaultRemoteLoad(id: string): Promise<Envelope<unknown> | null> 
 
   if (error) {
     // Fallback para tabelas pré-migração sem coluna `revision`
-    if (/revision/i.test(error.message)) {
+    if (/revision/i.test(error.message) || error.code === '42703' || error.code === 'PGRST204') {
+      revisionColUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
       const legacy = await sb.from(TABLE).select('payload, updated_at').eq('id', id).maybeSingle()
       if (!legacy.error && legacy.data?.payload) {
+        if (typeof legacy.data.updated_at === 'string') loadedUpdatedAt.set(id, legacy.data.updated_at)
         return normalizeEnvelope(legacy.data.payload, 1)
       }
     }
-    if (!/DocumentosCampanha|campaign_documents|schema cache|does not exist/i.test(error.message)) {
-      console.warn('[estado] Falha ao ler', id, error.message)
-      throw new PersistenceError('Não foi possível ler o estado da campanha no banco.', error)
+    if (isMissingSchemaError(error, /DocumentosCampanha|campaign_documents|schema cache|does not exist/i)) {
+      tableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      return null
     }
-    return null
+    console.warn('[estado] Falha ao ler', id, error.message)
+    throw new PersistenceError('Não foi possível ler o estado da campanha no banco.', error)
   }
   if (!data?.payload) return null
+  if (typeof data.updated_at === 'string') loadedUpdatedAt.set(id, data.updated_at)
   const dbRev = typeof (data as { revision?: unknown }).revision === 'number' ? Number((data as { revision: number }).revision) : 1
   const norm = normalizeEnvelope(data.payload, dbRev)
   if (norm) norm.revision = Math.max(norm.revision, dbRev)
   return norm
+}
+
+async function defaultRemoteLoadRevision(id: string): Promise<number | null> {
+  if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return null
+  if (Date.now() < tableUnavailableUntil) return null
+  const sb = getSupabaseAdmin()
+  if (!sb) return null
+
+  if (Date.now() < revisionColUnavailableUntil) {
+    const legacy = await sb.from(TABLE).select('updated_at').eq('id', id).maybeSingle()
+    if (legacy.error) {
+      if (isMissingSchemaError(legacy.error, /DocumentosCampanha|campaign_documents|schema cache|does not exist/i)) {
+        tableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      }
+      return null
+    }
+    const remoteUpdated = typeof legacy.data?.updated_at === 'string' ? legacy.data.updated_at : ''
+    const prevUpdated = loadedUpdatedAt.get(id) ?? ''
+    const localRev = getLoadedDocumentRevision(id)
+    if (!remoteUpdated) return localRev
+    if (!prevUpdated || remoteUpdated > prevUpdated) return localRev + 1
+    return localRev
+  }
+
+  const { data, error } = await sb.from(TABLE).select('revision').eq('id', id).maybeSingle()
+  if (error) {
+    if (/revision/i.test(error.message) || error.code === '42703' || error.code === 'PGRST204') {
+      revisionColUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      return defaultRemoteLoadRevision(id)
+    }
+    if (isMissingSchemaError(error, /DocumentosCampanha|campaign_documents|schema cache|does not exist/i)) {
+      tableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+    }
+    return null
+  }
+  return typeof (data as { revision?: unknown } | null)?.revision === 'number'
+    ? Number((data as { revision: number }).revision)
+    : 0
 }
 
 async function defaultRemoteSave(
@@ -131,27 +215,30 @@ async function defaultRemoteSave(
     return envelope
   }
 
-  const rpc = await sb.rpc('beladona_upsert_campaign_document', {
-    p_id: id,
-    p_payload: envelope,
-    p_expected_revision: expectedRevision,
-  })
+  if (Date.now() >= casRpcUnavailableUntil) {
+    const rpc = await sb.rpc('beladona_upsert_campaign_document', {
+      p_id: id,
+      p_payload: envelope,
+      p_expected_revision: expectedRevision,
+    })
 
-  if (!rpc.error && Array.isArray(rpc.data) && rpc.data[0]) {
-    const rev = Number((rpc.data[0] as { revision: number }).revision)
-    return { ...envelope, revision: rev }
-  }
-
-  if (rpc.error) {
-    if (/DOCUMENT_CONFLICT|40001/i.test(rpc.error.message) || rpc.error.code === '40001') {
-      throw new ConflictError(`Estado concorrente detectado ao salvar ${id}.`)
+    if (!rpc.error && Array.isArray(rpc.data) && rpc.data[0]) {
+      const rev = Number((rpc.data[0] as { revision: number }).revision)
+      return { ...envelope, revision: rev }
     }
-    const rpcMissing =
-      /beladona_upsert_campaign_document|schema cache|PGRST202|could not find the function/i.test(
-        rpc.error.message,
-      ) || rpc.error.code === 'PGRST202'
-    if (!rpcMissing) {
-      throw new PersistenceError(`Falha ao gravar estado ${id} no banco.`, rpc.error)
+
+    if (rpc.error) {
+      if (/DOCUMENT_CONFLICT|40001/i.test(rpc.error.message) || rpc.error.code === '40001') {
+        throw new ConflictError(`Estado concorrente detectado ao salvar ${id}.`)
+      }
+      const rpcMissing =
+        /beladona_upsert_campaign_document|schema cache|PGRST202|could not find the function/i.test(
+          rpc.error.message,
+        ) || rpc.error.code === 'PGRST202'
+      if (!rpcMissing) {
+        throw new PersistenceError(`Falha ao gravar estado ${id} no banco.`, rpc.error)
+      }
+      casRpcUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
     }
   }
 
@@ -201,7 +288,11 @@ async function defaultRemoteSave(
 }
 
 function remoteBackend(): RemoteDocumentBackend {
-  return customRemoteBackend ?? { load: defaultRemoteLoad, save: defaultRemoteSave }
+  return customRemoteBackend ?? {
+    load: defaultRemoteLoad,
+    loadRevision: defaultRemoteLoadRevision,
+    save: defaultRemoteSave,
+  }
 }
 
 /**
@@ -220,6 +311,8 @@ export async function commitDocument<T>(id: string, body: T): Promise<Envelope<T
     const saved = await remoteBackend().save(id, envelope, prevRev > 0 ? prevRev : null)
     const committed = { ...envelope, revision: saved.revision || nextRev }
     loadedRevisions.set(id, committed.revision)
+    loadedUpdatedAt.set(id, committed.updatedAt)
+    revisionCache.set(id, { rev: committed.revision, at: Date.now() })
     writeJsonFile(localName(id), committed)
     return committed
   })
@@ -249,18 +342,55 @@ export async function loadDocument<T>(id: string): Promise<Envelope<T> | null> {
   const chosen = chooseDocument(local, remote)
   if (!chosen) return null
   loadedRevisions.set(id, chosen.revision)
+  loadedUpdatedAt.set(id, chosen.updatedAt)
+  revisionCache.set(id, { rev: chosen.revision, at: Date.now() })
   writeJsonFile(localName(id), chosen)
   if (remote && chosen !== remote) {
     const saved = await remoteBackend().save(id, chosen, remote.revision)
     loadedRevisions.set(id, saved.revision)
+    revisionCache.set(id, { rev: saved.revision, at: Date.now() })
   } else if (!remote && local && (getSupabaseAdmin() || customRemoteBackend)) {
     const saved = await remoteBackend().save(id, chosen, null)
     loadedRevisions.set(id, saved.revision)
+    revisionCache.set(id, { rev: saved.revision, at: Date.now() })
   }
   return chosen
 }
 
 export async function checkRemoteDocumentRevision(id: string): Promise<number> {
-  const remote = await remoteBackend().load(id)
-  return remote?.revision ?? 0
+  const bypassCache =
+    Boolean(customRemoteBackend) ||
+    (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true')
+
+  if (!bypassCache) {
+    const cached = revisionCache.get(id)
+    if (cached && Date.now() - cached.at < REVISION_TTL_MS) {
+      return cached.rev
+    }
+    const existing = inFlightRevisionChecks.get(id)
+    if (existing) return existing
+  }
+
+  const promise = (async () => {
+    const backend = remoteBackend()
+    let rev = 0
+    if (backend.loadRevision) {
+      const r = await backend.loadRevision(id)
+      rev = r ?? 0
+    } else {
+      const remote = await backend.load(id)
+      rev = remote?.revision ?? 0
+    }
+    if (!bypassCache) {
+      revisionCache.set(id, { rev, at: Date.now() })
+    }
+    return rev
+  })().finally(() => {
+    inFlightRevisionChecks.delete(id)
+  })
+
+  if (!bypassCache) {
+    inFlightRevisionChecks.set(id, promise)
+  }
+  return promise
 }

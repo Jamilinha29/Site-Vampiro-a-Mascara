@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { readProfileImageFile } from '../../lib/profileMedia'
 import {
   ATTR_KEYS,
@@ -20,7 +20,7 @@ import { defaultCreatureStats, GlossaryMonsterSheetFields } from './GlossaryMons
 
 const emptyMods = (): AttributeMod[] => [{ attr: 'forca', value: 1 }]
 
-export function AdminGlossaryEditor() {
+export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } = {}) {
   const qc = useQueryClient()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [classification, setClassification] = useState<GlossaryClassId>('grimoire')
@@ -340,9 +340,8 @@ export function AdminGlossaryEditor() {
 
   const saving = create.isPending || update.isPending
 
-  return (
-    <div className="space-y-6">
-      <section className="admin-form-panel admin-form-panel--compact">
+  const formPanel = (
+      <section className="admin-form-panel admin-form-panel--compact h-full">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-label-sm text-xs text-secondary uppercase">
@@ -703,6 +702,18 @@ export function AdminGlossaryEditor() {
           {saving ? 'Salvando…' : publishOnSave ? 'Salvar e publicar' : 'Salvar rascunho'}
         </button>
       </section>
+  )
+
+  return (
+    <div className="space-y-6">
+      {importSlot ? (
+        <div className="grid items-start gap-6 xl:grid-cols-12">
+          <div className="min-w-0 xl:col-span-7">{formPanel}</div>
+          <div className="min-w-0 xl:col-span-5">{importSlot}</div>
+        </div>
+      ) : (
+        formPanel
+      )}
 
       <section className="mesa-panel p-5">
         <h3 className="font-label-sm text-xs text-secondary uppercase">Registros do glossário</h3>

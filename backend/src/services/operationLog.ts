@@ -19,6 +19,8 @@ export type OperationEntry = {
 
 const entries: OperationEntry[] = []
 const MAX_MEM_ENTRIES = 1000
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
+let auditTableUnavailableUntil = 0
 
 export async function hydrateOperations() {
   const doc = await loadDocument<OperationEntry[]>('operations')
@@ -28,11 +30,16 @@ export async function hydrateOperations() {
 
 export function resetOperationsForTests() {
   entries.length = 0
+  auditTableUnavailableUntil = 0
 }
 
 export async function persistOperationsLog(entry: OperationEntry): Promise<void> {
   const sb = getSupabaseAdmin()
-  if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+  if (
+    sb &&
+    Date.now() >= auditTableUnavailableUntil &&
+    (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')
+  ) {
     const { error } = await sb.from('AuditoriaOperacoes').insert({
       id: entry.id,
       created_at: entry.at,
@@ -48,8 +55,12 @@ export async function persistOperationsLog(entry: OperationEntry): Promise<void>
       after_value: entry.after ?? null,
       metadata: {},
     })
-    if (error && !/AuditoriaOperacoes|schema cache|does not exist/i.test(error.message)) {
-      console.warn('[audit] Falha ao registrar em AuditoriaOperacoes:', error.message)
+    if (error) {
+      if (error.code === 'PGRST205' || /AuditoriaOperacoes|schema cache|does not exist/i.test(error.message)) {
+        auditTableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      } else {
+        console.warn('[audit] Falha ao registrar em AuditoriaOperacoes:', error.message)
+      }
     }
   }
   await commitDocument('operations', entries.slice(-MAX_MEM_ENTRIES))

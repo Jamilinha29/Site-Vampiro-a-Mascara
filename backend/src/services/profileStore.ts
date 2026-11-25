@@ -195,8 +195,10 @@ export type UserProfile = {
 
 const PROFILES_DOC = 'profiles'
 const REVISIONS_DOC = 'character-revisions'
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
 const profiles = new Map<string, UserProfile>()
 const revisionsByChar = new Map<string, CharacterRevisionRecord[]>()
+let revisionsTableUnavailableUntil = 0
 
 export function publicPlayerId(email: string): string {
   const hex = createHash('sha256').update(email.trim().toLowerCase()).digest('hex')
@@ -269,7 +271,11 @@ async function persistRevisionRecord(record: CharacterRevisionRecord) {
   revisionsByChar.set(key, list)
 
   const sb = getSupabaseAdmin()
-  if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+  if (
+    sb &&
+    Date.now() >= revisionsTableUnavailableUntil &&
+    (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')
+  ) {
     const { error } = await sb.from('RevisoesPersonagem').insert({
       id: record.id,
       character_id: record.characterId,
@@ -280,8 +286,12 @@ async function persistRevisionRecord(record: CharacterRevisionRecord) {
       actor_email: record.actorEmail.trim().toLowerCase(),
       created_at: record.createdAt,
     })
-    if (error && !/RevisoesPersonagem|schema cache|does not exist/i.test(error.message)) {
-      console.warn('[revisoes] Falha ao gravar RevisoesPersonagem:', error.message)
+    if (error) {
+      if (error.code === 'PGRST205' || /RevisoesPersonagem|schema cache|does not exist/i.test(error.message)) {
+        revisionsTableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      } else {
+        console.warn('[revisoes] Falha ao gravar RevisoesPersonagem:', error.message)
+      }
     }
   }
 
@@ -455,9 +465,11 @@ export function getProfile(email: string) {
 export function findProfileByPublicId(publicIdOrEmail: string): UserProfile | null {
   const direct = getProfile(publicIdOrEmail)
   if (direct) return direct
-  const needle = publicIdOrEmail.trim()
+  const needle = publicIdOrEmail.trim().toLowerCase()
+  if (!needle) return null
   for (const p of profiles.values()) {
-    if ((p.publicId ?? publicPlayerId(p.email)) === needle || p.handle.toLowerCase() === needle.toLowerCase()) {
+    const pub = (p.publicId ?? publicPlayerId(p.email)).toLowerCase()
+    if (pub === needle || p.handle.toLowerCase() === needle) {
       return p
     }
   }
@@ -484,6 +496,22 @@ export function listRegisteredPlayers() {
       email: p.email,
       displayName: p.displayName,
       handle: p.handle,
+      role: p.role,
+      memberSince: p.memberSince,
+      characters: p.characters.length,
+    }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+}
+
+/** Lista todas as contas cadastradas (jogadores e narradores) para busca de amizades. */
+export function listSearchableAccounts() {
+  return [...profiles.values()]
+    .map((p) => ({
+      id: p.publicId ?? publicPlayerId(p.email),
+      email: p.email,
+      displayName: p.displayName,
+      handle: p.handle,
+      role: p.role,
       memberSince: p.memberSince,
       characters: p.characters.length,
     }))

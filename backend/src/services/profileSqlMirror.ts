@@ -5,8 +5,12 @@ import { listProfiles } from './profileStore.js'
 
 const PROFILE_TABLES = ['PerfisJogadores', 'player_profiles'] as const
 const CHARACTER_TABLES = ['Personagens', 'characters'] as const
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
+let resolvedProfileTable: string | null = null
+let resolvedCharacterTable: string | null = null
+let mirrorDisabledUntil = 0
 
 export function asUuid(id: string) {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return id
@@ -15,21 +19,35 @@ export function asUuid(id: string) {
 }
 
 async function upsertOnFirstTable(
+  kind: 'profile' | 'character',
   tables: readonly string[],
   row: Record<string, unknown>,
   onConflict: string,
 ): Promise<string | null> {
+  if (Date.now() < mirrorDisabledUntil) return null
   const admin = getSupabaseAdmin()
   if (!admin) return null
-  for (const table of tables) {
+  const preferred = kind === 'profile' ? resolvedProfileTable : resolvedCharacterTable
+  const candidates = preferred ? [preferred] : tables
+  for (const table of candidates) {
     const { data, error } = await admin.from(table).upsert(row, { onConflict }).select('id').maybeSingle()
     if (!error && data && typeof data === 'object' && 'id' in data) {
+      if (kind === 'profile') resolvedProfileTable = table
+      else resolvedCharacterTable = table
       return String((data as { id: string }).id)
     }
-    const missing = error?.message?.includes('does not exist') || error?.code === 'PGRST205'
-    if (!missing) {
+    const missingTable = error?.message?.includes('does not exist') || error?.code === 'PGRST205'
+    const missingCol = error?.code === 'PGRST204' || error?.code === '42703' || /column .* does not exist/i.test(error?.message ?? '')
+    if (missingCol) {
+      mirrorDisabledUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      return null
+    }
+    if (!missingTable) {
       console.warn(`[sql-mirror] ${table}: ${error?.message ?? 'falha'}`)
     }
+  }
+  if (preferred === null) {
+    mirrorDisabledUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
   }
   return null
 }
@@ -90,10 +108,10 @@ function characterRow(profileId: string, character: ProfileCharacter) {
 
 export async function mirrorProfileToSql(profile: UserProfile) {
   if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return
-  const profileId = await upsertOnFirstTable(PROFILE_TABLES, profileRow(profile), 'email')
+  const profileId = await upsertOnFirstTable('profile', PROFILE_TABLES, profileRow(profile), 'email')
   if (!profileId) return
   for (const character of profile.characters) {
-    await upsertOnFirstTable(CHARACTER_TABLES, characterRow(profileId, character), 'id')
+    await upsertOnFirstTable('character', CHARACTER_TABLES, characterRow(profileId, character), 'id')
   }
 }
 

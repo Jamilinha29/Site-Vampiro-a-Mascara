@@ -15,6 +15,7 @@ import {
   findProfileByPublicId,
   getProfile,
   listRegisteredPlayers,
+  listSearchableAccounts,
   publicPlayerId,
 } from './profileStore.js'
 import { MAX_CHARACTER_LEVEL } from './progressionRules.js'
@@ -423,6 +424,7 @@ function publicPlayer(email: string) {
     id,
     displayName: profile?.displayName ?? 'Cainita',
     handle: profile?.handle ?? `@${id}`,
+    role: profile?.role ?? 'player',
     characters: profile?.characters.length ?? 0,
     memberSince: profile?.memberSince ?? null,
   }
@@ -467,14 +469,14 @@ export function searchPlayers(query: string, viewerEmail: string, limit = 20, in
   if (!includeEmpty && q.length < 2) return []
   const viewer = emailKey(viewerEmail)
   const safeLimit = Math.min(50, Math.max(1, limit))
-  return listRegisteredPlayers()
+  return listSearchableAccounts()
     .filter((p) => emailKey(p.email) !== viewer)
     .filter((p) => {
       if (!q) return true
       return (
         p.displayName.toLowerCase().includes(q) ||
         p.handle.toLowerCase().includes(q) ||
-        p.id.toLowerCase() === q
+        p.id.toLowerCase().includes(q)
       )
     })
     .slice(0, safeLimit)
@@ -484,6 +486,7 @@ export function searchPlayers(query: string, viewerEmail: string, limit = 20, in
         id: p.id,
         displayName: p.displayName,
         handle: p.handle,
+        role: p.role,
         characters: p.characters,
         memberSince: p.memberSince,
         relation: !link
@@ -501,8 +504,8 @@ export function searchPlayers(query: string, viewerEmail: string, limit = 20, in
 export async function requestFriend(fromEmail: string, targetIdentifier: string, immediate = false) {
   return runCourtMutation(async () => {
     const target = findProfileByPublicId(targetIdentifier)
-    if (!target || target.role !== 'player') {
-      return { ok: false as const, error: 'Jogador não encontrado' }
+    if (!target) {
+      return { ok: false as const, error: 'Usuário não encontrado' }
     }
     if (emailKey(fromEmail) === emailKey(target.email)) {
       return { ok: false as const, error: 'Não é possível adicionar a si mesmo' }

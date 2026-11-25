@@ -75,11 +75,27 @@ export default function AdminProfilePage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm text-secondary">{profile.handle}</p>
-            <p className="text-xs text-on-surface-variant">{profile.email}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <p className="break-all text-xs text-on-surface-variant">{profile.email}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5 text-[10px] tracking-wide text-secondary uppercase">
                 Mestre de mesa
               </span>
+              {profile.publicId ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/60 bg-surface-container-lowest/70 px-2.5 py-0.5 font-mono text-[11px] text-on-surface transition hover:border-secondary/60"
+                  title="Clique para copiar seu Código ID de amigo"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(profile.publicId!).then(
+                      () => push('Código ID copiado.', 'success'),
+                      () => push(`Código ID: ${profile.publicId}`, 'info'),
+                    )
+                  }}
+                >
+                  <span className="text-[10px] font-sans uppercase text-secondary">ID:</span>
+                  <span>{profile.publicId}</span>
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

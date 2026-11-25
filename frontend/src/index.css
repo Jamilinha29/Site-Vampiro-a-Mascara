@@ -43,7 +43,7 @@
 @layer base {
   html {
     @apply antialiased scroll-smooth;
-    font-size: 80%;
+    font-size: 87.5%;
     text-size-adjust: 100%;
     scrollbar-width: thin;
     scrollbar-color: #594141 #0e0e13;

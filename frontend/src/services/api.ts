@@ -162,8 +162,8 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
     const contentType = res.headers.get('content-type') ?? ''
     const body = contentType.includes('application/json')
       ? ((await res.json().catch(() => ({}))) as {
-          error?: { code?: string; message?: string; details?: unknown; revision?: number }
-        })
+        error?: { code?: string; message?: string; details?: unknown; revision?: number }
+      })
       : {}
     const fallbackMessage =
       res.status >= 500
@@ -602,12 +602,20 @@ export const api = {
     }),
   adminListScheduledSessions: () =>
     request<import('../types/chronicle').ScheduledSession[]>('/api/v1/admin/chronicle/scheduled-sessions'),
+  adminListLiveMesas: () =>
+    request<import('../types/chronicle').LiveMesaSummary[]>('/api/v1/admin/chronicle/live-mesas'),
+  adminJoinCoNarrator: (sessionId: string, accessCode = '') =>
+    request<import('../types/chronicle').ScheduledSession>(
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/join-co-narrator`,
+      { method: 'POST', body: JSON.stringify({ accessCode }) },
+    ),
   adminCreateScheduledSession: (body: {
     title: string
     scheduledAt: string
     chronicleName?: string
     tableMeta?: import('../types/chronicle').SessionTableMeta
     listing?: 'public' | 'private'
+    allowCoNarrator?: boolean
   }) =>
     request<import('../types/chronicle').ScheduledSession>('/api/v1/admin/chronicle/scheduled-sessions', {
       method: 'POST',
@@ -620,6 +628,7 @@ export const api = {
       chronicleName: string
       tableMeta: import('../types/chronicle').SessionTableMeta
       listing: 'public' | 'private'
+      allowCoNarrator: boolean
     }>,
   ) =>
     request<import('../types/chronicle').ScheduledSession>(
@@ -750,8 +759,8 @@ export const api = {
     >('/api/v1/court/achievements'),
   getFriends: () =>
     request<{
-      friends: Array<{ id?: string; email?: string; displayName: string; handle: string; characters: number }>
-      incoming: Array<{ id: string; createdAt: string; from: { id?: string; email?: string; displayName: string; handle: string } }>
+      friends: Array<{ id?: string; email?: string; displayName: string; handle: string; role?: string; characters: number }>
+      incoming: Array<{ id: string; createdAt: string; from: { id?: string; email?: string; displayName: string; handle: string; role?: string } }>
     }>('/api/v1/court/friends'),
   searchCourtPlayers: (q: string) =>
     request<
@@ -760,6 +769,7 @@ export const api = {
         email?: string
         displayName: string
         handle: string
+        role?: string
         characters: number
         relation: 'none' | 'friend' | 'outgoing' | 'incoming'
         linkId: string | null
@@ -814,6 +824,7 @@ export const api = {
         email?: string
         displayName: string
         handle: string
+        role?: string
         characters: number
         memberSince: string | null
         relation: 'none' | 'friend' | 'outgoing' | 'incoming'

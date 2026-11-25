@@ -14,8 +14,8 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
   const [npcName, setNpcName] = useState('')
   const [npcAmount, setNpcAmount] = useState(5)
   const [npcCoin, setNpcCoin] = useState<CoinCode>('silver')
-  const [extraNpc, setExtraNpc] = useState('')
-  const [extraAmount, setExtraAmount] = useState(8)
+  const [extraNpcByAuction, setExtraNpcByAuction] = useState<Record<string, string>>({})
+  const [extraAmountByAuction, setExtraAmountByAuction] = useState<Record<string, number>>({})
   const qc = useQueryClient()
   const { push } = useToast()
 
@@ -26,7 +26,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
   const { data: auctions = [] } = useQuery({
     queryKey: ['mesa-auctions', sessionId],
     queryFn: () => api.adminListAuctions(sessionId),
-    refetchInterval: 4000,
+    refetchInterval: (query) => (query.state.data?.some((a) => a.status === 'open') ? 4000 : 30_000),
   })
 
   const published = gear.filter((item) => item.visibility === 'published')
@@ -51,9 +51,13 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
 
   const npcBid = useMutation({
     mutationFn: (auctionId: string) =>
-      api.adminNpcBid(auctionId, { displayName: extraNpc.trim(), amount: extraAmount, coin: npcCoin }),
-    onSuccess: () => {
-      setExtraNpc('')
+      api.adminNpcBid(auctionId, {
+        displayName: (extraNpcByAuction[auctionId] ?? '').trim(),
+        amount: extraAmountByAuction[auctionId] ?? 8,
+        coin: npcCoin,
+      }),
+    onSuccess: (_data, auctionId) => {
+      setExtraNpcByAuction((prev) => ({ ...prev, [auctionId]: '' }))
       void qc.invalidateQueries({ queryKey: ['mesa-auctions', sessionId] })
     },
     onError: (e: Error) => push(e.message, 'error'),
@@ -176,20 +180,22 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
                 <input
                   className="input-feudal w-36 py-1 pl-2 text-xs normal-case"
                   placeholder="Outro NPC"
-                  value={extraNpc}
-                  onChange={(e) => setExtraNpc(e.target.value)}
+                  value={extraNpcByAuction[auction.id] ?? ''}
+                  onChange={(e) => setExtraNpcByAuction((prev) => ({ ...prev, [auction.id]: e.target.value }))}
                 />
                 <input
                   type="number"
                   min={1}
                   className="input-feudal w-20 py-1 pl-2 text-xs normal-case"
-                  value={extraAmount}
-                  onChange={(e) => setExtraAmount(Number(e.target.value) || 1)}
+                  value={extraAmountByAuction[auction.id] ?? 8}
+                  onChange={(e) =>
+                    setExtraAmountByAuction((prev) => ({ ...prev, [auction.id]: Number(e.target.value) || 1 }))
+                  }
                 />
                 <button
                   type="button"
                   className="btn-secondary text-[10px]"
-                  disabled={!extraNpc.trim()}
+                  disabled={!(extraNpcByAuction[auction.id] ?? '').trim()}
                   onClick={() => npcBid.mutate(auction.id)}
                 >
                   Lance de NPC

@@ -9,6 +9,7 @@ type RosterPlayer = {
   email?: string
   displayName: string
   handle: string
+  role?: string
   characters: number
   relation: Relation
   linkId: string | null
@@ -20,12 +21,6 @@ const PAGE_SIZES = [5, 10, 20]
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).slice(0, 2)
   return parts.map((part) => part[0]?.toUpperCase() ?? '').join('') || '?'
-}
-
-function hue(name: string) {
-  let n = 0
-  for (const ch of name) n = (n + ch.charCodeAt(0) * 17) % 360
-  return n
 }
 
 export default function AdminUsersPage() {
@@ -120,13 +115,13 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-5 pb-8">
       <header className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/50 bg-primary/15 text-primary">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-secondary/40 bg-primary-container/25 text-secondary">
           <span className="material-symbols-outlined">groups</span>
         </span>
         <div>
-          <h1 className="font-headline-lg text-3xl text-on-surface">Amigos</h1>
+          <h1 className="font-headline-lg text-3xl text-on-surface">Amigos e jogadores</h1>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Gerencie seus amigos, envie convites e acompanhe as solicitações da sua mesa.
+            Gerencie suas amizades com jogadores e narradores, envie convites por nome ou Código ID e acompanhe solicitações.
           </p>
         </div>
       </header>
@@ -209,17 +204,22 @@ export default function AdminUsersPage() {
               const playerKey = player.id || player.email || player.handle
               return (
               <li key={playerKey} className="flex items-center gap-3 border-b border-outline-variant/25 px-4 py-3 last:border-0">
-                <span
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-secondary/40 font-serif text-sm text-on-surface"
-                  style={{ background: `hsl(${hue(player.displayName)} 32% 22%)` }}
-                >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-secondary/45 bg-surface-container-high font-serif text-sm text-secondary">
                   {initials(player.displayName)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-serif text-on-surface">{player.displayName}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-serif text-on-surface">
+                    <span className="truncate">{player.displayName}</span>
+                    {player.role === 'narrator' || player.role === 'admin' ? (
+                      <span className="rounded border border-secondary/40 bg-secondary/10 px-1.5 py-0.5 font-sans text-[10px] text-secondary uppercase">
+                        Narrador
+                      </span>
+                    ) : null}
+                  </p>
                   <p className="truncate text-xs text-on-surface-variant">
                     {player.handle} · {player.characters} personagem(ns)
                   </p>
+                  <p className="truncate font-mono text-[11px] text-outline">{player.id}</p>
                 </div>
                 <RowAction
                   player={player}
@@ -264,8 +264,10 @@ export default function AdminUsersPage() {
                 <button
                   key={n}
                   type="button"
-                  className={`h-8 min-w-8 rounded border px-2 ${
-                    n === safePage ? 'border-primary bg-primary text-white' : 'border-outline-variant/50 hover:border-secondary'
+                  className={`h-8 min-w-8 rounded border px-2 transition ${
+                    n === safePage
+                      ? 'border-primary bg-primary-container font-semibold text-white'
+                      : 'border-outline-variant/50 text-on-surface-variant hover:border-secondary hover:text-on-surface'
                   }`}
                   onClick={() => setPage(n)}
                 >
@@ -284,7 +286,7 @@ export default function AdminUsersPage() {
 function StatCard({ icon, label, value, hint }: { icon: string; label: string; value: number; hint: string }) {
   return (
     <article className="mesa-panel flex items-center gap-3 p-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-secondary/40 bg-primary-container/20 text-secondary">
         <span className="material-symbols-outlined text-xl">{icon}</span>
       </span>
       <div>
@@ -301,8 +303,10 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded px-3 py-2 text-xs ${
-        active ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+      className={`inline-flex items-center gap-1.5 rounded border px-3 py-2 text-xs transition ${
+        active
+          ? 'border-primary/70 bg-primary-container font-semibold text-white'
+          : 'border-transparent text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
       }`}
     >
       <span className="material-symbols-outlined text-base">{icon}</span>

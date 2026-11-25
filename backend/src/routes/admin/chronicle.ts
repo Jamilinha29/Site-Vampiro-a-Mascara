@@ -35,8 +35,10 @@ import {
   getHandout,
   getScheduledSession,
   hydrateEntitiesFromDatabase,
+  joinSessionAsCoNarrator,
   listEntities,
   listHandouts,
+  listLiveMesasForNarrator,
   listScheduledSessionsForManager,
   listSessionActions,
   openScheduledSession,
@@ -71,6 +73,7 @@ import {
   withReadableImages,
 } from '../../services/mediaStorage.js'
 import { listOperationsForSession } from '../../services/operationLog.js'
+import { checkSharedRateLimit, resetSharedRateLimit } from '../../services/rateLimitStore.js'
 import {
   MAX_CHARACTER_LEVEL,
   adminPlayerCharactersByUser,
@@ -513,6 +516,56 @@ adminChronicleRouter.get('/scheduled-sessions', (req, res) => {
   res.json(listScheduledSessionsForManager(req.user!).map(toNarratorSessionDTO))
 })
 
+adminChronicleRouter.get('/live-mesas', (req, res) => {
+  res.json(listLiveMesasForNarrator(req.user!))
+})
+
+adminChronicleRouter.post('/scheduled-sessions/:sessionId/join-co-narrator', async (req, res, next) => {
+  try {
+    const key = `co-narrator:${req.user!.email.toLowerCase()}`
+    const rate = await checkSharedRateLimit(key, 15 * 60_000, 10)
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSec))
+      res.status(429).json(
+        errorPayload('RATE_LIMITED', 'Muitas tentativas seguidas. Espere alguns minutos.', {
+          requestId: req.requestId,
+        }),
+      )
+      return
+    }
+    const body = z.object({ accessCode: z.string().max(32).optional().default('') }).parse(req.body ?? {})
+    const result = await joinSessionAsCoNarrator(req.params.sessionId, req.user!, body.accessCode)
+    if (!result.ok) {
+      const status =
+        result.reason === 'bad_code' || result.reason === 'co_narrator_disabled'
+          ? 403
+          : result.reason === 'closed'
+            ? 409
+            : 404
+      const message =
+        result.reason === 'bad_code'
+          ? 'Código da mesa inválido.'
+          : result.reason === 'co_narrator_disabled'
+            ? 'O narrador principal não liberou entrada de narrador secundário nesta mesa.'
+            : result.reason === 'closed'
+              ? 'Esta mesa já foi encerrada.'
+              : 'Mesa não encontrada.'
+      res.status(status).json(
+        errorPayload(
+          status === 403 ? 'FORBIDDEN' : status === 409 ? 'CONFLICT' : 'NOT_FOUND',
+          message,
+          { requestId: req.requestId },
+        ),
+      )
+      return
+    }
+    await resetSharedRateLimit(key)
+    res.json(toNarratorSessionDTO(result.session))
+  } catch (e) {
+    next(e)
+  }
+})
+
 const sessionTableMetaSchema = z.object({
   rpgTitle: z.string().max(200).optional().default(''),
   campaignName: z.string().max(120).optional().default(''),
@@ -531,6 +584,7 @@ const scheduledSchema = z.object({
   chronicleName: z.string().min(1).max(120).optional(),
   tableMeta: sessionTableMetaSchema.optional(),
   listing: z.enum(['public', 'private']).optional(),
+  allowCoNarrator: z.boolean().optional(),
 })
 
 const patchScheduledSchema = z.object({
@@ -538,6 +592,7 @@ const patchScheduledSchema = z.object({
   chronicleName: z.string().min(1).max(120).optional(),
   tableMeta: sessionTableMetaSchema.optional(),
   listing: z.enum(['public', 'private']).optional(),
+  allowCoNarrator: z.boolean().optional(),
 })
 
 adminChronicleRouter.post('/scheduled-sessions', async (req, res, next) => {
@@ -563,6 +618,7 @@ adminChronicleRouter.post('/scheduled-sessions', async (req, res, next) => {
       tableMeta,
       narratorEmail: req.user!.email,
       listing: body.listing,
+      allowCoNarrator: body.allowCoNarrator,
     })
     res.status(201).json(toNarratorSessionDTO(created))
   } catch (e) {

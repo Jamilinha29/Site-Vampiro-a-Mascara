@@ -11,6 +11,7 @@ import {
   newSessionTableMetaDefaults,
   suggestSessionLabel,
   syncCampaignFields,
+  trimSessionTableMeta,
 } from '../../lib/sessionTableMeta'
 import type { SessionTableMeta } from '../../types/chronicle'
 
@@ -55,7 +56,7 @@ export default function AdminSessionsPage() {
       start.setHours(20, 0, 0, 0)
       const suggested = suggestSessionLabel(scheduled, campaign)
       const sessionLabel = tableMeta.sessionLabel.trim() || suggested.label
-      const meta: SessionTableMeta = syncCampaignFields({
+      const meta: SessionTableMeta = trimSessionTableMeta({
         ...tableMeta,
         campaignName: campaign,
         sessionLabel,
@@ -71,6 +72,7 @@ export default function AdminSessionsPage() {
     },
     onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.sessionLine })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaActivity })
@@ -84,6 +86,7 @@ export default function AdminSessionsPage() {
     mutationFn: (id: string) => api.adminOpenScheduledSession(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       invalidatePlayerPublishedContent(qc)
     },
   })
@@ -92,6 +95,7 @@ export default function AdminSessionsPage() {
     mutationFn: (id: string) => api.adminCloseScheduledSession(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
       invalidatePlayerPublishedContent(qc)
     },
@@ -102,6 +106,7 @@ export default function AdminSessionsPage() {
       api.adminPatchScheduledSession(id, { listing: next }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       invalidatePlayerPublishedContent(qc)
     },
   })
@@ -110,6 +115,7 @@ export default function AdminSessionsPage() {
     mutationFn: (id: string) => api.adminDeleteScheduledSession(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.sessionLine })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaActivity })
@@ -122,6 +128,7 @@ export default function AdminSessionsPage() {
     mutationFn: (id: string) => api.adminRescheduleScheduledSession(id),
     onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
       invalidatePlayerPublishedContent(qc)
       navigate(`/admin/mesa/${created.id}`)

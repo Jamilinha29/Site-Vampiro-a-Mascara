@@ -27,12 +27,30 @@ export const EMPTY_SESSION_TABLE_META: SessionTableMeta = {
 }
 
 export function syncCampaignFields(meta: SessionTableMeta): SessionTableMeta {
-  const campaign = meta.campaignName?.trim() || meta.rpgTitle?.trim() || ''
+  const campaign =
+    meta.campaignName !== undefined && meta.campaignName !== ''
+      ? meta.campaignName
+      : (meta.rpgTitle ?? meta.campaignName ?? '')
   return {
     ...meta,
     campaignName: campaign,
     rpgTitle: campaign,
-    missionTitle: meta.arcTitle?.trim() || meta.missionTitle || '',
+    missionTitle: meta.arcTitle !== undefined ? meta.arcTitle : (meta.missionTitle ?? ''),
+  }
+}
+
+export function trimSessionTableMeta(meta: SessionTableMeta): SessionTableMeta {
+  const synced = syncCampaignFields(meta)
+  const campaign = synced.campaignName.trim()
+  const arc = synced.arcTitle.trim()
+  return {
+    ...synced,
+    campaignName: campaign,
+    rpgTitle: campaign,
+    sessionLabel: synced.sessionLabel.trim(),
+    arcTitle: arc,
+    missionTitle: arc,
+    playerGroup: synced.playerGroup.trim(),
   }
 }
 

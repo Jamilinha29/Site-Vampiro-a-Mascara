@@ -175,6 +175,8 @@ export type ScheduledSession = {
   scheduledAt: string
   chronicleName?: string
   narratorEmail?: string
+  allowCoNarrator?: boolean
+  coNarratorEmails?: string[]
   tableMeta?: SessionTableMeta
   accessCode: string
   accessCodeRotatedAt?: string
@@ -243,11 +245,16 @@ export type NarratorSessionDTO = ScheduledSession
 const SESSIONS_DOC = 'sessions'
 const ACTIONS_DOC = 'session-actions'
 const ENTITY_FILE = 'chronicle-entities.json'
+const ENTITIES_REFRESH_TTL_MS = 15_000
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
 
 const entities = new Map<string, ChronicleEntity>()
 const handouts = new Map<string, SessionHandout>()
 const scheduledSessions = new Map<string, ScheduledSession>()
 const sessionActions: SessionActionEntry[] = []
+let lastEntitiesRefreshAt = 0
+let entitiesRefreshInFlight: Promise<void> | null = null
+let acoesTableUnavailableUntil = 0
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T
@@ -284,6 +291,8 @@ export function resetSessionsForTests() {
 
 export function resetEntitiesForTests() {
   entities.clear()
+  lastEntitiesRefreshAt = 0
+  entitiesRefreshInFlight = null
 }
 
 export function toPublicSessionDTO(row: ScheduledSession): PublicSessionDTO {
@@ -344,48 +353,56 @@ export function toNarratorSessionDTO(row: ScheduledSession): NarratorSessionDTO 
 }
 
 /** Junta o que o banco confirmou. Consulta falha ou tabela vazia não apaga o que já está na memória. */
-export async function refreshEntitiesFromDatabase() {
-  const loaded = await dbLoadEntities()
-  if (loaded === null) return
-  const spells = await dbLoadGrimoireSpells()
-  const rows = [...loaded, ...spells]
-  if (!rows.length) return
-  let changed = false
-  for (const row of rows) {
-    if (!row.name || !row.id) continue
-    const byId = entities.get(row.id)
-    if (byId) {
-      if (row.updatedAt >= byId.updatedAt) {
-        entities.set(row.id, { ...byId, ...row, id: byId.id })
+export async function refreshEntitiesFromDatabase(force = false) {
+  if (!force && Date.now() - lastEntitiesRefreshAt < ENTITIES_REFRESH_TTL_MS) return
+  if (entitiesRefreshInFlight) return entitiesRefreshInFlight
+  entitiesRefreshInFlight = (async () => {
+    const loaded = await dbLoadEntities()
+    if (loaded === null) return
+    const spells = await dbLoadGrimoireSpells()
+    const rows = [...loaded, ...spells]
+    lastEntitiesRefreshAt = Date.now()
+    if (!rows.length) return
+    let changed = false
+    for (const row of rows) {
+      if (!row.name || !row.id) continue
+      const byId = entities.get(row.id)
+      if (byId) {
+        if (row.updatedAt >= byId.updatedAt) {
+          entities.set(byId.id, { ...byId, ...row, id: byId.id })
+          changed = true
+        }
+        continue
+      }
+      const same = [...entities.values()].find(
+        (item) => item.kind === row.kind && sameEntityText(item.name, row.name),
+      )
+      if (!same) {
+        entities.set(row.id, row)
+        changed = true
+        continue
+      }
+      if (row.updatedAt >= same.updatedAt) {
+        entities.set(same.id, {
+          ...same,
+          description: row.description || same.description,
+          visibility: row.visibility,
+          updatedAt: row.updatedAt,
+        })
         changed = true
       }
-      continue
     }
-    const same = [...entities.values()].find(
-      (item) => item.kind === row.kind && sameEntityText(item.name, row.name),
-    )
-    if (!same) {
-      entities.set(row.id, row)
-      changed = true
-      continue
-    }
-    if (row.updatedAt >= same.updatedAt) {
-      entities.set(same.id, {
-        ...same,
-        description: row.description || same.description,
-        visibility: row.visibility,
-        updatedAt: row.updatedAt,
-      })
-      changed = true
-    }
-  }
-  if (changed) writeEntityFile()
+    if (changed) writeEntityFile()
+  })().finally(() => {
+    entitiesRefreshInFlight = null
+  })
+  return entitiesRefreshInFlight
 }
 
 export async function hydrateEntitiesFromDatabase() {
   const rows = await dbLoadEntities()
   if (rows && rows.length > 0) {
-    await refreshEntitiesFromDatabase()
+    await refreshEntitiesFromDatabase(true)
     console.log(`[persistência] ${entities.size} entidade(s) após juntar o Supabase`)
     return
   }
@@ -403,6 +420,7 @@ export async function hydrateEntitiesFromDatabase() {
 async function commitEntity(row: ChronicleEntity) {
   await dbUpsertEntity(row)
   entities.set(row.id, row)
+  lastEntitiesRefreshAt = Date.now()
   writeEntityFile()
 }
 
@@ -500,6 +518,7 @@ export async function deleteEntity(id: string) {
   if (!entities.has(id)) return false
   await dbDeleteEntity(id)
   entities.delete(id)
+  lastEntitiesRefreshAt = Date.now()
   writeEntityFile()
   return true
 }
@@ -827,7 +846,82 @@ export function listScheduledSessions() {
 export function listScheduledSessionsForManager(user: { email: string; role: string }) {
   const rows = listScheduledSessions()
   if (user.role === 'admin') return rows
-  return rows.filter((s) => s.narratorEmail && sameEmail(s.narratorEmail, user.email))
+  return rows.filter(
+    (s) =>
+      (s.narratorEmail && sameEmail(s.narratorEmail, user.email)) ||
+      (s.allowCoNarrator && (s.coNarratorEmails ?? []).some((e) => sameEmail(e, user.email))),
+  )
+}
+
+export type LiveMesaSummaryDTO = {
+  id: string
+  title: string
+  chronicleName?: string
+  scheduledAt: string
+  listing: 'public' | 'private'
+  status: 'scheduled' | 'open' | 'closed'
+  narratorName: string
+  isOwner: boolean
+  isCoNarrator: boolean
+  allowCoNarrator: boolean
+  isSeated: boolean
+  seatedCount: number
+  presenceCount: number
+}
+
+export function listLiveMesasForNarrator(user: { email: string; role: string }): LiveMesaSummaryDTO[] {
+  const viewer = user.email.trim().toLowerCase()
+  return listScheduledSessions()
+    .filter((s) => s.status === 'open')
+    .map((s) => {
+      const narrator = s.narratorEmail ? getProfile(s.narratorEmail) : null
+      const activeSeats = (s.seats ?? []).filter((seat) => !seat.leftAt)
+      const isOwner = user.role === 'admin' || Boolean(s.narratorEmail && sameEmail(s.narratorEmail, viewer))
+      const isCoNarrator = Boolean(
+        s.allowCoNarrator && (s.coNarratorEmails ?? []).some((e) => sameEmail(e, viewer)),
+      )
+      const isSeated = activeSeats.some((seat) => sameEmail(seat.email, viewer))
+      return {
+        id: s.id,
+        title: s.title,
+        chronicleName: s.chronicleName,
+        scheduledAt: s.scheduledAt,
+        listing: s.listing ?? 'private',
+        status: s.status,
+        narratorName: narrator?.displayName ?? 'Narrador',
+        isOwner,
+        isCoNarrator,
+        allowCoNarrator: Boolean(s.allowCoNarrator),
+        isSeated,
+        seatedCount: activeSeats.length,
+        presenceCount: (s.presence ?? []).length,
+      }
+    })
+}
+
+export async function joinSessionAsCoNarrator(
+  sessionId: string,
+  user: { email: string; role: string },
+  accessCode?: string,
+) {
+  const row = getScheduledSession(sessionId)
+  if (!row) return { ok: false as const, reason: 'not_found' as const }
+  if (row.status === 'closed') return { ok: false as const, reason: 'closed' as const }
+  if (canManageSessionObj(row, user)) {
+    return { ok: true as const, session: row }
+  }
+  if (!row.allowCoNarrator) {
+    return { ok: false as const, reason: 'co_narrator_disabled' as const }
+  }
+  const listing = row.listing ?? 'private'
+  if (listing !== 'public' && row.accessCode.toUpperCase() !== (accessCode ?? '').trim().toUpperCase()) {
+    return { ok: false as const, reason: 'bad_code' as const }
+  }
+  const email = user.email.trim().toLowerCase()
+  const existing = row.coNarratorEmails ?? []
+  const coNarratorEmails = existing.some((e) => sameEmail(e, email)) ? existing : [...existing, email]
+  const next = await updateScheduledSession(sessionId, { coNarratorEmails })
+  return { ok: true as const, session: next! }
 }
 
 export function findScheduledSessionByAccessCode(code: string) {
@@ -884,6 +978,7 @@ export async function createScheduledSession(input: {
   narratorEmail?: string
   tableMeta?: SessionTableMeta
   listing?: 'public' | 'private'
+  allowCoNarrator?: boolean
 }) {
   const created = await runSessionMutation(async () => {
     const id = randomUUID()
@@ -896,6 +991,8 @@ export async function createScheduledSession(input: {
       scheduledAt: input.scheduledAt,
       chronicleName: chronicleName || tableMeta?.campaignName,
       narratorEmail: input.narratorEmail,
+      allowCoNarrator: Boolean(input.allowCoNarrator),
+      coNarratorEmails: [],
       tableMeta,
       accessCode: generateAccessCode(),
       accessCodeRotatedAt: now(),
@@ -1133,8 +1230,11 @@ function parseVitalsFromStats(statsText?: string) {
 function canManageSessionObj(session: ScheduledSession, user: { email: string; role: string }) {
   if (user.role === 'admin') return true
   if (user.role !== 'narrator') return false
-  if (!session.narratorEmail) return false
-  return sameEmail(session.narratorEmail, user.email)
+  if (session.narratorEmail && sameEmail(session.narratorEmail, user.email)) return true
+  if (session.allowCoNarrator && (session.coNarratorEmails ?? []).some((e) => sameEmail(e, user.email))) {
+    return true
+  }
+  return false
 }
 
 export function sessionAccess(sessionId: string, user: { email: string; role?: string }) {
@@ -1142,13 +1242,13 @@ export function sessionAccess(sessionId: string, user: { email: string; role?: s
   if (!session) return { ok: false as const, reason: 'not_found' as const }
   const role = user.role ?? getProfile(user.email)?.role ?? 'player'
   if (role === 'admin') return { ok: true as const, session }
+  const seated = (session.seats ?? []).some((seat) => !seat.leftAt && sameEmail(seat.email, user.email))
   if (role === 'narrator') {
-    if (session.narratorEmail && sameEmail(session.narratorEmail, user.email)) {
+    if (canManageSessionObj(session, { email: user.email, role }) || seated) {
       return { ok: true as const, session }
     }
     return { ok: false as const, reason: 'forbidden' as const }
   }
-  const seated = (session.seats ?? []).some((seat) => !seat.leftAt && sameEmail(seat.email, user.email))
   if (!seated) return { ok: false as const, reason: 'forbidden' as const }
   return { ok: true as const, session }
 }
@@ -1384,7 +1484,11 @@ export async function recordSessionAction(input: {
       createdAt: now(),
     }
     const sb = getSupabaseAdmin()
-    if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+    if (
+      sb &&
+      Date.now() >= acoesTableUnavailableUntil &&
+      (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')
+    ) {
       const { error } = await sb.from('AcoesSessao').insert({
         id: entry.id,
         session_id: entry.sessionId,
@@ -1396,8 +1500,12 @@ export async function recordSessionAction(input: {
         detail: entry.detail,
         created_at: entry.createdAt,
       })
-      if (error && !/AcoesSessao|schema cache|does not exist/i.test(error.message)) {
-        console.warn('[acoes] Falha ao gravar AcoesSessao:', error.message)
+      if (error) {
+        if (error.code === 'PGRST205' || /AcoesSessao|schema cache|does not exist/i.test(error.message)) {
+          acoesTableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+        } else {
+          console.warn('[acoes] Falha ao gravar AcoesSessao:', error.message)
+        }
       }
     }
     const backup = [...sessionActions]

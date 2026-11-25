@@ -23,7 +23,9 @@ export type StoredIdempotentOp = {
 const DOC_ID = 'idempotency-ops'
 const TABLE = 'OperacoesIdempotentes'
 const MAX_MEM = 1000
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
 const records = new Map<string, StoredIdempotentOp>()
+let idemTableUnavailableUntil = 0
 
 function keyOf(actorEmail: string, operationId: string) {
   return `${actorEmail.trim().toLowerCase()}::${operationId.trim()}`
@@ -67,6 +69,7 @@ async function syncIfStale() {
 
 async function lookupDb(actorEmail: string, operationId: string): Promise<StoredIdempotentOp | null> {
   if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return null
+  if (Date.now() < idemTableUnavailableUntil) return null
   const sb = getSupabaseAdmin()
   if (!sb) return null
   const { data, error } = await sb
@@ -76,10 +79,11 @@ async function lookupDb(actorEmail: string, operationId: string): Promise<Stored
     .eq('operation_id', operationId.trim())
     .maybeSingle()
   if (error) {
-    if (!/OperacoesIdempotentes|schema cache|does not exist/i.test(error.message)) {
-      throw new PersistenceError('Falha ao consultar chave de operação.', error)
+    if (error.code === 'PGRST205' || /OperacoesIdempotentes|schema cache|does not exist/i.test(error.message)) {
+      idemTableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      return null
     }
-    return null
+    throw new PersistenceError('Falha ao consultar chave de operação.', error)
   }
   if (!data) return null
   return {
@@ -97,6 +101,7 @@ async function insertDb(op: StoredIdempotentOp): Promise<{ conflictWithExisting:
   if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') {
     return { conflictWithExisting: false }
   }
+  if (Date.now() < idemTableUnavailableUntil) return { conflictWithExisting: false }
   const sb = getSupabaseAdmin()
   if (!sb) return { conflictWithExisting: false }
   const { error } = await sb.from(TABLE).insert({
@@ -112,7 +117,8 @@ async function insertDb(op: StoredIdempotentOp): Promise<{ conflictWithExisting:
   if (error.code === '23505' || /duplicate key/i.test(error.message)) {
     return { conflictWithExisting: true }
   }
-  if (/OperacoesIdempotentes|schema cache|does not exist/i.test(error.message)) {
+  if (error.code === 'PGRST205' || /OperacoesIdempotentes|schema cache|does not exist/i.test(error.message)) {
+    idemTableUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
     return { conflictWithExisting: false }
   }
   throw new PersistenceError('Falha ao gravar registro de idempotência no banco.', error)

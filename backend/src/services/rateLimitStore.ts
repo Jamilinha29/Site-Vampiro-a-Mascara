@@ -2,9 +2,12 @@ import { runExclusive } from './campaignDocuments.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
 
 const localWindows = new Map<string, { count: number; since: number }>()
+const SCHEMA_RETRY_COOLDOWN_MS = 10 * 60_000
+let rateLimitRpcUnavailableUntil = 0
 
 export function resetRateLimitsForTests() {
   localWindows.clear()
+  rateLimitRpcUnavailableUntil = 0
 }
 
 /**
@@ -17,13 +20,24 @@ export async function checkSharedRateLimit(
   maxTries: number,
 ): Promise<{ allowed: boolean; remaining: number; retryAfterSec: number }> {
   const sb = getSupabaseAdmin()
-  if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
+  if (
+    sb &&
+    Date.now() >= rateLimitRpcUnavailableUntil &&
+    (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')
+  ) {
     const { data, error } = await sb.rpc('beladona_check_rate_limit', {
       p_key: key,
       p_window_ms: windowMs,
       p_max_tries: maxTries,
     })
-    if (!error && Array.isArray(data) && data[0]) {
+    if (error) {
+      if (
+        error.code === 'PGRST202' ||
+        /beladona_check_rate_limit|schema cache|does not exist|could not find the function/i.test(error.message)
+      ) {
+        rateLimitRpcUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+      }
+    } else if (Array.isArray(data) && data[0]) {
       const row = data[0] as { allowed: boolean; remaining: number; retry_after_sec: number }
       return {
         allowed: Boolean(row.allowed),
@@ -50,7 +64,18 @@ export async function checkSharedRateLimit(
 export async function resetSharedRateLimit(key: string): Promise<void> {
   localWindows.delete(key)
   const sb = getSupabaseAdmin()
-  if (sb && (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')) {
-    await sb.rpc('beladona_reset_rate_limit', { p_key: key })
+  if (
+    sb &&
+    Date.now() >= rateLimitRpcUnavailableUntil &&
+    (process.env.NODE_ENV !== 'test' || process.env.BELADONA_TEST_USE_ENV === 'true')
+  ) {
+    const { error } = await sb.rpc('beladona_reset_rate_limit', { p_key: key })
+    if (
+      error &&
+      (error.code === 'PGRST202' ||
+        /beladona_reset_rate_limit|schema cache|does not exist|could not find the function/i.test(error.message))
+    ) {
+      rateLimitRpcUnavailableUntil = Date.now() + SCHEMA_RETRY_COOLDOWN_MS
+    }
   }
 }

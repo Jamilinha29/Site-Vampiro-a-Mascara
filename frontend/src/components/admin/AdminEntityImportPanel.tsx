@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '../ui/ToastProvider'
 import { api } from '../../services/api'
 
@@ -35,6 +35,7 @@ type Preview = {
 
 export function AdminEntityImportPanel() {
   const { push } = useToast()
+  const qc = useQueryClient()
   const [raw, setRaw] = useState('')
   const [mapText, setMapText] = useState(JSON.stringify(DEFAULT_MAP, null, 2))
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -63,6 +64,7 @@ export function AdminEntityImportPanel() {
       const imported = 'imported' in result ? result.imported : 0
       const skipped = 'skipped' in result ? result.skipped : 0
       push(`Importados ${imported} itens (${skipped} ignorados por duplicata).`, 'success')
+      void qc.invalidateQueries({ queryKey: ['admin-entities'] })
       setPreview(null)
       setRaw('')
     },

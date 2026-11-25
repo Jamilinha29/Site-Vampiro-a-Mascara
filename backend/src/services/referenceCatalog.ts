@@ -26,7 +26,10 @@ export type ReferenceEntry = {
 }
 
 const FILE = 'reference-catalog.json'
+const REFRESH_TTL_MS = 30_000
 const entries = new Map<string, ReferenceEntry>()
+let lastRefreshedAt = 0
+let refreshInFlight: Promise<void> | null = null
 
 function isKind(value: string): value is ReferenceKind {
   return (REFERENCE_KINDS as readonly string[]).includes(value)
@@ -152,6 +155,7 @@ export async function deleteReference(id: string) {
     }
   }
   entries.delete(id)
+  lastRefreshedAt = Date.now()
   snapshot()
   return true
 }
@@ -170,6 +174,7 @@ function dbRecord(row: ReferenceEntry) {
 }
 
 async function upsertReferenceRows(rows: ReferenceEntry[]) {
+  lastRefreshedAt = Date.now()
   if (process.env.NODE_ENV === 'test') return
   const sb = getSupabaseAdmin()
   if (!sb || !rows.length) return
@@ -254,11 +259,22 @@ function textName(value: unknown) {
 }
 
 export async function refreshReferenceFromDatabase() {
-  await hydrateReferenceCatalog()
+  if (Date.now() - lastRefreshedAt < REFRESH_TTL_MS) return
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = hydrateReferenceCatalog()
+    .then(() => {
+      lastRefreshedAt = Date.now()
+    })
+    .finally(() => {
+      refreshInFlight = null
+    })
+  return refreshInFlight
 }
 
 /** Só para testes automatizados. */
 export function resetReferenceCatalogForTests() {
   entries.clear()
+  lastRefreshedAt = 0
+  refreshInFlight = null
   writeJsonFile(FILE, [])
 }

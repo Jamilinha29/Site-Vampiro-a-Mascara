@@ -52,13 +52,13 @@ export default function FriendsPage() {
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Amigos</h1>
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
-          Procure outros jogadores. Amigos aparecem na busca de mesas, inclusive as privadas que ainda pedem código de sala.
+          Procure jogadores ou narradores pelo nome, @handle ou Código ID. Amigos aparecem na busca de mesas, inclusive as privadas que pedem código de sala.
         </p>
       </header>
 
       <section className="mesa-panel p-5">
         <form
-          className="flex flex-wrap gap-2"
+          className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
           onSubmit={(e) => {
             e.preventDefault()
             const trimmed = query.trim()
@@ -71,12 +71,12 @@ export default function FriendsPage() {
           }}
         >
           <input
-            className="input-feudal min-w-[16rem] flex-1 pl-4"
+            className="input-feudal min-w-0 w-full pl-4 sm:flex-1"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nome ou @ do jogador (mín. 2 caracteres)"
+            placeholder="Nome, @handle ou Código ID (mín. 2 caracteres)"
           />
-          <button type="submit" className="btn-primary text-xs">
+          <button type="submit" className="btn-primary shrink-0 text-xs">
             Procurar
           </button>
         </form>
@@ -85,11 +85,22 @@ export default function FriendsPage() {
           {found.map((player) => {
             const targetKey = player.id || player.handle || player.email || ''
             return (
-              <li key={targetKey} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span>
+              <li
+                key={targetKey}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-outline-variant/25 bg-surface-container-lowest/40 px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
                   <span className="font-serif text-on-surface">{player.displayName}</span>
                   <span className="ml-2 text-xs text-on-surface-variant">{player.handle}</span>
-                </span>
+                  {player.role === 'narrator' || player.role === 'admin' ? (
+                    <span className="ml-2 rounded border border-secondary/40 bg-secondary/10 px-1.5 py-0.5 text-[10px] text-secondary uppercase">
+                      Narrador
+                    </span>
+                  ) : null}
+                  {player.id ? (
+                    <p className="mt-0.5 break-all font-mono text-[11px] text-outline">{player.id}</p>
+                  ) : null}
+                </div>
                 {player.relation === 'none' ? (
                   <button
                     type="button"
@@ -146,10 +157,18 @@ export default function FriendsPage() {
               const confirming = confirmRemove === targetKey
               return (
                 <li key={targetKey} className="flex items-center justify-between gap-2 py-2 text-sm">
-                  <span>
+                  <div className="min-w-0">
                     <span className="font-serif text-on-surface">{friend.displayName}</span>
                     <span className="ml-2 text-xs text-on-surface-variant">{friend.handle}</span>
-                  </span>
+                    {friend.role === 'narrator' || friend.role === 'admin' ? (
+                      <span className="ml-2 rounded border border-secondary/40 bg-secondary/10 px-1.5 py-0.5 text-[10px] text-secondary uppercase">
+                        Narrador
+                      </span>
+                    ) : null}
+                    {friend.id ? (
+                      <p className="mt-0.5 break-all font-mono text-[11px] text-outline">{friend.id}</p>
+                    ) : null}
+                  </div>
                   {confirming ? (
                     <span className="flex items-center gap-1.5">
                       <button

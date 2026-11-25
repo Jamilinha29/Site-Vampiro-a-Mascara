@@ -28,7 +28,7 @@ import { listRolls, rollForSession } from '../services/sessionRolls.js'
 export const contentRouter = Router()
 contentRouter.use(requireUser)
 contentRouter.use((_req, _res, next) => {
-  void Promise.all([refreshEntitiesFromDatabase(), syncSessionsIfStale()])
+  void syncSessionsIfStale()
     .then(() => next())
     .catch(() => next())
 })
@@ -37,6 +37,7 @@ const optionalSession = z.object({ sessionId: z.string().min(1).optional() })
 
 contentRouter.get('/archive', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const category = z.enum(['chronicles', 'relics', 'rituals']).parse(req.query.category ?? 'chronicles')
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
@@ -52,6 +53,7 @@ contentRouter.get('/archive', async (req, res, next) => {
 
 contentRouter.get('/shop', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const category = z.enum(['gear', 'consumables', 'services']).parse(req.query.category ?? 'gear')
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
@@ -67,6 +69,7 @@ contentRouter.get('/shop', async (req, res, next) => {
 
 contentRouter.get('/bestiary', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const tier = z.enum(['known', 'classified', 'rumors']).parse(req.query.tier ?? 'known')
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
@@ -82,6 +85,7 @@ contentRouter.get('/bestiary', async (req, res, next) => {
 
 contentRouter.get('/downloads', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const category = z.enum(['rules', 'sheets', 'handouts']).parse(req.query.category ?? 'rules')
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)

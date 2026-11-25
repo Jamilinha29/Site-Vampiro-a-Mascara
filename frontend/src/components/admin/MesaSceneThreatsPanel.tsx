@@ -14,9 +14,8 @@ type Props = {
 export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
   const qc = useQueryClient()
   const [pickId, setPickId] = useState('')
-  const [hpDelta, setHpDelta] = useState('-5')
-  const [manaDelta, setManaDelta] = useState('0')
-  const [activeThreatId, setActiveThreatId] = useState<string | null>(null)
+  const [hpDeltaByThreat, setHpDeltaByThreat] = useState<Record<string, string>>({})
+  const [manaDeltaByThreat, setManaDeltaByThreat] = useState<Record<string, string>>({})
 
   const { data: monsters = [] } = useQuery({
     queryKey: adminQueryKeys.entities('monster'),
@@ -37,11 +36,14 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
   })
 
   const applyDelta = useMutation({
-    mutationFn: (threatId: string) =>
-      api.adminApplySceneThreatDelta(sessionId, threatId, {
-        hpDelta: hpDelta.trim() ? Number(hpDelta) : undefined,
-        manaDelta: manaDelta.trim() ? Number(manaDelta) : undefined,
-      }),
+    mutationFn: (threatId: string) => {
+      const hpRaw = (hpDeltaByThreat[threatId] ?? '-5').trim()
+      const manaRaw = (manaDeltaByThreat[threatId] ?? '0').trim()
+      return api.adminApplySceneThreatDelta(sessionId, threatId, {
+        hpDelta: hpRaw ? Number(hpRaw) : undefined,
+        manaDelta: manaRaw ? Number(manaRaw) : undefined,
+      })
+    },
     onSuccess: invalidate,
   })
 
@@ -114,17 +116,16 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
                     Δ HP (ex. -5, -140)
                     <input
                       className="input-feudal mt-1 w-24 py-1 pl-2 text-sm"
-                      value={activeThreatId === t.id ? hpDelta : hpDelta}
-                      onFocus={() => setActiveThreatId(t.id)}
-                      onChange={(e) => setHpDelta(e.target.value)}
+                      value={hpDeltaByThreat[t.id] ?? '-5'}
+                      onChange={(e) => setHpDeltaByThreat((prev) => ({ ...prev, [t.id]: e.target.value }))}
                     />
                   </label>
                   <label className="text-[10px] uppercase text-on-surface-variant">
                     Δ Mana
                     <input
                       className="input-feudal mt-1 w-20 py-1 pl-2 text-sm"
-                      value={manaDelta}
-                      onChange={(e) => setManaDelta(e.target.value)}
+                      value={manaDeltaByThreat[t.id] ?? '0'}
+                      onChange={(e) => setManaDeltaByThreat((prev) => ({ ...prev, [t.id]: e.target.value }))}
                     />
                   </label>
                   <button

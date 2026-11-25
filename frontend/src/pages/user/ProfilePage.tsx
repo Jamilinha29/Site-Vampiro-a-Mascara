@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
 import { RadarChart } from '../../components/profile/RadarChart'
 import { EmptyBlock, MetricValue } from '../../components/profile/MetricValue'
 import { StatBar } from '../../components/domain/StatBar'
+import { useToast } from '../../components/ui/ToastProvider'
 import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 import { computeCharacterBalanceProfile } from '../../lib/characterBalanceProfile'
@@ -20,6 +20,7 @@ function formatMemberSince(iso: string) {
 export default function ProfilePage() {
   const { userId: routeUserId } = useParams()
   const session = useAuthStore((s) => s.session)
+  const { push } = useToast()
   const isOwnProfile = !routeUserId || routeUserId === session?.userId || routeUserId === session?.email
   const { data: profile, isLoading, isError } = useQuery({
     queryKey: ['me-profile'],
@@ -125,10 +126,29 @@ export default function ProfilePage() {
 
       <section className="card-surface p-6">
         <h2 className="font-label-sm text-xs text-secondary uppercase">Dados pessoais e feudais</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded border border-secondary/35 bg-surface-container-lowest/40 p-3 text-sm">
+            <p className="text-[10px] uppercase text-secondary">Código ID (amigos)</p>
+            <p className="mt-1 break-all font-mono text-xs text-on-surface">
+              {profile.publicId ?? profile.userId}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary mt-2 px-2.5 py-1 text-[10px]"
+              onClick={() => {
+                const code = profile.publicId ?? profile.userId
+                void navigator.clipboard?.writeText(code).then(
+                  () => push('Código ID copiado para a área de transferência.', 'success'),
+                  () => push(`Seu Código ID: ${code}`, 'info'),
+                )
+              }}
+            >
+              Copiar ID
+            </button>
+          </div>
           <div className="rounded border border-outline-variant/40 p-3 text-sm">
             <p className="text-[10px] uppercase text-on-surface-variant">Endereço canônico</p>
-            <p className="mt-1 text-on-surface">{profile.email}</p>
+            <p className="mt-1 break-all text-on-surface">{profile.email}</p>
             <p className="text-xs text-on-surface-variant">Criptografado por direito de sangue</p>
           </div>
           <div className="rounded border border-outline-variant/40 p-3 text-sm">

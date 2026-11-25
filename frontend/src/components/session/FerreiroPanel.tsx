@@ -31,7 +31,7 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel }: Props)
   const { data, isLoading } = useQuery({
     queryKey: ['ferreiro', sessionId, characterId],
     queryFn: () => api.getFerreiro(sessionId, characterId),
-    refetchInterval: 4000,
+    refetchInterval: tab === 'leilao' ? 5000 : 30_000,
   })
   const { data: wallet } = useQuery({
     queryKey: ['wallet', 'active'],

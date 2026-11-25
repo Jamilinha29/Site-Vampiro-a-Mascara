@@ -47,28 +47,30 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     queryKey: playerQueryKeys.profile,
     queryFn: () => api.getMeProfile(),
   })
+  const session = scheduled.find((s) => s.id === sessionId)
+  const isLive = !session || session.status !== 'closed'
+
   const { data: threats = [] } = useQuery({
     queryKey: playerQueryKeys.sceneThreats(sessionId),
     queryFn: () => api.getSessionSceneThreats(sessionId),
-    refetchInterval: 4000,
+    refetchInterval: isLive ? 5000 : false,
   })
   const { data: liveBrief } = useQuery({
     queryKey: ['session-live-brief', sessionId],
     queryFn: () => api.getSessionLiveBrief(sessionId),
-    refetchInterval: 4000,
+    refetchInterval: isLive ? 5000 : false,
   })
   const { data: myBag } = useQuery({
     queryKey: ['session-my-bag', sessionId],
     queryFn: () => api.getSessionMyBag(sessionId),
-    refetchInterval: 4000,
+    refetchInterval: isLive ? 15_000 : false,
   })
   const { data: persistedActions = [] } = useQuery({
     queryKey: ['session-actions', sessionId],
     queryFn: () => api.getSessionActions(sessionId),
-    refetchInterval: 4000,
+    refetchInterval: isLive ? 5000 : false,
   })
 
-  const session = scheduled.find((s) => s.id === sessionId)
   const seat = session?.mySeat ?? session?.seats?.find((s) => s.email === auth?.email && !s.leftAt)
   const character: ProfileCharacterSummary | undefined =
     profile?.characters.find((c) => c.id === seat?.characterId) ??
@@ -444,7 +446,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 </div>
               ) : null}
 
-              <SessionRollBox sessionId={sessionId} characterName={character.name} />
+              <SessionRollBox sessionId={sessionId} characterName={character.name} isLive={isLive} />
 
               <div className="flex flex-wrap gap-2">
                 <Link to={`/user/characters/${character.id}?view=ficha`} className="btn-secondary text-xs">
@@ -611,7 +613,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         )}
       </SessionPanel>
 
-      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md">
+      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-60">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-on-surface-variant">
             Turno · <strong className="text-primary">{character?.name ?? '—'}</strong>
@@ -650,14 +652,22 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   )
 }
 
-function SessionRollBox({ sessionId, characterName }: { sessionId: string; characterName: string }) {
+function SessionRollBox({
+  sessionId,
+  characterName,
+  isLive = true,
+}: {
+  sessionId: string
+  characterName: string
+  isLive?: boolean
+}) {
   const [formula, setFormula] = useState('1d10')
   const { push } = useToast()
   const qc = useQueryClient()
   const rolls = useQuery({
     queryKey: ['session-rolls', sessionId],
     queryFn: () => api.listSessionRolls(sessionId),
-    refetchInterval: 5000,
+    refetchInterval: isLive ? 5000 : false,
   })
   return (
     <div className="space-y-2 rounded border border-outline-variant/35 p-3">

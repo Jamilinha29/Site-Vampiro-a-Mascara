@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { PlayerBestiaryExplorer } from '../../components/content/PlayerBestiaryExplorer'
+import { useToast } from '../../components/ui/ToastProvider'
 import { ATTR_KEYS } from '../../lib/glossaryCatalog'
 import { playerQueryKeys } from '../../lib/queryKeys'
 import { api } from '../../services/api'
@@ -54,6 +55,8 @@ function tomeCode(item: ChronicleEntity, index: number) {
 
 export default function ArchivePage() {
   const [searchParams] = useSearchParams()
+  const qc = useQueryClient()
+  const { push } = useToast()
   const [tab, setTab] = useState<TabId>('rituals')
   const [query, setQuery] = useState('')
   const [rarity, setRarity] = useState('all')
@@ -61,6 +64,15 @@ export default function ArchivePage() {
   const [sort, setSort] = useState<'recent' | 'name' | 'rarity'>('recent')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [savedGrimoireIds, setSavedGrimoireIds] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem('beladona-saved-grimoire')
+      const parsed = raw ? (JSON.parse(raw) as unknown) : []
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
+    }
+  })
 
   useEffect(() => {
     void api.getSavedFilters().then((saved) => {
@@ -112,6 +124,82 @@ export default function ArchivePage() {
 
   const primary =
     profile?.characters.find((c) => c.isPrimary) ?? profile?.characters[0] ?? null
+
+  const linkToSheet = useMutation({
+    mutationFn: async (item: ChronicleEntity) => {
+      if (!primary) throw new Error('Crie um personagem antes de vincular à ficha.')
+      if (item.classification === 'grimoire') {
+        const currentSkills = primary.createdSkills ?? []
+        if (currentSkills.some((s) => s.name.trim().toLowerCase() === item.name.trim().toLowerCase())) {
+          return { mode: 'already' as const, name: item.name }
+        }
+        await api.patchMeCharacter(primary.id, {
+          createdSkills: [
+            ...currentSkills,
+            {
+              id: crypto.randomUUID(),
+              name: item.name,
+              die: '1d10',
+              attribute: 'Inteligência',
+              attributeMod: 0,
+              howItWorks: item.description || item.statsText || 'Grimório vinculado pelo Glossário.',
+              manaCost: 1,
+            },
+          ],
+          expectedRevision: primary.sheetRevision,
+        })
+        return { mode: 'skill' as const, name: item.name }
+      }
+      const currentInv = primary.inventory ?? []
+      if (currentInv.some((i) => i.name.trim().toLowerCase() === item.name.trim().toLowerCase())) {
+        return { mode: 'already' as const, name: item.name }
+      }
+      await api.patchMeCharacter(primary.id, {
+        inventory: [
+          ...currentInv,
+          {
+            id: crypto.randomUUID(),
+            name: item.name,
+            description: item.description || undefined,
+            category: item.classification === 'amulet' || item.classification === 'relic' ? 'ritual' : 'trinket',
+            rarity: item.rarity ?? 'comum',
+            weightKg: item.weightKg ?? 0.5,
+            statsLabel: item.statsText || undefined,
+          },
+        ],
+        expectedRevision: primary.sheetRevision,
+      })
+      return { mode: 'inventory' as const, name: item.name }
+    },
+    onSuccess: (res) => {
+      if (res.mode === 'already') {
+        push(`“${res.name}” já está vinculado à ficha de ${primary?.name}.`, 'info')
+        return
+      }
+      void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+      push(
+        res.mode === 'skill'
+          ? `“${res.name}” adicionado às habilidades de ${primary?.name}.`
+          : `“${res.name}” adicionado ao inventário de ${primary?.name}.`,
+        'success',
+      )
+    },
+    onError: (e: Error) => push(e.message || 'Não foi possível vincular à ficha.', 'error'),
+  })
+
+  function toggleSavedGrimoire(item: ChronicleEntity) {
+    setSavedGrimoireIds((prev) => {
+      const exists = prev.includes(item.id)
+      const next = exists ? prev.filter((id) => id !== item.id) : [...prev, item.id]
+      try {
+        window.localStorage.setItem('beladona-saved-grimoire', JSON.stringify(next))
+      } catch {
+        /* ignore storage quota */
+      }
+      push(exists ? `“${item.name}” removido do seu grimório.` : `“${item.name}” salvo no seu grimório.`, 'success')
+      return next
+    })
+  }
 
   const pools = useMemo(() => {
     const amulets = [...relics, ...chronicles].filter((i) => i.classification === 'amulet')
@@ -371,13 +459,26 @@ export default function ArchivePage() {
                   </div>
 
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <button type="button" className="btn-primary flex-1 text-[10px]" disabled={!primary}>
+                    <button
+                      type="button"
+                      className="btn-primary flex-1 text-[10px]"
+                      disabled={!primary || linkToSheet.isPending}
+                      onClick={() => linkToSheet.mutate(selected)}
+                    >
                       <span className="material-symbols-outlined text-sm">menu_book</span>
-                      Vincular à ficha
+                      {linkToSheet.isPending ? 'Vinculando…' : 'Vincular à ficha'}
                     </button>
-                    <button type="button" className="btn-secondary flex-1 text-[10px]" disabled>
-                      <span className="material-symbols-outlined text-sm">bookmark</span>
-                      Salvar no grimório
+                    <button
+                      type="button"
+                      className={`btn-secondary flex-1 text-[10px] ${
+                        savedGrimoireIds.includes(selected.id) ? 'border-secondary bg-secondary/15 text-secondary' : ''
+                      }`}
+                      onClick={() => toggleSavedGrimoire(selected)}
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {savedGrimoireIds.includes(selected.id) ? 'bookmark_added' : 'bookmark'}
+                      </span>
+                      {savedGrimoireIds.includes(selected.id) ? 'Salvo no grimório' : 'Salvar no grimório'}
                     </button>
                   </div>
                 </div>
