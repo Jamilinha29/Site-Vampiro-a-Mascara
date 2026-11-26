@@ -133,20 +133,25 @@ export default function ShopPage() {
         <CurrencyVault variant="header" />
       </header>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          className="input-feudal min-w-0 flex-1 basis-full pl-4 sm:basis-auto"
-          placeholder="Buscar item…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div className="relative min-w-0">
+          <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
+            search
+          </span>
+          <input
+            className="input-feudal w-full pl-10"
+            placeholder="Buscar item…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((c) => (
             <button
               key={c.id}
               type="button"
-              className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wider uppercase ${
-                category === c.id ? 'bg-primary-container text-white' : 'border border-outline-variant/40 text-on-surface-variant'
+              className={`rounded px-3.5 py-1.5 text-xs font-semibold tracking-wider uppercase ${
+                category === c.id ? 'bg-primary-container text-white' : 'border border-outline-variant/40 text-on-surface-variant hover:border-secondary/50'
               }`}
               onClick={() => {
                 setCategory(c.id)
@@ -162,7 +167,7 @@ export default function ShopPage() {
       {isLoading ? <p className="text-sm text-on-surface-variant">Carregando vitrine…</p> : null}
 
       <div className={`grid items-start gap-4 ${selected ? 'lg:grid-cols-12' : ''}`}>
-        <div className={`grid content-start gap-3 sm:grid-cols-2 ${selected ? 'lg:col-span-7' : 'xl:grid-cols-3'}`}>
+        <div className={`grid auto-rows-fr gap-3.5 sm:grid-cols-2 ${selected ? 'lg:col-span-7' : 'lg:grid-cols-3'}`}>
           {pageItems.map((item) => (
             <ShopCard
               key={item.id}
@@ -258,38 +263,38 @@ function ShopCard({
   const available = item.stockTotal == null || item.stockTotal > 0
   return (
     <article
-      className={`flex flex-col overflow-hidden rounded-2xl border bg-[#141414] ${
-        active ? 'border-secondary/70' : 'border-white/10'
+      className={`flex h-full flex-col overflow-hidden rounded-xl border bg-[#141414] transition ${
+        active ? 'border-secondary/70' : 'border-white/10 hover:border-white/25'
       }`}
     >
-      <div className="relative h-36 bg-black">
+      <div className="relative aspect-[16/9] max-h-40 w-full shrink-0 overflow-hidden bg-black">
         {item.imageUrl ? (
           <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,#2a1014,#090909)]">
-            <span className="material-symbols-outlined text-4xl text-white/25">swords</span>
+            <span className="material-symbols-outlined text-3xl text-white/25">swords</span>
           </div>
         )}
-        <span className="absolute top-2 left-2 rounded border border-white/20 bg-black/60 px-1.5 py-0.5 text-xs font-bold tracking-wide text-white/85 uppercase">
+        <span className="absolute top-2.5 left-2.5 rounded border border-white/20 bg-black/60 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white/85 uppercase">
           {rarity}
         </span>
       </div>
-      <div className="flex flex-1 flex-col px-4 pt-3 pb-3">
-        <h2 className="font-serif text-lg text-white">{item.name}</h2>
-        <p className="mt-1 flex items-center gap-1 text-[11px] text-[#d6b25e]">
+      <div className="flex flex-1 flex-col px-4 pt-3.5 pb-3.5">
+        <h2 className="font-serif text-base font-semibold text-white">{item.name}</h2>
+        <p className="mt-1 flex items-center gap-1 text-xs text-[#d6b25e]">
           <span className="material-symbols-outlined text-sm">payments</span>
           {priceShort(item)}
         </p>
-        <p className="mt-2 line-clamp-2 text-xs text-white/55">
+        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-white/60">
           {item.description || 'Sem descrição pública.'}
         </p>
-        <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="mt-auto flex items-center justify-between gap-2 pt-3">
           <span className={`text-xs uppercase ${available ? 'text-emerald-400' : 'text-primary'}`}>
             {available ? 'Disponível' : 'Esgotado'}
           </span>
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-xs text-white/80 hover:text-white"
+            className="inline-flex items-center gap-1 text-xs font-medium text-white/80 hover:text-secondary"
             onClick={onOpen}
           >
             <span className="material-symbols-outlined text-base">visibility</span>

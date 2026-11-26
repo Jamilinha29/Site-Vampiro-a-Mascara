@@ -8,7 +8,7 @@ export function AchievementMural() {
   })
 
   return (
-    <section className="mesa-panel p-5">
+    <section className="mesa-panel p-4">
       <h2 className="font-headline-sm text-lg text-on-surface">Mural de conquistas</h2>
       <p className="mt-1 text-xs text-on-surface-variant">
         O mestre define como cada feito é conquistado e marca quando você o cumpre.
@@ -17,11 +17,11 @@ export function AchievementMural() {
       {!isLoading && items.length === 0 ? (
         <p className="mt-3 text-sm text-on-surface-variant">Nenhuma conquista publicada ainda.</p>
       ) : (
-        <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="mt-4 grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <li
               key={item.id}
-              className={`rounded border p-3 ${
+              className={`flex h-full flex-col justify-between rounded border p-3.5 ${
                 item.unlocked ? 'border-secondary/60 bg-secondary/10' : 'border-outline-variant/40 opacity-80'
               }`}
             >

@@ -120,9 +120,9 @@ export default function SessionsPage() {
             Procurar
           </button>
         </form>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase text-secondary">Abertas ao público</p>
+        <div className="grid gap-3 md:grid-cols-2 md:items-stretch">
+          <div className="flex h-full flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest/35 p-3.5">
+            <p className="text-xs font-semibold uppercase text-secondary">Abertas ao público</p>
             <ul className="mt-2 space-y-2">
               {(board?.publicTables ?? []).length === 0 ? (
                 <li className="text-sm text-on-surface-variant">Nenhuma mesa pública.</li>
@@ -151,8 +151,8 @@ export default function SessionsPage() {
               ))}
             </ul>
           </div>
-          <div>
-            <p className="text-xs uppercase text-secondary">Mesas de amigos</p>
+          <div className="flex h-full flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest/35 p-3.5">
+            <p className="text-xs font-semibold uppercase text-secondary">Mesas de amigos</p>
             <ul className="mt-2 space-y-2">
               {(board?.friendTables ?? []).length === 0 ? (
                 <li className="text-sm text-on-surface-variant">Nenhuma mesa privada de amigos.</li>
@@ -280,9 +280,9 @@ export default function SessionsPage() {
 
       <section>
         <h2 className="font-headline-sm mb-4 text-lg">Todas as mesas</h2>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid auto-rows-fr gap-3 md:grid-cols-2">
           {history.map((s, i) => (
-            <article key={s.id} className="mesa-panel p-5">
+            <article key={s.id} className="mesa-panel flex h-full flex-col justify-between p-4">
               <p className="text-xs text-secondary uppercase">
                 {statusLabel(s)} · Capítulo {String(i + 1).padStart(2, '0')}
               </p>

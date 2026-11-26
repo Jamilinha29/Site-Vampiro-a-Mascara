@@ -717,7 +717,7 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
 
       <section className="mesa-panel p-3.5 sm:p-4">
         <h3 className="font-label-sm text-xs text-secondary uppercase">Registros do glossário</h3>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)_minmax(9rem,auto)] sm:items-center">
+        <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_12rem_10.5rem] sm:items-center">
           <div className="relative min-w-0">
             <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
               search
@@ -729,7 +729,7 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
               onChange={(e) => setRegistryQuery(e.target.value)}
             />
           </div>
-          <select className="input-feudal w-full pl-4 sm:w-auto" value={registryRarity} onChange={(e) => setRegistryRarity(e.target.value)}>
+          <select className="input-feudal w-full pl-3.5" value={registryRarity} onChange={(e) => setRegistryRarity(e.target.value)}>
             <option value="all">Raridade: todas</option>
             <option value="ancestral">Raridade: Ancestral</option>
             <option value="raro">Raridade: Raro</option>
@@ -738,7 +738,7 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
             <option value="proibido">Raridade: Proibido</option>
           </select>
           <select
-            className="input-feudal w-full pl-4 sm:w-auto"
+            className="input-feudal w-full pl-3.5"
             value={registrySort}
             onChange={(e) => setRegistrySort(e.target.value as 'recent' | 'name')}
           >

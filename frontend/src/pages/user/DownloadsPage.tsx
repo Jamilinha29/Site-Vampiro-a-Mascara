@@ -46,9 +46,9 @@ export default function DownloadsPage() {
 
       <section className="space-y-3">
         <h2 className="font-headline-sm text-lg text-on-surface">Histórico de atos da crônica</h2>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {actCards.map((h) => (
-            <article key={h.id} className="mesa-panel flex flex-col p-3.5 sm:p-4">
+            <article key={h.id} className="mesa-panel flex h-full flex-col p-4">
               <p className="font-serif text-lg text-on-surface">{h.chronicleName ?? h.title}</p>
               <p className="mt-2 line-clamp-3 text-sm text-on-surface-variant">
                 {h.narrativeSummary || 'Resumo narrativo ainda não publicado.'}
@@ -151,9 +151,9 @@ export default function DownloadsPage() {
 
       <section className="space-y-4">
         <h2 className="font-headline-sm text-lg text-on-surface">Fichas oficiais imprimíveis</h2>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {sheetFiles.map((file) => (
-            <article key={file.id} className="mesa-panel flex flex-col p-5">
+            <article key={file.id} className="mesa-panel flex h-full flex-col p-4">
               <span className="material-symbols-outlined text-3xl text-primary">description</span>
               <p className="mt-3 font-serif text-lg text-on-surface">{file.name}</p>
               <p className="mt-2 flex-1 text-sm text-on-surface-variant">
@@ -173,7 +173,7 @@ export default function DownloadsPage() {
           {sheetFiles.length === 0 ? (
             <>
               {['Ficha canônica de vampiro', 'Ficha de inquisidor', 'Ficha de mortal'].map((title) => (
-                <article key={title} className="mesa-panel flex flex-col p-5 opacity-80">
+                <article key={title} className="mesa-panel flex h-full flex-col p-4 opacity-80">
                   <span className="material-symbols-outlined text-3xl text-primary">description</span>
                   <p className="mt-3 font-serif text-lg text-on-surface">{title}</p>
                   <p className="mt-2 flex-1 text-sm text-on-surface-variant">

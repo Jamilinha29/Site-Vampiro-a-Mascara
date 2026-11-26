@@ -172,22 +172,22 @@ export default function AdminProfilePage() {
         {drill ? <p className="text-sm text-on-surface">{drill}</p> : null}
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Mesas registradas', value: mesasTotal },
           { label: 'Mesas ao vivo', value: mesasOpen },
           { label: 'Horas (mês)', value: activity?.month.hoursActive ?? '—' },
           { label: 'Atos encerrados (mês)', value: activity?.month.actsClosed ?? '—' },
         ].map((m) => (
-          <div key={m.label} className="card-surface p-4 text-center">
+          <div key={m.label} className="card-surface flex h-full flex-col justify-center p-4 text-center">
             <p className="text-[0.65rem] uppercase text-on-surface-variant">{m.label}</p>
             <p className="mt-1 font-serif text-2xl text-secondary">{m.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card-surface p-5">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="card-surface flex h-full flex-col p-5">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Domínio narrativo</h2>
           <dl className="mt-3 space-y-3 text-sm">
             <div>
@@ -205,7 +205,7 @@ export default function AdminProfilePage() {
           </dl>
         </section>
 
-        <section className="card-surface p-5">
+        <section className="card-surface flex h-full flex-col p-5">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Juramento &amp; voz</h2>
           {prefs.bio?.trim() ? (
             <p className="mt-3 whitespace-pre-wrap font-serif text-sm leading-relaxed text-on-surface-variant">{prefs.bio}</p>

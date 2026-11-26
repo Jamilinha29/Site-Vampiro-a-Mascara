@@ -42,7 +42,7 @@ export default function AdminDashboardPage() {
       </header>
 
       {activity ? (
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Mesas abertas agora" value={String(activity.openMesas)} hint="Não encerradas" />
           <StatCard
             label="Horas ativas · hoje"
@@ -62,44 +62,59 @@ export default function AdminDashboardPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid auto-rows-fr gap-3 md:grid-cols-2">
         {todayMesa ? (
-          <section className="card-surface border-secondary/35 p-3.5 sm:p-4">
-            <p className="font-label-sm text-xs text-secondary uppercase">Mesa de hoje</p>
-            <p className="mt-1 font-serif text-lg text-on-surface">{mesaDisplayName(todayMesa)}</p>
-            <p className="mt-0.5 text-xs text-on-surface-variant">
-              {new Date(todayMesa.scheduledAt).toLocaleString('pt-BR')}
-            </p>
-            <Link to={`/admin/mesa/${todayMesa.id}`} className="btn-primary mt-3 inline-flex text-xs">
-              Abrir mesa
-            </Link>
+          <section className="card-surface flex h-full flex-col justify-between border-secondary/35 p-4">
+            <div>
+              <p className="font-label-sm text-xs text-secondary uppercase">Mesa de hoje</p>
+              <p className="mt-1 font-serif text-lg text-on-surface">{mesaDisplayName(todayMesa)}</p>
+              <p className="mt-0.5 text-xs text-on-surface-variant">
+                {new Date(todayMesa.scheduledAt).toLocaleString('pt-BR')}
+              </p>
+            </div>
+            <div className="mt-3">
+              <Link to={`/admin/mesa/${todayMesa.id}`} className="btn-primary inline-flex text-xs">
+                Abrir mesa
+              </Link>
+            </div>
           </section>
         ) : (
-          <section className="card-surface p-3.5 sm:p-4">
-            <p className="font-label-sm text-xs text-secondary uppercase">Nenhuma mesa hoje</p>
-            <p className="mt-1 text-sm text-on-surface-variant">
-              Crie uma mesa em <Link to="/admin/sessions" className="text-secondary underline">Sessões</Link>.
-            </p>
+          <section className="card-surface flex h-full flex-col justify-between p-4">
+            <div>
+              <p className="font-label-sm text-xs text-secondary uppercase">Nenhuma mesa hoje</p>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                Crie uma mesa em <Link to="/admin/sessions" className="text-secondary underline">Sessões</Link>.
+              </p>
+            </div>
+            <div className="mt-3">
+              <Link to="/admin/sessions" className="btn-primary inline-flex text-xs">
+                Agendar mesa
+              </Link>
+            </div>
           </section>
         )}
 
-        <section className="card-surface p-3.5 sm:p-4">
-          <p className="font-label-sm text-xs text-secondary uppercase">Nova mesa</p>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            O formulário <strong className="text-on-surface">Criar outra mesa</strong> agora fica em Sessões.
-          </p>
-          <Link to="/admin/sessions" className="btn-secondary mt-3 inline-flex text-xs">
-            Ir para sessões
-          </Link>
+        <section className="card-surface flex h-full flex-col justify-between p-4">
+          <div>
+            <p className="font-label-sm text-xs text-secondary uppercase">Nova mesa</p>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              O formulário <strong className="text-on-surface">Criar outra mesa</strong> agora fica em Sessões.
+            </p>
+          </div>
+          <div className="mt-3">
+            <Link to="/admin/sessions" className="btn-secondary inline-flex text-xs">
+              Ir para sessões
+            </Link>
+          </div>
         </section>
       </div>
 
-      <section className="card-surface p-3.5 sm:p-4">
+      <section className="card-surface p-4">
         <h2 className="font-headline-sm text-base sm:text-lg">Próximas sessões marcadas</h2>
         <p className="mt-1 text-xs text-on-surface-variant sm:text-sm">
           Calendário da agenda, atividade recente e personagens criados pelos jogadores.
         </p>
-        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <div className="mt-3 grid auto-rows-fr gap-3 lg:grid-cols-3">
           <AdminSessionCalendar sessions={scheduled} />
           <AdminLineChart series={lineSeries} />
           <AdminCharacterPieChart series={playerCharacterSeries} />
@@ -140,10 +155,10 @@ export default function AdminDashboardPage() {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="card-surface p-3">
+    <div className="card-surface flex h-full flex-col justify-between p-3.5">
       <p className="text-[0.65rem] uppercase tracking-wider text-on-surface-variant">{label}</p>
-      <p className="mt-0.5 font-serif text-xl text-on-surface">{value}</p>
-      <p className="mt-0.5 text-xs text-secondary">{hint}</p>
+      <p className="mt-1 font-serif text-xl text-on-surface">{value}</p>
+      <p className="mt-1 text-xs text-secondary">{hint}</p>
     </div>
   )
 }

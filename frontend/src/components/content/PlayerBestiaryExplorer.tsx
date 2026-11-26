@@ -66,7 +66,7 @@ export function PlayerBestiaryExplorer({ query = '' }: { query?: string }) {
         <h3 className="font-label-sm mb-3 text-xs text-secondary uppercase">
           Catálogo tático de bestas & antagonistas
         </h3>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((entity) => (
             <BestiaryCard
               key={entity.id}
@@ -77,7 +77,7 @@ export function PlayerBestiaryExplorer({ query = '' }: { query?: string }) {
             />
           ))}
           {!isLoading && filtered.length === 0 ? (
-            <p className="text-sm text-on-surface-variant sm:col-span-2 xl:col-span-4">
+            <p className="text-sm text-on-surface-variant sm:col-span-2 lg:col-span-3">
               Nenhuma ameaça nesta camada.
             </p>
           ) : null}

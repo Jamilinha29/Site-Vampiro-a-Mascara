@@ -372,7 +372,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid auto-rows-fr grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <MetricCard label="Participantes" value={String(handout.participants.length || '—')} hint="Na mesa" />
         <MetricCard label="Personagens" value={String(handout.participants.length || '—')} hint="Registro do ato" />
         <MetricCard label="Sessão" value={`Sala ${String(actNumber).padStart(2, '0')}`} hint={live ? 'Em andamento' : 'Encerrada'} />
@@ -405,15 +405,15 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <section className="mesa-panel p-3.5 sm:p-4">
+      <div className="grid gap-3 md:grid-cols-2 md:items-stretch">
+        <section className="mesa-panel flex h-full flex-col p-3.5 sm:p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Ameaças em cena</h2>
           <p className="mt-1 text-xs text-on-surface-variant">Escolha monstros publicados no acervo — sem sair da mesa.</p>
           <div className="mt-3">
             <MesaSceneThreatsPanel sessionId={session.id} live={live} threats={threats} />
           </div>
         </section>
-        <section className="mesa-panel p-3.5 sm:p-4">
+        <section className="mesa-panel flex h-full flex-col p-3.5 sm:p-4">
           <MesaSceneNpcsPanel sessionId={session.id} live={live} npcs={sceneNpcs} layout="standalone" />
         </section>
       </div>

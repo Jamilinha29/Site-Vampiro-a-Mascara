@@ -88,7 +88,7 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive =
   const level = data?.level ?? characterLevel
 
   return (
-    <section className="mesa-panel max-w-xl p-4">
+    <section className="mesa-panel flex h-full w-full flex-col p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-label-sm text-xs text-secondary uppercase">Ferreiro</h2>
         <p className="text-[11px] text-on-surface-variant">

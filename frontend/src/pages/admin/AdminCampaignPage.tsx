@@ -117,111 +117,115 @@ export default function AdminCampaignPage() {
         </ul>
       </section>
 
-      <section className="card-surface space-y-3 p-5">
-        <h2 className="text-xs uppercase tracking-wide text-secondary">Regras da campanha</h2>
-        <p className="text-sm text-on-surface-variant">
-          Versão atual: {rules.data?.version ?? 1}. Nível máximo {rules.data?.maxLevel ?? 10}. Subclasse I no nível{' '}
-          {rules.data?.subclassLevel ?? 5}. Subclasse II no nível 7.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <label className="text-xs text-on-surface-variant">
-            Nível máximo
-            <input className="input-feudal mt-1 w-28" type="number" min={1} max={10} value={maxLevel} onChange={(event) => setMaxLevel(Number(event.target.value))} />
-          </label>
-          <label className="text-xs text-on-surface-variant">
-            Subclasse I (nível)
-            <input className="input-feudal mt-1 w-28" type="number" min={1} max={10} value={subclassLevel} onChange={(event) => setSubclassLevel(Number(event.target.value))} />
-          </label>
-          <label className="text-xs text-on-surface-variant">
-            Subclasse II (nível)
-            <input className="input-feudal mt-1 w-28" type="number" min={1} max={10} value={secondarySubclassLevel} onChange={(event) => setSecondarySubclassLevel(Number(event.target.value))} />
-          </label>
-          <label className="text-xs text-on-surface-variant">
-            XP inicial (novas fichas)
-            <input className="input-feudal mt-1 w-28" type="number" min={0} max={10000} value={startingXp} onChange={(event) => setStartingXp(Number(event.target.value))} />
-          </label>
-          <label className="text-xs text-on-surface-variant">
-            Teto de bronze (loja)
-            <input className="input-feudal mt-1 w-28" type="number" min={0} max={1000000} value={shopBudgetCopper} onChange={(event) => setShopBudgetCopper(Number(event.target.value))} />
-          </label>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn-primary text-xs" onClick={() => saveRules.mutate('keep-existing')}>
-            Guardar e manter as fichas
-          </button>
-          <button type="button" className="btn-secondary text-xs" onClick={() => saveRules.mutate('mark-review')}>
-            Guardar e pedir revisão das afetadas
-          </button>
-        </div>
-        {affected.length > 0 ? (
-          <ul className="text-sm text-on-surface-variant">
-            {affected.map((row) => (
-              <li key={`${row.name}${row.reason}`}>
-                {row.name}: {row.reason}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="card-surface flex h-full flex-col space-y-3 p-5">
+          <h2 className="text-xs uppercase tracking-wide text-secondary">Regras da campanha</h2>
+          <p className="text-sm text-on-surface-variant">
+            Versão atual: {rules.data?.version ?? 1}. Nível máximo {rules.data?.maxLevel ?? 10}. Subclasse I no nível{' '}
+            {rules.data?.subclassLevel ?? 5}. Subclasse II no nível 7.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-on-surface-variant">
+              Nível máximo
+              <input className="input-feudal mt-1 w-full pl-3" type="number" min={1} max={10} value={maxLevel} onChange={(event) => setMaxLevel(Number(event.target.value))} />
+            </label>
+            <label className="text-xs text-on-surface-variant">
+              Subclasse I (nível)
+              <input className="input-feudal mt-1 w-full pl-3" type="number" min={1} max={10} value={subclassLevel} onChange={(event) => setSubclassLevel(Number(event.target.value))} />
+            </label>
+            <label className="text-xs text-on-surface-variant">
+              Subclasse II (nível)
+              <input className="input-feudal mt-1 w-full pl-3" type="number" min={1} max={10} value={secondarySubclassLevel} onChange={(event) => setSecondarySubclassLevel(Number(event.target.value))} />
+            </label>
+            <label className="text-xs text-on-surface-variant">
+              XP inicial (novas fichas)
+              <input className="input-feudal mt-1 w-full pl-3" type="number" min={0} max={10000} value={startingXp} onChange={(event) => setStartingXp(Number(event.target.value))} />
+            </label>
+            <label className="text-xs text-on-surface-variant sm:col-span-2">
+              Teto de bronze (loja)
+              <input className="input-feudal mt-1 w-full pl-3" type="number" min={0} max={1000000} value={shopBudgetCopper} onChange={(event) => setShopBudgetCopper(Number(event.target.value))} />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary text-xs" onClick={() => saveRules.mutate('keep-existing')}>
+              Guardar e manter as fichas
+            </button>
+            <button type="button" className="btn-secondary text-xs" onClick={() => saveRules.mutate('mark-review')}>
+              Guardar e pedir revisão das afetadas
+            </button>
+          </div>
+          {affected.length > 0 ? (
+            <ul className="text-sm text-on-surface-variant">
+              {affected.map((row) => (
+                <li key={`${row.name}${row.reason}`}>
+                  {row.name}: {row.reason}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-auto text-xs text-on-surface-variant">Nenhuma ficha foi reescrita. A lista acima aparece quando alguma ficaria fora da regra nova.</p>
+          )}
+        </section>
+
+        <section className="card-surface flex h-full flex-col space-y-3 p-5">
+          <h2 className="text-xs uppercase tracking-wide text-secondary">Segredo por mesa</h2>
+          <p className="text-sm text-on-surface-variant">
+            O texto só entra na resposta de quem está sentado nessa mesa. Um e-mail preenche a revelação individual. Vazio vale para a mesa inteira.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select className="input-feudal pl-3" value={sessionId} onChange={(event) => setSessionId(event.target.value)}>
+              <option value="">Mesa</option>
+              {(sessions.data ?? []).map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.title}
+                </option>
+              ))}
+            </select>
+            <input className="input-feudal pl-3" placeholder="Id do NPC" value={entityId} onChange={(event) => setEntityId(event.target.value)} />
+            <input className="input-feudal pl-3" placeholder="E-mail do jogador (opcional)" value={audienceEmail} onChange={(event) => setAudienceEmail(event.target.value)} />
+            <input className="input-feudal pl-3" placeholder="O que essa mesa descobriu" value={secret} onChange={(event) => setSecret(event.target.value)} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              disabled={!sessionId || !entityId || !secret.trim()}
+              onClick={() =>
+                void api
+                  .adminAddSecret({ sessionId, entityId, text: secret, audienceEmail: audienceEmail || null })
+                  .then(async () => {
+                    setSecret('')
+                    await queryClient.invalidateQueries({ queryKey: ['campaign-secrets'] })
+                    push('Segredo guardado para essa mesa.', 'success')
+                  })
+                  .catch((error: Error) => push(error.message, 'error'))
+              }
+            >
+              Guardar segredo
+            </button>
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              disabled={!sessionId}
+              onClick={() =>
+                void api.adminAdvanceTurn(sessionId).then((result) => push(`Turno avançado. ${result.changed} efeito(s) contado(s).`, 'success'))
+              }
+            >
+              Avançar um turno nesta mesa
+            </button>
+          </div>
+          <ul className="space-y-2 text-sm text-on-surface-variant">
+            {(secrets.data ?? []).map((row) => (
+              <li key={row.id}>
+                Mesa {row.sessionId.slice(0, 8)} · NPC {row.entityId.slice(0, 8)} · {row.audienceEmail || 'mesa inteira'} — {row.text}
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="text-sm text-on-surface-variant">Nenhuma ficha foi reescrita. A lista acima aparece quando alguma ficaria fora da regra nova.</p>
-        )}
-      </section>
-
-      <section className="card-surface space-y-3 p-5">
-        <h2 className="text-xs uppercase tracking-wide text-secondary">Segredo por mesa</h2>
-        <p className="text-sm text-on-surface-variant">
-          O texto só entra na resposta de quem está sentado nessa mesa. Um e-mail preenche a revelação individual. Vazio vale para a mesa inteira.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <select className="input-feudal" value={sessionId} onChange={(event) => setSessionId(event.target.value)}>
-            <option value="">Mesa</option>
-            {(sessions.data ?? []).map((session) => (
-              <option key={session.id} value={session.id}>
-                {session.title}
-              </option>
-            ))}
-          </select>
-          <input className="input-feudal" placeholder="Id do NPC" value={entityId} onChange={(event) => setEntityId(event.target.value)} />
-          <input className="input-feudal" placeholder="E-mail do jogador, se for individual" value={audienceEmail} onChange={(event) => setAudienceEmail(event.target.value)} />
-          <input className="input-feudal" placeholder="O que essa mesa descobriu" value={secret} onChange={(event) => setSecret(event.target.value)} />
-        </div>
-        <button
-          type="button"
-          className="btn-primary text-xs"
-          disabled={!sessionId || !entityId || !secret.trim()}
-          onClick={() =>
-            void api
-              .adminAddSecret({ sessionId, entityId, text: secret, audienceEmail: audienceEmail || null })
-              .then(async () => {
-                setSecret('')
-                await queryClient.invalidateQueries({ queryKey: ['campaign-secrets'] })
-                push('Segredo guardado para essa mesa.', 'success')
-              })
-              .catch((error: Error) => push(error.message, 'error'))
-          }
-        >
-          Guardar segredo
-        </button>
-        <ul className="space-y-2 text-sm text-on-surface-variant">
-          {(secrets.data ?? []).map((row) => (
-            <li key={row.id}>
-              Mesa {row.sessionId.slice(0, 8)} · NPC {row.entityId.slice(0, 8)} · {row.audienceEmail || 'mesa inteira'} — {row.text}
-            </li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          className="btn-secondary text-xs"
-          disabled={!sessionId}
-          onClick={() =>
-            void api.adminAdvanceTurn(sessionId).then((result) => push(`Turno avançado. ${result.changed} efeito(s) contado(s).`, 'success'))
-          }
-        >
-          Avançar um turno nesta mesa
-        </button>
-        <p className="text-sm text-on-surface-variant">
-          No item, escreva “3 turnos” ou “30 minutos” no texto de atributos. O tempo só começa quando o item sai da bolsa. Fechar o navegador não reinicia o efeito.
-        </p>
-      </section>
+          <p className="mt-auto text-xs text-on-surface-variant">
+            No item, escreva “3 turnos” ou “30 minutos” no texto de atributos. O tempo só começa quando o item sai da bolsa.
+          </p>
+        </section>
+      </div>
     </div>
   )
 }

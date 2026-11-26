@@ -153,8 +153,8 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      <div className="grid gap-3.5 lg:grid-cols-2">
-        <section className="card-surface p-4">
+      <div className="grid gap-3.5 lg:grid-cols-2 lg:items-stretch">
+        <section className="card-surface flex h-full flex-col p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Dados pessoais e feudais</h2>
           <dl className="mt-3 grid gap-2.5 text-sm sm:grid-cols-2">
             <div>
@@ -176,7 +176,7 @@ export default function ProfilePage() {
           </dl>
         </section>
 
-        <section className="card-surface p-4">
+        <section className="card-surface flex h-full flex-col p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Juramento &amp; biografia</h2>
           {profile.preferences.bio?.trim() ? (
             <p className="mt-2.5 whitespace-pre-wrap font-serif text-sm leading-relaxed text-on-surface-variant">
@@ -190,8 +190,8 @@ export default function ProfilePage() {
         </section>
       </div>
 
-      <div className="grid gap-3.5 lg:grid-cols-2">
-        <section className="card-surface p-4">
+      <div className="grid gap-3.5 lg:grid-cols-2 lg:items-stretch">
+        <section className="card-surface flex h-full flex-col p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Estatísticas da linhagem</h2>
           <ul className="mt-3 space-y-2 text-sm">
             {[
@@ -214,7 +214,7 @@ export default function ProfilePage() {
           </ul>
         </section>
 
-        <section className="card-surface p-4">
+        <section className="card-surface flex h-full flex-col p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-label-sm text-xs text-secondary uppercase">Perfil de jogo</h2>
             {profile.characters.length > 0 ? (
@@ -275,11 +275,11 @@ export default function ProfilePage() {
             <EmptyBlock>Nenhum personagem vinculado à sua conta. Forje sua linhagem para vê-los aqui.</EmptyBlock>
           </div>
         ) : (
-          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="mt-3 grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {profile.characters.map((ch) => (
               <li
                 key={ch.id}
-                className="flex flex-col rounded border border-outline-variant/50 bg-surface-container-lowest/30 p-3.5"
+                className="flex h-full flex-col justify-between rounded border border-outline-variant/50 bg-surface-container-lowest/30 p-3.5"
               >
                 <div className="flex items-start gap-3">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant bg-surface-container-high">

@@ -77,7 +77,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
       <p className="mt-1 text-xs text-on-surface-variant">
         Libere um item com prazo. Vence o maior lance, ou quem restar se os outros desistirem. NPCs entram com o nome que você criar.
       </p>
-      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <label className="text-xs uppercase text-on-surface-variant">
           Item publicado
           <select

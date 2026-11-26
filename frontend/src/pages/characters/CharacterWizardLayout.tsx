@@ -98,15 +98,15 @@ export function CharacterWizardLayout({ children }: { title?: string; children: 
         </div>
       </header>
 
-      <ol className="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
+      <ol className="grid auto-rows-fr gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
         {steps.map((step, i) => {
           const active = i === idx
           const done = i < idx
           return (
-            <li key={step.path}>
+            <li key={step.path} className="h-full">
               <Link
                 to={step.path}
-                className={`block rounded border px-2 py-2 transition ${
+                className={`block h-full rounded border px-2 py-2 transition ${
                   active
                     ? 'border-primary-container bg-primary-container/15 shadow-[inset_0_0_0_1px_rgba(158,27,45,0.35)]'
                     : done

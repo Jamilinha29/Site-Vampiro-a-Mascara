@@ -276,7 +276,7 @@ export default function ArchivePage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,auto)_minmax(9rem,auto)] sm:items-center">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_12rem_10.5rem] sm:items-center">
         <div className="relative min-w-0">
           <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
             search
@@ -288,7 +288,7 @@ export default function ArchivePage() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <select className="input-feudal w-full pl-4 sm:w-auto" value={rarity} onChange={(e) => setRarity(e.target.value)}>
+        <select className="input-feudal w-full pl-3.5" value={rarity} onChange={(e) => setRarity(e.target.value)}>
           <option value="all">Raridade: todas</option>
           <option value="ancestral">Raridade: Ancestral</option>
           <option value="raro">Raridade: Raro</option>
@@ -297,7 +297,7 @@ export default function ArchivePage() {
           <option value="proibido">Raridade: Proibido</option>
         </select>
         <select
-          className="input-feudal w-full pl-4 sm:w-auto"
+          className="input-feudal w-full pl-3.5"
           value={sort}
           onChange={(e) => setSort(e.target.value as typeof sort)}
         >
@@ -329,48 +329,50 @@ export default function ArchivePage() {
       ) : (
         <>
           <div className={`grid items-start gap-4 ${selected ? 'lg:grid-cols-12' : ''}`}>
-            <div className={`grid content-start gap-3 sm:grid-cols-2 ${selected ? 'lg:col-span-7' : 'xl:grid-cols-3'}`}>
+            <div className={`grid auto-rows-fr gap-3.5 sm:grid-cols-2 ${selected ? 'lg:col-span-7' : 'lg:grid-cols-3'}`}>
               {pageItems.map((item) => {
                 const active = selected?.id === item.id
                 const rarityKey = item.rarity ?? 'comum'
                 return (
                   <article
                     key={item.id}
-                    className={`flex flex-col overflow-hidden rounded-2xl border bg-[#141414] ${
-                      active ? 'border-secondary/70' : 'border-white/10'
+                    className={`flex h-full flex-col overflow-hidden rounded-xl border bg-[#141414] transition ${
+                      active ? 'border-secondary/70' : 'border-white/10 hover:border-white/25'
                     }`}
                   >
-                    <div className="relative h-36 bg-black">
+                    <div className="relative aspect-[16/9] max-h-40 w-full shrink-0 overflow-hidden bg-black">
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,#2a1810,#090909)]">
-                          <span className="material-symbols-outlined text-4xl text-white/25">auto_stories</span>
+                          <span className="material-symbols-outlined text-3xl text-white/25">auto_stories</span>
                         </div>
                       )}
                       <span
-                        className={`absolute top-2 left-2 rounded border px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase ${rarityClass[rarityKey]}`}
+                        className={`absolute top-2.5 left-2.5 rounded border px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase ${rarityClass[rarityKey]}`}
                       >
                         {rarityKey}
                       </span>
                     </div>
-                    <div className="flex flex-1 flex-col px-4 pt-3 pb-3">
-                      <h2 className="font-serif text-lg text-white">{item.name}</h2>
-                      <p className="mt-1 flex items-center gap-1 text-[11px] text-secondary">
+                    <div className="flex flex-1 flex-col px-4 pt-3.5 pb-3.5">
+                      <h2 className="font-serif text-base font-semibold text-white">{item.name}</h2>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-secondary">
                         <span className="material-symbols-outlined text-sm">auto_awesome</span>
                         {classificationSubtitle(item)}
                       </p>
-                      <p className="mt-2 line-clamp-2 text-xs text-white/55">
+                      <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-white/60">
                         {item.description || 'Sem descrição pública.'}
                       </p>
-                      <button
-                        type="button"
-                        className="mt-3 ml-auto inline-flex items-center gap-1 text-xs text-white/80 hover:text-white"
-                        onClick={() => setSelectedId(item.id)}
-                      >
-                        <span className="material-symbols-outlined text-base">visibility</span>
-                        Ver detalhes
-                      </button>
+                      <div className="mt-auto flex items-center justify-end pt-3">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-white/80 hover:text-secondary"
+                          onClick={() => setSelectedId(item.id)}
+                        >
+                          <span className="material-symbols-outlined text-base">visibility</span>
+                          Ver detalhes
+                        </button>
+                      </div>
                     </div>
                   </article>
                 )

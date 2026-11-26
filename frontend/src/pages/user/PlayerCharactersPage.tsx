@@ -29,7 +29,7 @@ function CharacterCard({
 
   return (
     <article
-      className={`mesa-panel flex flex-col p-4 transition ${
+      className={`mesa-panel flex h-full flex-col justify-between p-4 transition ${
         item.isPrimary ? 'border-secondary/55 ring-1 ring-secondary/25' : ''
       }`}
     >
@@ -162,7 +162,7 @@ export default function PlayerCharactersPage() {
 
       {isLoading ? <p className="text-sm text-on-surface-variant">Carregando linhagens…</p> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((item) => (
           <CharacterCard
             key={item.id}

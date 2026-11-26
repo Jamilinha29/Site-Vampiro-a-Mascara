@@ -94,8 +94,8 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="mesa-panel p-4 sm:p-5">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col justify-between p-4 sm:p-5">
           <h3 className="font-label-sm text-xs text-secondary uppercase">Slots de equipamento corporal</h3>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {(Object.keys(SLOT_LABELS) as Array<keyof typeof SLOT_LABELS>).map((slot) => {
@@ -122,7 +122,7 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
           </div>
         </section>
 
-        <section className="mesa-panel space-y-3 p-4 sm:p-5">
+        <section className="mesa-panel flex h-full flex-col justify-between space-y-3 p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-2">
             <input
               className="input-feudal min-w-[10rem] flex-1 pl-4"
@@ -166,9 +166,9 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
         </section>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filtered.map((item) => (
-          <article key={item.id} className="mesa-panel flex flex-col p-4">
+          <article key={item.id} className="mesa-panel flex h-full flex-col p-4">
             <div className="flex flex-wrap gap-1">
               {item.equipped ? (
                 <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-primary uppercase">

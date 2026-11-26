@@ -126,7 +126,7 @@ export default function AdminUsersPage() {
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon="group" label="Cadastrados" value={data?.registeredCount ?? 0} hint="Contas com perfil de jogador" />
         <StatCard icon="diversity_3" label="Amigos" value={friends.length} hint="Jogadores adicionados por você" />
         <StatCard icon="mail" label="Solicitações recebidas" value={incoming.length} hint="Convites aguardando resposta" />
@@ -288,7 +288,7 @@ export default function AdminUsersPage() {
 
 function StatCard({ icon, label, value, hint }: { icon: string; label: string; value: number; hint: string }) {
   return (
-    <article className="mesa-panel flex items-center gap-3 p-4">
+    <article className="mesa-panel flex h-full items-center gap-3 p-3.5">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-secondary/40 bg-primary-container/20 text-secondary">
         <span className="material-symbols-outlined text-xl">{icon}</span>
       </span>

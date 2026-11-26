@@ -103,10 +103,10 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="grid gap-4 xl:grid-cols-12">
-        <section className="mesa-panel p-3.5 sm:p-4 xl:col-span-8">
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col justify-center p-4 lg:col-span-7">
           {active ? (
-            <div className="flex flex-col gap-5 sm:flex-row">
+            <div className="flex flex-col gap-4 sm:flex-row">
               <div className="mx-auto flex h-40 w-32 shrink-0 items-center justify-center overflow-hidden rounded border border-secondary/35 bg-surface-container-high sm:mx-0">
                 {activeFull?.portraitUrl ? (
                   <img src={activeFull.portraitUrl} alt={active.name} className="h-full w-full object-cover" />
@@ -145,35 +145,50 @@ export default function DashboardPage() {
               </div>
             </div>
           ) : (
-            <p className="text-on-surface-variant">Crie um personagem para ver o painel do cainita ativo.</p>
+            <div className="flex min-h-[13.5rem] flex-col items-center justify-center gap-2 px-4 py-6 text-center">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-secondary/35 bg-surface-container-high text-secondary">
+                <span className="material-symbols-outlined text-2xl">person_add</span>
+              </span>
+              <h2 className="font-serif text-lg text-on-surface">Nenhum personagem ativo</h2>
+              <p className="max-w-sm text-xs leading-relaxed text-on-surface-variant">
+                Crie um personagem para acompanhar vitalidade, atributos, equipamentos e vínculo com a mesa aqui.
+              </p>
+              <Link to="/user/characters/new/lineage" className="btn-primary mt-2 text-xs">
+                Forjar primeiro personagem
+              </Link>
+            </div>
           )}
         </section>
 
-        <aside className="space-y-3.5 xl:col-span-4">
-          <div className="mesa-panel p-3.5 sm:p-4">
-            <h3 className="font-label-sm text-xs text-secondary uppercase">Carteira imperial</h3>
-            <p className="mt-1 text-[11px] text-on-surface-variant">Recebimentos e gastos recentes</p>
+        <aside className="grid gap-3.5 sm:grid-cols-2 lg:col-span-5 lg:grid-cols-1 lg:grid-rows-2">
+          <div className="mesa-panel flex h-full flex-col justify-between p-4">
+            <div>
+              <h3 className="font-label-sm text-xs text-secondary uppercase">Carteira imperial</h3>
+              <p className="mt-1 text-[11px] text-on-surface-variant">Recebimentos e gastos recentes</p>
+            </div>
             <div className="mt-2.5">
               <WalletLedgerPanel />
             </div>
           </div>
-          <div className="mesa-panel p-3.5 sm:p-4">
-            <h3 className="font-label-sm text-xs text-secondary uppercase">Próxima sessão</h3>
-            {data.nextSession ? (
-              <>
-                <p className="mt-2 font-serif text-lg text-on-surface">{data.nextSession.title}</p>
-                <p className="text-sm text-on-surface-variant">
-                  {new Date(data.nextSession.scheduledAt).toLocaleString('pt-BR')}
-                </p>
-                <div className="mt-4 flex flex-col gap-2">
-                  <Link to="/user/sessions" className="btn-primary w-full text-center text-xs">
-                    Central de sessões
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <p className="mt-2 text-sm text-on-surface-variant">Aguardando agenda do narrador.</p>
-            )}
+          <div className="mesa-panel flex h-full flex-col justify-between p-4">
+            <div>
+              <h3 className="font-label-sm text-xs text-secondary uppercase">Próxima sessão</h3>
+              {data.nextSession ? (
+                <>
+                  <p className="mt-2 font-serif text-lg text-on-surface">{data.nextSession.title}</p>
+                  <p className="text-sm text-on-surface-variant">
+                    {new Date(data.nextSession.scheduledAt).toLocaleString('pt-BR')}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-on-surface-variant">Aguardando agenda do narrador.</p>
+              )}
+            </div>
+            <div className="mt-3">
+              <Link to="/user/sessions" className="btn-secondary w-full text-center text-xs">
+                Central de sessões
+              </Link>
+            </div>
           </div>
         </aside>
       </div>
@@ -182,18 +197,18 @@ export default function DashboardPage() {
 
       <section>
         <h2 className="mb-3 font-headline-sm text-lg">Meus personagens</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data.characters.map((ch) => {
             const full = profile?.characters.find((p) => p.id === ch.id)
             return (
               <Link
                 key={ch.id}
                 to={`/user/characters/${ch.id}?view=inventario`}
-                className={`mesa-panel block p-4 transition hover:border-secondary/40 ${
+                className={`mesa-panel flex h-full min-h-[7.5rem] items-center p-4 transition hover:border-secondary/40 ${
                   ch.selected ? 'border-secondary/50' : ''
                 }`}
               >
-                <div className="flex gap-3">
+                <div className="flex w-full gap-3">
                   <div className="flex h-16 w-12 shrink-0 items-center justify-center overflow-hidden rounded border border-outline-variant/50 bg-surface-container-high">
                     {full?.portraitUrl ? (
                       <img src={full.portraitUrl} alt="" className="h-full w-full object-cover" />
@@ -203,8 +218,8 @@ export default function DashboardPage() {
                       </span>
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-serif text-on-surface">{ch.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-on-surface">{ch.name}</p>
                     <p className="text-xs text-primary">
                       {ch.species}
                       {ch.clan ? ` / ${ch.clan}` : ''}
@@ -220,10 +235,10 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => navigate('/user/characters/new/lineage')}
-            className="mesa-panel flex min-h-[8rem] flex-col items-center justify-center border-dashed p-4 text-on-surface-variant hover:border-secondary/50"
+            className="mesa-panel flex h-full min-h-[7.5rem] flex-col items-center justify-center border-dashed p-4 text-on-surface-variant hover:border-secondary/50"
           >
             <span className="material-symbols-outlined text-3xl">add</span>
-            <span className="mt-2 text-center text-xs">Criar novo personagem</span>
+            <span className="mt-1.5 text-center text-xs">Criar novo personagem</span>
           </button>
         </div>
       </section>

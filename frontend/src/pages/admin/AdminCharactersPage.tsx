@@ -9,41 +9,43 @@ const PAGE_SIZE = 6
 function CharacterCard({ item }: { item: ChronicleEntity }) {
   const draft = item.visibility !== 'published'
   return (
-    <article className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#141414]">
-      <div className="relative h-36 bg-black">
+    <article className="flex h-full flex-col overflow-hidden rounded-xl border border-white/10 bg-[#141414] transition hover:border-white/25">
+      <div className="relative aspect-[16/9] max-h-40 w-full shrink-0 overflow-hidden bg-black">
         {item.imageUrl ? (
           <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,#2a1810,#090909)]">
-            <span className="material-symbols-outlined text-4xl text-white/25">
+            <span className="material-symbols-outlined text-3xl text-white/25">
               {item.kind === 'npc' ? 'person' : 'pest_control'}
             </span>
           </div>
         )}
-        <span className="absolute top-2 left-2 rounded border border-white/20 bg-black/60 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white/85 uppercase">
+        <span className="absolute top-2.5 left-2.5 rounded border border-white/20 bg-black/60 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white/85 uppercase">
           {draft ? 'Rascunho' : 'Publicado'}
         </span>
       </div>
-      <div className="flex flex-1 flex-col px-4 pt-3 pb-3">
-        <h2 className="font-serif text-lg text-white">{item.name}</h2>
-        <p className="mt-1 text-[11px] tracking-wide text-secondary uppercase">
+      <div className="flex flex-1 flex-col px-4 pt-3.5 pb-3.5">
+        <h2 className="font-serif text-base font-semibold text-white">{item.name}</h2>
+        <p className="mt-1 text-xs tracking-wide text-secondary uppercase">
           {item.kind === 'npc' ? 'NPC' : 'Monstro'}
           {item.creatureType ? ` · ${item.creatureType}` : ''}
         </p>
-        <p className="mt-1 text-[11px] text-white/45">
+        <p className="mt-1 text-[11px] text-white/50">
           HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'}
           {item.location ? ` · ${item.location}` : ''}
         </p>
-        <p className="mt-2 line-clamp-2 text-xs text-white/55">
+        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-white/60">
           {item.description || 'Sem descrição.'}
         </p>
-        <Link
-          to={`/admin/characters/new?kind=${item.kind}&id=${item.id}`}
-          className="mt-3 ml-auto inline-flex items-center gap-1 text-xs text-white/80 hover:text-white"
-        >
-          <span className="material-symbols-outlined text-base">edit</span>
-          Editar
-        </Link>
+        <div className="mt-auto flex items-center justify-end pt-3">
+          <Link
+            to={`/admin/characters/new?kind=${item.kind}&id=${item.id}`}
+            className="inline-flex items-center gap-1 text-xs font-medium text-white/80 hover:text-secondary"
+          >
+            <span className="material-symbols-outlined text-base">edit</span>
+            Editar
+          </Link>
+        </div>
       </div>
     </article>
   )
@@ -109,7 +111,7 @@ export default function AdminCharactersPage() {
       </div>
 
       {loading ? <p className="text-sm text-on-surface-variant">Carregando…</p> : null}
-      <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {pageItems.map((item) => (
           <CharacterCard key={item.id} item={item} />
         ))}

@@ -337,8 +337,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
 
       {session ? <SessionTableInfoPanel session={session} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-12">
-        <SessionPanel title="Ficha na sessão" icon="person" className="xl:col-span-4">
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
+        <SessionPanel title="Ficha na sessão" icon="person" className="h-full lg:col-span-4">
           {character ? (
             <div className={`space-y-3 ${dead ? 'opacity-60' : ''}`}>
               {dead ? (
@@ -486,7 +486,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           )}
         </SessionPanel>
 
-        <SessionPanel title="Habilidades" icon="auto_awesome" className="xl:col-span-5">
+        <SessionPanel title="Habilidades" icon="auto_awesome" className="h-full lg:col-span-5">
           {character && !dead ? (
             <CreatedSkillsPanel
               skills={skills}
@@ -502,7 +502,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           )}
         </SessionPanel>
 
-        <SessionPanel title="Iniciativa" icon="format_list_numbered" className="xl:col-span-3">
+        <SessionPanel title="Iniciativa" icon="format_list_numbered" className="h-full lg:col-span-3">
           {initiative.length === 0 ? (
             <p className="text-sm text-on-surface-variant">Aguardando ordem do mestre.</p>
           ) : (
@@ -525,8 +525,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </SessionPanel>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-12">
-        <SessionPanel title="Teatro da mente" icon="theater_comedy" className="xl:col-span-7">
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
+        <SessionPanel title="Teatro da mente" icon="theater_comedy" className="h-full lg:col-span-7">
           <p className="font-serif text-sm leading-relaxed whitespace-pre-wrap text-on-surface">{teatroText}</p>
           <p className="mt-3 text-xs text-on-surface-variant">Tom: {ambience.atmosphere}</p>
           <p className="mt-3 rounded border border-outline-variant/30 bg-surface-container-low/40 px-3 py-2 text-xs text-on-surface-variant">
@@ -534,7 +534,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           </p>
         </SessionPanel>
 
-        <div className="space-y-4 xl:col-span-5">
+        <div className="flex flex-col gap-4 lg:col-span-5">
           <SessionPanel title="Crônica & decisões" icon="menu_book">
             <p className="text-xs text-on-surface-variant">
               Objetivos e consequências sincronizam quando o narrador publica o ato.
@@ -594,30 +594,34 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </div>
       </div>
 
-      <FerreiroPanel
-        sessionId={sessionId}
-        characterId={character?.id}
-        characterLevel={character?.level ?? 1}
-        isLive={isLive}
-      />
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
+        <div className="lg:col-span-5">
+          <FerreiroPanel
+            sessionId={sessionId}
+            characterId={character?.id}
+            characterLevel={character?.level ?? 1}
+            isLive={isLive}
+          />
+        </div>
 
-      <SessionPanel title="Ameaças em cena" icon="pest_control">
-        {threats.length === 0 ? (
-          <p className="text-sm text-on-surface-variant">Nenhum monstro em cena — o mestre adiciona pela mesa.</p>
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {threats.map((t) => (
-              <li key={t.id}>
-                <p className="font-serif text-lg text-on-surface">{t.name}</p>
-                <StatBar label="Vitalidade" current={t.hpCurrent} max={t.hpMax} />
-                <StatBar label="Mana" current={t.manaCurrent} max={Math.max(t.manaMax, 1)} variant="will" />
-              </li>
-            ))}
-          </ul>
-        )}
-      </SessionPanel>
+        <SessionPanel title="Ameaças em cena" icon="pest_control" className="h-full lg:col-span-7">
+          {threats.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">Nenhum monstro em cena — o mestre adiciona pela mesa.</p>
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {threats.map((t) => (
+                <li key={t.id}>
+                  <p className="font-serif text-lg text-on-surface">{t.name}</p>
+                  <StatBar label="Vitalidade" current={t.hpCurrent} max={t.hpMax} />
+                  <StatBar label="Mana" current={t.manaCurrent} max={Math.max(t.manaMax, 1)} variant="will" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </SessionPanel>
+      </div>
 
-      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-60">
+      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-52 xl:left-56">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-on-surface-variant">
             Turno · <strong className="text-primary">{character?.name ?? '—'}</strong>
