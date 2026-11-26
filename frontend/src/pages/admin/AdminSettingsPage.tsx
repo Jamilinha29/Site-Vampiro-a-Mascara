@@ -25,6 +25,7 @@ export default function AdminSettingsPage() {
   })
 
   const [displayName, setDisplayName] = useState('')
+  const [handle, setHandle] = useState('')
   const [courtTitle, setCourtTitle] = useState('')
   const [chronicleSlogan, setChronicleSlogan] = useState('')
   const [archiveFocus, setArchiveFocus] = useState('')
@@ -36,6 +37,7 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     if (!profile) return
     setDisplayName(profile.displayName)
+    setHandle(profile.handle)
     const p = profile.preferences
     setCourtTitle(p.courtTitle ?? '')
     setChronicleSlogan(p.chronicleSlogan ?? '')
@@ -47,8 +49,17 @@ export default function AdminSettingsPage() {
 
   const save = useMutation({
     mutationFn: async () => {
+      const accountPatch: { displayName?: string; handle?: string } = {}
       if (displayName.trim() !== profile?.displayName) {
-        await api.patchMeAccount({ displayName: displayName.trim() })
+        accountPatch.displayName = displayName.trim()
+      }
+      if (handle.trim() !== profile?.handle) {
+        accountPatch.handle = handle.trim()
+      }
+      if (accountPatch.displayName !== undefined || accountPatch.handle !== undefined) {
+        const updatedAccount = await api.patchMeAccount(accountPatch)
+        setDisplayName(updatedAccount.displayName)
+        setHandle(updatedAccount.handle)
       }
       await api.patchMePreferences({
         courtTitle: courtTitle.trim() || null,
@@ -80,18 +91,31 @@ export default function AdminSettingsPage() {
         <p className="mt-1 text-sm text-on-surface-variant">Identidade pública e avisos do painel ADM.</p>
       </header>
 
-      <Block title="Brasão &amp; cenário">
+      <Block title="Foto de perfil e banner">
         <ProfileMediaSettings avatarUrl={profile.avatarUrl} bannerUrl={profile.bannerUrl} compact />
       </Block>
 
-      <Block title="Identidade do narrador">
+      <Block title="Identidade da conta e do narrador">
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
-            Nome civil (login)
+            Nome de exibição no login
             <input className="input-feudal mt-1 pl-4" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
           </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Nome de usuário @
+            <input
+              className="input-feudal mt-1 pl-4"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              placeholder="@seu_usuario"
+            />
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            E-mail de acesso
+            <input className="input-feudal mt-1 pl-4 opacity-70" value={profile.email} readOnly disabled />
+          </label>
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
-            Título na corte
+            Título público do narrador
             <input
               className="input-feudal mt-1 pl-4"
               value={courtTitle}
@@ -109,7 +133,7 @@ export default function AdminSettingsPage() {
             />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
-            Foco do acervo (glossário / bestiário)
+            Foco do glossário e bestiário
             <input
               className="input-feudal mt-1 pl-4"
               value={archiveFocus}
@@ -118,7 +142,7 @@ export default function AdminSettingsPage() {
             />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
-            Biografia do mestre
+            Biografia do narrador
             <textarea
               className="input-feudal textarea-compact mt-1 pl-4"
               value={bio}
@@ -129,7 +153,7 @@ export default function AdminSettingsPage() {
         </div>
       </Block>
 
-      <Block title="Operação &amp; avisos">
+      <Block title="Operação e avisos">
         <div className="space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={notifySessions} onChange={(e) => setNotifySessions(e.target.checked)} />
@@ -137,7 +161,7 @@ export default function AdminSettingsPage() {
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={notifyChronicle} onChange={(e) => setNotifyChronicle(e.target.checked)} />
-            <span>Resumir publicações pendentes (handouts, entidades em rascunho)</span>
+            <span>Resumir publicações pendentes de handouts e rascunhos</span>
           </label>
         </div>
         <p className="mt-2 text-xs text-on-surface-variant">

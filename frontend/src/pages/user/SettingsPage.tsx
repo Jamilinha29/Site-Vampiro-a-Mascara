@@ -29,6 +29,7 @@ export default function SettingsPage() {
   })
 
   const [displayName, setDisplayName] = useState('')
+  const [handle, setHandle] = useState('')
   const [fiefOrigin, setFiefOrigin] = useState('')
   const [narrativePreference, setNarrativePreference] = useState('')
   const [bio, setBio] = useState('')
@@ -40,6 +41,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!profile) return
     setDisplayName(profile.displayName)
+    setHandle(profile.handle)
     setFiefOrigin(profile.preferences.fiefOrigin ?? '')
     setNarrativePreference(profile.preferences.narrativePreference ?? '')
     setBio(profile.preferences.bio ?? '')
@@ -50,8 +52,17 @@ export default function SettingsPage() {
 
   const saveAccount = useMutation({
     mutationFn: async () => {
+      const accountPatch: { displayName?: string; handle?: string } = {}
       if (displayName.trim() !== profile?.displayName) {
-        await api.patchMeAccount({ displayName: displayName.trim() })
+        accountPatch.displayName = displayName.trim()
+      }
+      if (handle.trim() !== profile?.handle) {
+        accountPatch.handle = handle.trim()
+      }
+      if (accountPatch.displayName !== undefined || accountPatch.handle !== undefined) {
+        const updatedAccount = await api.patchMeAccount(accountPatch)
+        setDisplayName(updatedAccount.displayName)
+        setHandle(updatedAccount.handle)
       }
       await api.patchMePreferences({
         fiefOrigin: fiefOrigin.trim() || null,
@@ -90,27 +101,32 @@ export default function SettingsPage() {
         </Link>
       </header>
 
-      <SettingsSection title="Aparência da conta">
+      <SettingsSection title="Foto de perfil e banner">
         <ProfileMediaSettings avatarUrl={profile.avatarUrl} bannerUrl={profile.bannerUrl} />
-        <p className="mt-2 text-xs text-on-surface-variant">PNG, JPEG ou WebP. Exibido no seu perfil e no menu superior.</p>
+        <p className="mt-2 text-xs text-on-surface-variant">PNG, JPEG ou WebP. Exibido no seu perfil e no menu lateral.</p>
       </SettingsSection>
 
-      <SettingsSection title="Identidade na corte">
+      <SettingsSection title="Identidade da conta">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
-            Nome exibido
+            Nome de exibição
             <input className="input-feudal mt-1 pl-4" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant">
-            Alcunha
-            <input className="input-feudal mt-1 pl-4 opacity-70" value={profile.handle} readOnly disabled />
+            Nome de usuário @
+            <input
+              className="input-feudal mt-1 pl-4"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              placeholder="@seu_usuario"
+            />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant">
-            E-mail (canônico)
+            E-mail de acesso
             <input className="input-feudal mt-1 pl-4 opacity-70" value={profile.email} readOnly disabled />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
-            Biografia breve
+            Biografia do jogador
             <textarea
               className="input-feudal mt-1 min-h-20 pl-4"
               value={bio}
@@ -173,7 +189,7 @@ export default function SettingsPage() {
       <SettingsSection title="Conta">
         <p className="text-sm text-on-surface-variant">
           Papel na mesa: <strong className="text-on-surface">Jogador</strong>
-          {profile.role !== 'player' ? ' (esta conta também acessa o painel do mestre)' : ''}
+          {profile.role !== 'player' ? ' · esta conta também acessa o painel do mestre' : ''}
         </p>
         <p className="mt-2 text-xs text-on-surface-variant">
           Para alterar seu selo com segurança, utilize a recuperação oficial enviada ao seu e-mail cadastrado.

@@ -322,9 +322,16 @@ export async function hydrateProfiles() {
     profiles.clear()
     for (const profile of doc.body) {
       if (profile?.email) {
+        const publicId = resolveNumericPublicId(profile.email, profile.publicId)
+        const legacyEmailHandle = handleFromEmail(profile.email)
+        const handle =
+          !profile.handle || profile.handle === legacyEmailHandle
+            ? defaultHandleFor(profile.displayName || 'cainita', publicId)
+            : profile.handle
         const normalized: UserProfile = {
           ...profile,
-          publicId: resolveNumericPublicId(profile.email, profile.publicId),
+          publicId,
+          handle,
           preferences: { ...defaultPreferences(), ...(profile.preferences ?? {}) },
           characters: (profile.characters ?? []).map(migrateLegacyCharacter),
         }
@@ -351,6 +358,34 @@ export function resetProfilesForTests() {
 
 function handleFromEmail(email: string) {
   return `@${email.split('@')[0]?.replace(/\W/g, '_') ?? 'cainita'}`
+}
+
+function defaultHandleFor(displayName: string, publicId: string) {
+  const slug = displayName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 16)
+  const suffix = publicId.replace(/\D/g, '').slice(-4) || '0000'
+  return `@${slug || 'cainita'}_${suffix}`
+}
+
+export function normalizeHandleInput(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .replace(/^@+/, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  if (cleaned.length < 3 || cleaned.length > 30) {
+    throw new ValidationError('O @usuário precisa ter entre 3 e 30 caracteres (letras, números ou _).')
+  }
+  return `@${cleaned}`
 }
 
 const defaultPreferences = (): UserProfile['preferences'] => ({
@@ -413,17 +448,28 @@ export async function ensureProfile(
       } else if (p.role !== 'narrator' && p.role !== 'admin') {
         p.role = role
       }
-      if (previousName !== p.displayName || previousRole !== p.role || previousPublicId !== p.publicId) {
+      const previousHandle = p.handle
+      const legacyEmailHandle = handleFromEmail(email)
+      if (!p.handle || p.handle === legacyEmailHandle) {
+        p.handle = defaultHandleFor(p.displayName, p.publicId)
+      }
+      if (
+        previousName !== p.displayName ||
+        previousRole !== p.role ||
+        previousPublicId !== p.publicId ||
+        previousHandle !== p.handle
+      ) {
         await commitProfiles([p])
       }
       return p
     }
+    const numericId = publicPlayerId(email)
     const profile: UserProfile = {
       userId: email,
       email,
-      publicId: publicPlayerId(email),
+      publicId: numericId,
       displayName,
-      handle: handleFromEmail(email),
+      handle: defaultHandleFor(displayName, numericId),
       role,
       memberSince: new Date().toISOString(),
       avatarUrl: null,
@@ -475,9 +521,11 @@ export function findProfileByPublicId(publicIdOrEmail: string): UserProfile | nu
   if (direct) return direct
   const needle = publicIdOrEmail.trim().toLowerCase()
   if (!needle) return null
+  const needleHandle = needle.startsWith('@') ? needle : `@${needle}`
   for (const p of profiles.values()) {
     const pub = resolveNumericPublicId(p.email, p.publicId).toLowerCase()
-    if (pub === needle || p.handle.toLowerCase() === needle) {
+    const h = p.handle.toLowerCase()
+    if (pub === needle || h === needle || h === needleHandle) {
       return p
     }
   }
@@ -553,14 +601,34 @@ export async function updateProfilePreferences(
   })
 }
 
-export async function updateProfileDisplayName(email: string, displayName: string) {
+export async function updateProfileAccount(
+  email: string,
+  patch: { displayName?: string; handle?: string },
+) {
   return runProfileMutation(async () => {
     const p = getProfile(email)
     if (!p) return null
-    p.displayName = displayName.trim()
+    if (patch.displayName !== undefined) {
+      p.displayName = patch.displayName.trim()
+    }
+    if (patch.handle !== undefined) {
+      const normalized = normalizeHandleInput(patch.handle)
+      const meKey = p.email.trim().toLowerCase()
+      const taken = [...profiles.values()].some(
+        (other) => other.email.trim().toLowerCase() !== meKey && other.handle.toLowerCase() === normalized,
+      )
+      if (taken) {
+        throw new ConflictError('Este @usuário já está em uso por outra conta.')
+      }
+      p.handle = normalized
+    }
     await commitProfiles([p])
     return p
   })
+}
+
+export async function updateProfileDisplayName(email: string, displayName: string) {
+  return updateProfileAccount(email, { displayName })
 }
 
 export function listCharacters(email: string) {

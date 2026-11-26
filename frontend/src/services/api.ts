@@ -418,7 +418,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
-  patchMeAccount: (body: { displayName: string }) =>
+  patchMeAccount: (body: { displayName?: string; handle?: string }) =>
     request<import('../types/profile').UserProfile>('/api/v1/me/profile/account', {
       method: 'PATCH',
       body: JSON.stringify(body),

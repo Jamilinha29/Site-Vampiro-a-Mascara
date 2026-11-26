@@ -26,7 +26,7 @@ import {
   refreshEffects,
   submitCharacter,
   syncProfilesIfStale,
-  updateProfileDisplayName,
+  updateProfileAccount,
   updateProfileMedia,
   updateProfilePreferences,
   upsertCharacter,
@@ -96,9 +96,14 @@ const prefsSchema = z.object({
   defaultRpgTitle: z.string().max(200).nullable().optional(),
 })
 
-const accountSchema = z.object({
-  displayName: z.string().min(2).max(80),
-})
+const accountSchema = z
+  .object({
+    displayName: z.string().trim().min(2).max(80).optional(),
+    handle: z.string().trim().min(3).max(32).optional(),
+  })
+  .refine((v) => v.displayName !== undefined || v.handle !== undefined, {
+    message: 'Informe o nome de exibição ou o @usuário.',
+  })
 
 meRouter.patch('/profile/preferences', async (req, res, next) => {
   try {
@@ -117,7 +122,7 @@ meRouter.patch('/profile/preferences', async (req, res, next) => {
 meRouter.patch('/profile/account', async (req, res, next) => {
   try {
     const body = accountSchema.parse(req.body)
-    const updated = await updateProfileDisplayName(req.user!.email, body.displayName)
+    const updated = await updateProfileAccount(req.user!.email, body)
     if (!updated) {
       res.status(404).json(errorPayload('NOT_FOUND', 'Perfil não encontrado', { requestId: req.requestId }))
       return
