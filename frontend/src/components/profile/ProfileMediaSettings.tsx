@@ -60,6 +60,9 @@ export function ProfileMediaSettings({ avatarUrl, bannerUrl, compact = false }: 
           </button>
         </div>
       </div>
+      <p className="text-[11px] text-on-surface-variant">
+        Imagens grandes são redimensionadas e otimizadas automaticamente ao enviar.
+      </p>
       {media.error ? <p className="text-xs text-primary">{media.error}</p> : null}
     </div>
   )

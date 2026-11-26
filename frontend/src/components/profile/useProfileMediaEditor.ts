@@ -21,7 +21,8 @@ export function useProfileMediaEditor() {
   async function saveField(field: 'bannerUrl' | 'avatarUrl', file: File) {
     try {
       setError(null)
-      const dataUrl = await readProfileImageFile(file)
+      const preset = field === 'bannerUrl' ? 'banner' : 'avatar'
+      const dataUrl = await readProfileImageFile(file, { preset })
       await patch.mutateAsync({ [field]: dataUrl })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao salvar imagem.')

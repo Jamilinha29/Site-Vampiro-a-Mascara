@@ -68,6 +68,7 @@ import { runIdempotent } from '../../services/idempotencyStore.js'
 import {
   catalogImageFolder,
   catalogImageIsPrivate,
+  deleteStoredMedia,
   storeCatalogDownloadFile,
   storeCatalogImage,
   withReadableImages,
@@ -349,6 +350,12 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
       res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
+    if (patch.imageUrl !== undefined && current.imageUrl && current.imageUrl !== updated.imageUrl) {
+      void deleteStoredMedia(current.imageUrl)
+    }
+    if (patch.fileUrl !== undefined && current.fileUrl && current.fileUrl !== updated.fileUrl) {
+      void deleteStoredMedia(current.fileUrl)
+    }
     res.json((await withReadableImages([updated]))[0])
   } catch (e) {
     next(e)
@@ -389,6 +396,8 @@ adminChronicleRouter.delete('/entities/:id', async (req, res, next) => {
       return
     }
     await deleteEntity(req.params.id)
+    void deleteStoredMedia(current.imageUrl)
+    void deleteStoredMedia(current.fileUrl)
     res.status(204).send()
   } catch (e) {
     next(e)

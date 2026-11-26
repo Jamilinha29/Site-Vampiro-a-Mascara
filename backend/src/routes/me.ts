@@ -13,13 +13,14 @@ import {
   toParticipantSessionDTO,
 } from '../services/chronicleStore.js'
 import { errorPayload } from '../services/errors.js'
-import { storeProfileImage } from '../services/mediaStorage.js'
+import { deleteStoredMedia, storeProfileImage } from '../services/mediaStorage.js'
 import { listOperationsFor } from '../services/operationLog.js'
 import {
   STARTING_CHARACTER_XP,
   ensureProfile,
   getCharacter,
   getCharacterBalanceStats,
+  getProfile,
   patchCharacter,
   publicPlayerId,
   refreshEffects,
@@ -62,12 +63,19 @@ meRouter.patch('/profile', async (req, res, next) => {
   try {
     const body = mediaSchema.parse(req.body)
     const email = req.user!.email
+    const previous = getProfile(email)
     const avatarUrl = await storeProfileImage('avatar', body.avatarUrl)
     const bannerUrl = await storeProfileImage('banner', body.bannerUrl)
     const updated = await updateProfileMedia(email, { ...body, avatarUrl, bannerUrl })
     if (!updated) {
       res.status(404).json(errorPayload('NOT_FOUND', 'Perfil não encontrado', { requestId: req.requestId }))
       return
+    }
+    if (body.avatarUrl !== undefined && previous?.avatarUrl && previous.avatarUrl !== updated.avatarUrl) {
+      void deleteStoredMedia(previous.avatarUrl)
+    }
+    if (body.bannerUrl !== undefined && previous?.bannerUrl && previous.bannerUrl !== updated.bannerUrl) {
+      void deleteStoredMedia(previous.bannerUrl)
     }
     res.json({ ...updated, publicId: publicPlayerId(updated.email) })
   } catch (e) {

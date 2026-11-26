@@ -143,6 +143,53 @@ export function parsePrivateObjectRef(url: string): { bucket: string; path: stri
   return { bucket, path }
 }
 
+const MANAGED_BUCKETS = new Set([PROFILE_BUCKET, CATALOG_BUCKET, PRIVATE_BUCKET])
+
+export function parseManagedStorageRef(url: string): { bucket: string; path: string } | null {
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const privateRef = parsePrivateObjectRef(trimmed)
+  if (privateRef) return privateRef
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return null
+  try {
+    const parsed = new URL(trimmed)
+    const configuredUrl = process.env.SUPABASE_URL?.trim()
+    if (configuredUrl) {
+      const expectedHost = new URL(configuredUrl).host
+      if (parsed.host !== expectedHost) return null
+    }
+    const marker = '/storage/v1/object/public/'
+    const idx = parsed.pathname.indexOf(marker)
+    if (idx < 0) return null
+    const rest = parsed.pathname.slice(idx + marker.length)
+    const slash = rest.indexOf('/')
+    if (slash <= 0) return null
+    const bucket = decodeURIComponent(rest.slice(0, slash))
+    const path = decodeURIComponent(rest.slice(slash + 1))
+    if (!MANAGED_BUCKETS.has(bucket)) return null
+    if (!path || path.includes('..') || path.startsWith('/') || path.includes('\\')) return null
+    return { bucket, path }
+  } catch {
+    return null
+  }
+}
+
+export async function deleteStoredMedia(url?: string | null): Promise<void> {
+  if (!url) return
+  const ref = parseManagedStorageRef(url)
+  if (!ref) return
+  const sb = getSupabaseAdmin()
+  if (!sb) return
+  try {
+    const { error } = await sb.storage.from(ref.bucket).remove([ref.path])
+    if (error) {
+      console.warn(`[storage] remove ${ref.bucket}/${ref.path}:`, error.message)
+    }
+  } catch (err) {
+    console.warn(`[storage] remove ${ref.bucket}/${ref.path}:`, err instanceof Error ? err.message : err)
+  }
+}
+
 export function profileObjectPath(slot: 'avatar' | 'banner', ext: string) {
   return `${randomUUID()}/${slot}.${ext}`
 }
