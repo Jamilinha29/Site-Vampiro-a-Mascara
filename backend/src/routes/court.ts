@@ -30,6 +30,7 @@ import {
   listAchievements,
   listAuctions,
   listFriendCards,
+  listOutgoingFor,
   listPendingFor,
   listShopLevels,
   muralFor,
@@ -82,6 +83,7 @@ courtRouter.get('/friends', (req, res) => {
   res.json({
     friends: listFriendCards(req.user!.email),
     incoming: listPendingFor(req.user!.email),
+    outgoing: listOutgoingFor(req.user!.email),
   })
 })
 

@@ -773,7 +773,8 @@ export const api = {
   getFriends: () =>
     request<{
       friends: Array<{ id?: string; email?: string; displayName: string; handle: string; role?: string; characters: number }>
-      incoming: Array<{ id: string; createdAt: string; from: { id?: string; email?: string; displayName: string; handle: string; role?: string } }>
+      incoming: Array<{ id: string; createdAt: string; from: { id?: string; email?: string; displayName: string; handle: string; role?: string; characters?: number } }>
+      outgoing?: Array<{ id: string; createdAt: string; to: { id?: string; email?: string; displayName: string; handle: string; role?: string; characters?: number } }>
     }>('/api/v1/court/friends'),
   searchCourtPlayers: (q: string) =>
     request<
