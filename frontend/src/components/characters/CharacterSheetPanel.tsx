@@ -188,7 +188,7 @@ function SectionCard({
   compact?: boolean
 }) {
   return (
-    <section className={`mesa-panel ${compact ? 'space-y-2 p-3 sm:p-4' : 'space-y-4 p-4 sm:p-5'}`}>
+    <section className={`mesa-panel flex h-full flex-col ${compact ? 'space-y-2 p-3 sm:p-4' : 'space-y-4 p-4 sm:p-5'}`}>
       <h3 className="font-label-sm text-xs text-secondary uppercase">{title}</h3>
       {children}
     </section>
@@ -213,7 +213,7 @@ function AttributesAndAbilities(props: Props) {
   const limits = abilitySlotLimits(level)
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
       <SectionCard title="Atributos" compact>
         <div className="grid gap-2 sm:grid-cols-3">
           {SHEET_ATTR_GROUPS.map((g) => (
@@ -404,7 +404,7 @@ function MortalSheet(props: Props) {
       </SectionCard>
       <AttributesAndAbilities {...props} />
       <CreatedSkillsSection {...props} />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
         <PathAndVirtues {...props} title="Virtudes & caminho" />
         <BackgroundsAndResources {...props} />
       </div>
@@ -420,7 +420,7 @@ function VampireSheet(props: Props) {
       </SectionCard>
       <AttributesAndAbilities {...props} />
       <CreatedSkillsSection {...props} />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
         <PathAndVirtues {...props} />
         <BackgroundsAndResources {...props} />
       </div>
@@ -446,7 +446,7 @@ function OtherSpeciesSheet(props: Props) {
       </SectionCard>
       <AttributesAndAbilities {...props} />
       <CreatedSkillsSection {...props} />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
         <PathAndVirtues
           {...props}
           title={pathTitle}

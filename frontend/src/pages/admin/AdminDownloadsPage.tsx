@@ -127,8 +127,8 @@ export default function AdminDownloadsPage() {
         ))}
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <section className="admin-form-panel admin-form-panel--compact h-full">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="admin-form-panel admin-form-panel--compact flex h-full flex-col">
           <header className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-label-sm text-xs text-secondary uppercase">
               {editingId ? 'Editar arquivo' : 'Novo arquivo'}
@@ -141,12 +141,12 @@ export default function AdminDownloadsPage() {
           </header>
           <label className="block text-xs uppercase text-on-surface-variant">
             Nome
-            <input className="input-feudal mt-1 pl-4" value={name} onChange={(e) => setName(e.target.value)} />
+            <input className="input-feudal mt-1 pl-4 normal-case" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
-          <label className="block text-xs uppercase text-on-surface-variant">
+          <label className="flex flex-1 flex-col text-xs uppercase text-on-surface-variant">
             Descrição
             <textarea
-              className="input-feudal textarea-compact mt-1 pl-4"
+              className="input-feudal textarea-compact mt-1 flex-1 pl-4 normal-case"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -172,17 +172,19 @@ export default function AdminDownloadsPage() {
             {fileName ? <p className="mt-1 text-xs text-on-surface-variant">{fileName}</p> : null}
           </label>
           {error ? <p className="text-sm text-primary">{error}</p> : null}
-          <button
-            type="button"
-            className="btn-primary text-sm"
-            disabled={create.isPending || update.isPending}
-            onClick={submit}
-          >
-            Salvar
-          </button>
+          <div className="mt-auto pt-2">
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={create.isPending || update.isPending}
+              onClick={submit}
+            >
+              Salvar
+            </button>
+          </div>
         </section>
 
-        <section className="admin-form-panel flex min-h-0 flex-col lg:max-h-[32rem]">
+        <section className="admin-form-panel flex h-full min-h-[22rem] flex-col">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Arquivos cadastrados</h2>
           <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {filtered.length === 0 ? (

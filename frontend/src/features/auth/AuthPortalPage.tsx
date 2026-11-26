@@ -449,7 +449,7 @@ function GoogleAuthButton({ context, className = '' }: { context: 'login' | 'reg
   async function handleGoogle() {
     const sb = getSupabaseBrowser()
     if (!sb) {
-      push('Entrada pelo Google requer VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY configurados.', 'info')
+      push('Entrada pelo Google não está configurada neste ambiente.', 'info')
       return
     }
     setBusy(true)

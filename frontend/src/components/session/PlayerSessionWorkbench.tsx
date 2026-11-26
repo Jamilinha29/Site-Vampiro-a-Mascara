@@ -337,8 +337,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
 
       {session ? <SessionTableInfoPanel session={session} /> : null}
 
-      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
-        <SessionPanel title="Ficha na sessão" icon="person" className="h-full lg:col-span-4">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-3 lg:items-stretch">
+        <SessionPanel title="Ficha na sessão" icon="person" className="h-full">
           {character ? (
             <div className={`space-y-3 ${dead ? 'opacity-60' : ''}`}>
               {dead ? (
@@ -486,7 +486,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           )}
         </SessionPanel>
 
-        <SessionPanel title="Habilidades" icon="auto_awesome" className="h-full lg:col-span-5">
+        <SessionPanel title="Habilidades" icon="auto_awesome" className="h-full">
           {character && !dead ? (
             <CreatedSkillsPanel
               skills={skills}
@@ -502,7 +502,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           )}
         </SessionPanel>
 
-        <SessionPanel title="Iniciativa" icon="format_list_numbered" className="h-full lg:col-span-3">
+        <SessionPanel title="Iniciativa" icon="format_list_numbered" className="h-full">
           {initiative.length === 0 ? (
             <p className="text-sm text-on-surface-variant">Aguardando ordem do mestre.</p>
           ) : (
@@ -525,17 +525,17 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </SessionPanel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
-        <SessionPanel title="Teatro da mente" icon="theater_comedy" className="h-full lg:col-span-7">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <SessionPanel title="Teatro da mente" icon="theater_comedy" className="h-full">
           <p className="font-serif text-sm leading-relaxed whitespace-pre-wrap text-on-surface">{teatroText}</p>
           <p className="mt-3 text-xs text-on-surface-variant">Tom: {ambience.atmosphere}</p>
-          <p className="mt-3 rounded border border-outline-variant/30 bg-surface-container-low/40 px-3 py-2 text-xs text-on-surface-variant">
+          <p className="mt-auto rounded border border-outline-variant/30 bg-surface-container-low/40 px-3 py-2 text-xs text-on-surface-variant">
             {EXTERNAL_MAP_NOTICE}
           </p>
         </SessionPanel>
 
-        <div className="flex flex-col gap-4 lg:col-span-5">
-          <SessionPanel title="Crônica & decisões" icon="menu_book">
+        <div className="grid h-full gap-4 lg:grid-rows-[minmax(0,1fr)_auto]">
+          <SessionPanel title="Crônica & decisões" icon="menu_book" className="h-full">
             <p className="text-xs text-on-surface-variant">
               Objetivos e consequências sincronizam quando o narrador publica o ato.
             </p>
@@ -553,7 +553,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             ) : (
               <p className="mt-3 text-sm text-on-surface-variant">Use uma habilidade criada para registrar na sessão.</p>
             )}
-            <label className="mt-3 block text-xs uppercase text-on-surface-variant">
+            <label className="mt-auto block pt-3 text-xs uppercase text-on-surface-variant">
               Declarar ação ao narrador
               <textarea
                 className="input-feudal mt-1 min-h-16 pl-3 normal-case"
@@ -562,23 +562,25 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 placeholder="Descreva o que seu personagem faz…"
               />
             </label>
-            <button
-              type="button"
-              className="btn-secondary mt-2 text-xs"
-              disabled={!declareText.trim()}
-              onClick={() => {
-                const text = declareText.trim()
-                setDeclareText('')
-                void recordAction('declaration', `Declaração: ${text}`).then(() => {
-                  push('Declaração registrada na sessão.', 'success')
-                })
-              }}
-            >
-              Enviar declaração
-            </button>
+            <div className="mt-2">
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={!declareText.trim()}
+                onClick={() => {
+                  const text = declareText.trim()
+                  setDeclareText('')
+                  void recordAction('declaration', `Declaração: ${text}`).then(() => {
+                    push('Declaração registrada na sessão.', 'success')
+                  })
+                }}
+              >
+                Enviar declaração
+              </button>
+            </div>
           </SessionPanel>
 
-          <SessionPanel title="Bolsa & recompensas" icon="shopping_bag">
+          <SessionPanel title="Bolsa & recompensas" icon="shopping_bag" className="h-full">
             {rewards.length === 0 ? (
               <p className="text-sm text-on-surface-variant">Nenhuma recompensa nesta mesa ainda.</p>
             ) : (
@@ -594,8 +596,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
-        <div className="lg:col-span-5">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+        <div className="flex h-full flex-col">
           <FerreiroPanel
             sessionId={sessionId}
             characterId={character?.id}
@@ -604,7 +606,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           />
         </div>
 
-        <SessionPanel title="Ameaças em cena" icon="pest_control" className="h-full lg:col-span-7">
+        <SessionPanel title="Ameaças em cena" icon="pest_control" className="h-full">
           {threats.length === 0 ? (
             <p className="text-sm text-on-surface-variant">Nenhum monstro em cena — o mestre adiciona pela mesa.</p>
           ) : (
@@ -720,7 +722,7 @@ function SessionPanel({
   className?: string
 }) {
   return (
-    <section className={`mesa-panel p-4 sm:p-5 ${className}`}>
+    <section className={`mesa-panel flex flex-col p-4 sm:p-5 ${className}`}>
       <div className="mb-3 flex items-center gap-2">
         <span className="material-symbols-outlined text-secondary">{icon}</span>
         <h2 className="font-label-sm text-[0.65rem] tracking-wider text-secondary uppercase">{title}</h2>

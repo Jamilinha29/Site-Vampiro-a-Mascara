@@ -487,8 +487,8 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         </section>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-12">
-        <section className="mesa-panel p-4 lg:col-span-6">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Concessão rápida</h2>
           <p className="mt-2 text-xs text-on-surface-variant">
             XP de +1 a +250 — só o narrador concede; aplica direto na ficha (jogador não altera).
@@ -556,7 +556,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
           <MesaCoinGrant sessionId={session.id} participant={grantParticipant} live={live} />
         </section>
 
-        <section className="mesa-panel p-4 lg:col-span-6">
+        <section className="mesa-panel flex h-full flex-col p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Objetivos do ato</h2>
           {handout.missions.length === 0 ? (
             <p className="mt-2 text-xs text-on-surface-variant">Continuidade da crônica.</p>
@@ -708,7 +708,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="mesa-panel p-4">
+    <div className="mesa-panel flex h-full flex-col justify-between p-4">
       <p className="text-[0.65rem] uppercase tracking-wider text-on-surface-variant">{label}</p>
       <p className="mt-1 font-serif text-2xl text-on-surface">{value}</p>
       <p className="mt-1 text-xs text-secondary">{hint}</p>

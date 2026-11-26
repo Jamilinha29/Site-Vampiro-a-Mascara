@@ -21,7 +21,7 @@ export default function AdminCharactersNewPage() {
           Ver lista
         </Link>
       </header>
-      <div className="grid items-start gap-3.5 lg:grid-cols-2">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
       <AdminEntityPanel
         kind="npc"
         registryVariant="npc"

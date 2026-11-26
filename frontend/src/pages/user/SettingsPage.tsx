@@ -167,7 +167,7 @@ export default function SettingsPage() {
             <span className="text-on-surface">Novidades da crônica e handouts publicados</span>
           </label>
         </div>
-        <p className="mt-2 text-xs text-on-surface-variant">E-mails reais dependem de Resend/Supabase em produção.</p>
+        <p className="mt-2 text-xs text-on-surface-variant">Envios de e-mail dependem da configuração do servidor em produção.</p>
       </SettingsSection>
 
       <SettingsSection title="Conta">

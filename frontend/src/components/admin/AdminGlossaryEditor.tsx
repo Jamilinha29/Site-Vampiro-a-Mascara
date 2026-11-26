@@ -341,7 +341,7 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
   const saving = create.isPending || update.isPending
 
   const formPanel = (
-      <section className="admin-form-panel admin-form-panel--compact h-full">
+      <section className="admin-form-panel admin-form-panel--compact flex h-full flex-col">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-label-sm text-xs text-secondary uppercase">
@@ -375,35 +375,38 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
           </label>
           <label className="block text-xs uppercase text-on-surface-variant">
             Nome
-            {classification === 'monster' ? (
-              <input className="input-feudal mt-1 pl-4" value={name} onChange={(e) => setName(e.target.value)} />
-            ) : (
-              <select
-                className="input-feudal mt-1 pl-4 normal-case"
-                value={shopPickId}
-                onChange={(e) => {
-                  const id = e.target.value
-                  setShopPickId(id)
-                  const picked = shopCatalog.find((s) => s.id === id)
-                  if (picked) applyShopItem(picked)
-                  else {
-                    setName('')
-                    setDescription('')
-                    setImageUrl(undefined)
-                  }
-                }}
-              >
-                <option value="">Selecione um item da loja…</option>
-                {shopCatalog.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                    {item.shopCategory ? ` (${item.shopCategory})` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
+            <input
+              className="input-feudal mt-1 pl-4 normal-case"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nome do registro"
+            />
           </label>
         </div>
+
+        {classification !== 'monster' && shopCatalog.length > 0 ? (
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Preencher a partir da loja (opcional)
+            <select
+              className="input-feudal mt-1 pl-4 normal-case"
+              value={shopPickId}
+              onChange={(e) => {
+                const id = e.target.value
+                setShopPickId(id)
+                const picked = shopCatalog.find((s) => s.id === id)
+                if (picked) applyShopItem(picked)
+              }}
+            >
+              <option value="">Manter nome e campos atuais…</option>
+              {shopCatalog.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.shopCategory ? ` (${item.shopCategory})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className="block text-xs uppercase text-on-surface-variant">
           Descrição
@@ -688,28 +691,32 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
           </div>
         ) : null}
 
-        <label className="flex items-center gap-2 text-xs text-on-surface-variant">
-          <input
-            type="checkbox"
-            checked={publishOnSave}
-            onChange={(e) => setPublishOnSave(e.target.checked)}
-          />
-          Publicar para jogadores ao salvar (sem isso fica só como rascunho na lista abaixo)
-        </label>
+        <div className="mt-auto space-y-2.5 pt-2">
+          <label className="flex items-center gap-2 text-xs text-on-surface-variant">
+            <input
+              type="checkbox"
+              checked={publishOnSave}
+              onChange={(e) => setPublishOnSave(e.target.checked)}
+            />
+            Publicar para jogadores ao salvar (sem isso fica só como rascunho na lista abaixo)
+          </label>
 
-        {error ? <p className="text-sm text-primary">{error}</p> : null}
-        <button type="button" className="btn-primary text-sm" disabled={saving} onClick={submit}>
-          {saving ? 'Salvando…' : publishOnSave ? 'Salvar e publicar' : 'Salvar rascunho'}
-        </button>
+          {error ? <p className="text-sm text-primary">{error}</p> : null}
+          <div>
+            <button type="button" className="btn-primary text-sm" disabled={saving} onClick={submit}>
+              {saving ? 'Salvando…' : publishOnSave ? 'Salvar e publicar' : 'Salvar rascunho'}
+            </button>
+          </div>
+        </div>
       </section>
   )
 
   return (
     <div className="space-y-4">
       {importSlot ? (
-        <div className="grid items-start gap-4 lg:grid-cols-12">
-          <div className="min-w-0 lg:col-span-7">{formPanel}</div>
-          <div className="min-w-0 lg:col-span-5">{importSlot}</div>
+        <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+          <div className="flex min-w-0 flex-col">{formPanel}</div>
+          <div className="flex min-w-0 flex-col">{importSlot}</div>
         </div>
       ) : (
         formPanel

@@ -47,7 +47,7 @@ export function AdminNoticesPanel() {
         {send.isPending ? 'Enviando…' : 'Enviar aviso'}
       </button>
       {send.isError ? <p className="text-xs text-primary">{(send.error as Error).message}</p> : null}
-      <ul className="max-h-72 space-y-2 overflow-y-auto">
+      <ul className="mt-2 max-h-72 flex-1 space-y-2 overflow-y-auto">
         {notices.length === 0 ? <li className="text-sm text-on-surface-variant">Nenhum aviso enviado ainda.</li> : null}
         {notices.map((notice) => (
           <li key={notice.id} className="rounded border border-outline-variant/40 px-3 py-2">

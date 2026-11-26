@@ -72,7 +72,7 @@ export function AdminEntityImportPanel() {
   })
 
   return (
-    <section className="card-surface space-y-3 p-5" aria-labelledby="import-heading">
+    <section className="admin-form-panel admin-form-panel--compact flex h-full flex-col" aria-labelledby="import-heading">
       <h2 id="import-heading" className="text-xs uppercase tracking-wide text-secondary">
         Importar catálogo (JSON)
       </h2>
@@ -83,16 +83,16 @@ export function AdminEntityImportPanel() {
       <label className="block text-xs text-on-surface-variant">
         Mapeamento de colunas (JSON)
         <textarea
-          className="input-feudal mt-1 min-h-28 w-full font-mono text-xs"
+          className="input-feudal mt-1 min-h-28 w-full pl-3 font-mono text-xs"
           value={mapText}
           onChange={(event) => setMapText(event.target.value)}
           spellCheck={false}
         />
       </label>
-      <label className="block text-xs text-on-surface-variant">
+      <label className="flex flex-1 flex-col text-xs text-on-surface-variant">
         Dados
         <textarea
-          className="input-feudal mt-1 min-h-40 w-full font-mono text-xs"
+          className="input-feudal mt-1 min-h-40 w-full flex-1 pl-3 font-mono text-xs"
           value={raw}
           onChange={(event) => setRaw(event.target.value)}
           placeholder='[{"nome":"Poção","kind":"consumable","shopCategory":"consumables"}]'
@@ -126,7 +126,7 @@ export function AdminEntityImportPanel() {
           ) : null}
         </div>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-auto flex flex-wrap gap-2 pt-2">
         <button
           type="button"
           className="btn-secondary text-xs"

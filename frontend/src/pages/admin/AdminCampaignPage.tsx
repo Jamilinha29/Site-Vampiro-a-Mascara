@@ -74,50 +74,71 @@ export default function AdminCampaignPage() {
         </p>
       </header>
 
-      <section className="card-surface space-y-3 p-5">
-        <h2 className="text-xs uppercase tracking-wide text-secondary">Novo cartão</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <select className="input-feudal" value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            {kinds.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          <select className="input-feudal" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-            <option value="pending">Pendente</option>
-            <option value="proposed">Proposto</option>
-            <option value="confirmed">Confirmado</option>
-          </select>
-          <input className="input-feudal" placeholder="Título" value={title} onChange={(event) => setTitle(event.target.value)} />
-        </div>
-        <textarea className="input-feudal min-h-20 w-full" placeholder="Detalhe" value={detail} onChange={(event) => setDetail(event.target.value)} />
-        <button type="button" className="btn-primary text-xs" disabled={!title.trim() || addCard.isPending} onClick={() => addCard.mutate()}>
-          Guardar cartão
-        </button>
-        <ul className="space-y-2">
-          {(board.data ?? []).map((card) => (
-            <li key={card.id} className="flex flex-wrap items-start justify-between gap-2 rounded border border-white/10 p-3">
-              <div>
-                <p className="font-serif text-on-surface">{card.title}</p>
-                <p className="text-xs uppercase text-secondary">
-                  {card.kind} · {card.status}
-                </p>
-                {card.detail ? <p className="mt-1 text-sm text-on-surface-variant">{card.detail}</p> : null}
-              </div>
-              <button
-                type="button"
-                className="btn-secondary text-xs"
-                onClick={() => void api.adminRemoveBoardCard(card.id).then(() => queryClient.invalidateQueries({ queryKey: ['campaign-board'] }))}
-              >
-                Remover
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-3 lg:items-stretch">
+        <section className="card-surface flex h-full flex-col space-y-3 p-5">
+          <h2 className="text-xs uppercase tracking-wide text-secondary">Novo cartão</h2>
+          <p className="text-sm text-on-surface-variant">
+            Registre pistas, missões, locais ou pendências para consulta rápida durante os atos.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select className="input-feudal pl-3" value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
+              {kinds.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <select className="input-feudal pl-3" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+              <option value="pending">Pendente</option>
+              <option value="proposed">Proposto</option>
+              <option value="confirmed">Confirmado</option>
+            </select>
+            <input
+              className="input-feudal pl-3 sm:col-span-2"
+              placeholder="Título"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </div>
+          <textarea
+            className="input-feudal min-h-24 w-full flex-1 pl-3"
+            placeholder="Detalhe"
+            value={detail}
+            onChange={(event) => setDetail(event.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary text-xs" disabled={!title.trim() || addCard.isPending} onClick={() => addCard.mutate()}>
+              Guardar cartão
+            </button>
+          </div>
+          {(board.data ?? []).length > 0 ? (
+            <ul className="max-h-36 space-y-2 overflow-y-auto pr-1">
+              {(board.data ?? []).map((card) => (
+                <li key={card.id} className="flex flex-wrap items-start justify-between gap-2 rounded border border-white/10 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-serif text-on-surface">{card.title}</p>
+                    <p className="text-xs uppercase text-secondary">
+                      {card.kind} · {card.status}
+                    </p>
+                    {card.detail ? <p className="mt-1 text-sm text-on-surface-variant">{card.detail}</p> : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => void api.adminRemoveBoardCard(card.id).then(() => queryClient.invalidateQueries({ queryKey: ['campaign-board'] }))}
+                  >
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-auto text-xs text-on-surface-variant">
+              Nenhum cartão registrado ainda. Os cartões salvos ficam listados aqui.
+            </p>
+          )}
+        </section>
 
-      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <section className="card-surface flex h-full flex-col space-y-3 p-5">
           <h2 className="text-xs uppercase tracking-wide text-secondary">Regras da campanha</h2>
           <p className="text-sm text-on-surface-variant">
@@ -155,7 +176,7 @@ export default function AdminCampaignPage() {
             </button>
           </div>
           {affected.length > 0 ? (
-            <ul className="text-sm text-on-surface-variant">
+            <ul className="max-h-36 overflow-y-auto text-sm text-on-surface-variant">
               {affected.map((row) => (
                 <li key={`${row.name}${row.reason}`}>
                   {row.name}: {row.reason}
@@ -182,8 +203,13 @@ export default function AdminCampaignPage() {
               ))}
             </select>
             <input className="input-feudal pl-3" placeholder="Id do NPC" value={entityId} onChange={(event) => setEntityId(event.target.value)} />
-            <input className="input-feudal pl-3" placeholder="E-mail do jogador (opcional)" value={audienceEmail} onChange={(event) => setAudienceEmail(event.target.value)} />
-            <input className="input-feudal pl-3" placeholder="O que essa mesa descobriu" value={secret} onChange={(event) => setSecret(event.target.value)} />
+            <input className="input-feudal pl-3 sm:col-span-2" placeholder="E-mail do jogador (opcional)" value={audienceEmail} onChange={(event) => setAudienceEmail(event.target.value)} />
+            <textarea
+              className="input-feudal min-h-20 w-full flex-1 pl-3 sm:col-span-2"
+              placeholder="O que essa mesa descobriu"
+              value={secret}
+              onChange={(event) => setSecret(event.target.value)}
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -214,13 +240,15 @@ export default function AdminCampaignPage() {
               Avançar um turno nesta mesa
             </button>
           </div>
-          <ul className="space-y-2 text-sm text-on-surface-variant">
-            {(secrets.data ?? []).map((row) => (
-              <li key={row.id}>
-                Mesa {row.sessionId.slice(0, 8)} · NPC {row.entityId.slice(0, 8)} · {row.audienceEmail || 'mesa inteira'} — {row.text}
-              </li>
-            ))}
-          </ul>
+          {(secrets.data ?? []).length > 0 ? (
+            <ul className="max-h-28 space-y-2 overflow-y-auto text-sm text-on-surface-variant">
+              {(secrets.data ?? []).map((row) => (
+                <li key={row.id}>
+                  Mesa {row.sessionId.slice(0, 8)} · NPC {row.entityId.slice(0, 8)} · {row.audienceEmail || 'mesa inteira'} — {row.text}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <p className="mt-auto text-xs text-on-surface-variant">
             No item, escreva “3 turnos” ou “30 minutos” no texto de atributos. O tempo só começa quando o item sai da bolsa.
           </p>

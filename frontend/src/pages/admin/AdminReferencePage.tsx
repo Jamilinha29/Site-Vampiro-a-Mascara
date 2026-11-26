@@ -141,13 +141,14 @@ export default function AdminReferencePage() {
         name: savedDraft.name.trim() || row.name,
         description: savedDraft.description,
         className: savedDraft.className,
-        faithPath: row.faithPath,
+        faithPath: savedDraft.faithPath || row.faithPath,
       }),
     onSuccess: async () => {
       setEditingSavedId(null)
       setMessage('Item atualizado.')
       await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
       await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
+      if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
       if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
     },
     onError: (error: Error) => setMessage(error.message),
@@ -167,7 +168,6 @@ export default function AdminReferencePage() {
       row.className.toLowerCase().includes(savedQueryText)
     )
   })
-  const editableSaved = meta.extra === 'class' || kind === 'monster_type' || kind === 'equipment_type' || kind === 'magic'
   const faithNeedsPath = meta.extra === 'faith' && !draft.faithPath
   const previewNeedsPath = meta.extra === 'faith' && (preview?.some((row) => !row.faithPath) ?? false)
   const columns = useMemo(() => {
@@ -208,114 +208,125 @@ export default function AdminReferencePage() {
         ))}
       </div>
 
-      <section className="mesa-panel space-y-3 p-4">
-        <h2 className="font-serif text-lg text-on-surface">Novo item</h2>
-        <div className="grid gap-3 md:grid-cols-2">
-          {meta.extra === 'class' ? (
-            <label className="text-xs uppercase text-on-surface-variant">
-              Classe
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col space-y-3 p-4">
+          <h2 className="font-serif text-lg text-on-surface">Novo item</h2>
+          <div className="grid flex-1 gap-3 md:grid-cols-2">
+            {meta.extra === 'class' ? (
+              <label className="text-xs uppercase text-on-surface-variant">
+                Classe
+                <input
+                  className="input-feudal mt-1 pl-4 normal-case"
+                  value={draft.className}
+                  onChange={(event) => setDraft((row) => ({ ...row, className: event.target.value }))}
+                />
+              </label>
+            ) : null}
+            <label className={`text-xs uppercase text-on-surface-variant ${meta.extra === 'class' ? '' : 'md:col-span-2'}`}>
+              Tipo / Nome
               <input
                 className="input-feudal mt-1 pl-4 normal-case"
-                value={draft.className}
-                onChange={(event) => setDraft((row) => ({ ...row, className: event.target.value }))}
+                value={draft.name}
+                onChange={(event) => setDraft((row) => ({ ...row, name: event.target.value }))}
               />
             </label>
-          ) : null}
-          <label className="text-xs uppercase text-on-surface-variant">
-            Tipo
-            <input
-              className="input-feudal mt-1 pl-4 normal-case"
-              value={draft.name}
-              onChange={(event) => setDraft((row) => ({ ...row, name: event.target.value }))}
-            />
-          </label>
-          <label className="text-xs uppercase text-on-surface-variant md:col-span-2">
-            Descrição
-            <textarea
-              className="input-feudal mt-1 min-h-20 pl-4 normal-case"
-              value={draft.description}
-              onChange={(event) => setDraft((row) => ({ ...row, description: event.target.value }))}
-            />
-          </label>
-          {meta.extra === 'faith' ? (
-            <label className="text-xs uppercase text-on-surface-variant">
-              Caminho
-              <select
-                className="input-feudal mt-1 pl-4 normal-case"
-                value={draft.faithPath}
-                onChange={(event) =>
-                  setDraft((row) => ({ ...row, faithPath: event.target.value as Draft['faithPath'] }))
-                }
-              >
-                <option value="">Escolher caminho</option>
-                <option value="luz">Luz</option>
-                <option value="trevas">Trevas</option>
-              </select>
+            <label className="text-xs uppercase text-on-surface-variant md:col-span-2">
+              Descrição
+              <textarea
+                className="input-feudal mt-1 min-h-20 pl-4 normal-case"
+                value={draft.description}
+                onChange={(event) => setDraft((row) => ({ ...row, description: event.target.value }))}
+              />
             </label>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          className="btn-primary text-xs"
-          disabled={
-            !draft.name.trim() ||
-            (meta.extra === 'class' && !draft.className.trim()) ||
-            faithNeedsPath ||
-            saveOne.isPending
-          }
-          onClick={() => saveOne.mutate()}
-        >
-          Salvar item
-        </button>
-      </section>
+            {meta.extra === 'faith' ? (
+              <label className="text-xs uppercase text-on-surface-variant md:col-span-2">
+                Caminho
+                <select
+                  className="input-feudal mt-1 pl-4 normal-case"
+                  value={draft.faithPath}
+                  onChange={(event) =>
+                    setDraft((row) => ({ ...row, faithPath: event.target.value as Draft['faithPath'] }))
+                  }
+                >
+                  <option value="">Escolher caminho</option>
+                  <option value="luz">Luz</option>
+                  <option value="trevas">Trevas</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
+          <div className="mt-auto pt-1">
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              disabled={
+                !draft.name.trim() ||
+                (meta.extra === 'class' && !draft.className.trim()) ||
+                faithNeedsPath ||
+                saveOne.isPending
+              }
+              onClick={() => saveOne.mutate()}
+            >
+              Salvar item
+            </button>
+          </div>
+        </section>
 
-      <section className="mesa-panel space-y-3 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-serif text-lg text-on-surface">Importar planilha</h2>
-          <label className="btn-secondary cursor-pointer text-xs">
-            Escolher CSV
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="sr-only"
-              onChange={async (event) => {
-                const file = event.target.files?.[0]
-                event.target.value = ''
-                if (!file) return
-                const parsed = rowsFromCsv(meta.extra, await file.text())
-                setPreview(parsed)
-                setMessage(parsed.length ? 'Revise a prévia antes de salvar.' : 'Nenhuma linha válida no CSV.')
-              }}
-            />
-          </label>
-        </div>
-        {preview ? (
-          <>
-            <PreviewTable
-              extra={meta.extra}
-              rows={preview}
-              onChange={setPreview}
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="btn-primary text-xs"
-                disabled={savePreview.isPending || preview.length === 0 || previewNeedsPath}
-                onClick={() => savePreview.mutate(preview)}
-              >
-                Salvar importação
-              </button>
-              <button type="button" className="btn-secondary text-xs" onClick={() => setPreview(null)}>
-                Descartar
-              </button>
-            </div>
-            <p className="text-xs text-on-surface-variant">
-              Salvar só acrescenta. Se o tipo já existe com a mesma descrição, a linha é ignorada. Se a descrição for outra, ela é atualizada sem criar outra cópia.
-              {previewNeedsPath ? ' Escolha Luz ou Trevas em cada catedral antes de salvar.' : ''}
+        <section className="mesa-panel flex h-full flex-col space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-serif text-lg text-on-surface">Importar planilha</h2>
+            <label className="btn-secondary cursor-pointer text-xs">
+              Escolher CSV
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ''
+                  if (!file) return
+                  const parsed = rowsFromCsv(meta.extra, await file.text())
+                  setPreview(parsed)
+                  setMessage(parsed.length ? 'Revise a prévia antes de salvar.' : 'Nenhuma linha válida no CSV.')
+                }}
+              />
+            </label>
+          </div>
+          <p className="text-sm text-on-surface-variant">
+            Importe um arquivo CSV com nome e descrição para adicionar ou atualizar vários registros de uma só vez.
+          </p>
+          {preview ? (
+            <>
+              <PreviewTable
+                extra={meta.extra}
+                rows={preview}
+                onChange={setPreview}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-primary text-xs"
+                  disabled={savePreview.isPending || preview.length === 0 || previewNeedsPath}
+                  onClick={() => savePreview.mutate(preview)}
+                >
+                  Salvar importação
+                </button>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setPreview(null)}>
+                  Descartar
+                </button>
+              </div>
+              <p className="mt-auto text-xs text-on-surface-variant">
+                Salvar só acrescenta. Se o tipo já existe com a mesma descrição, a linha é ignorada. Se a descrição for outra, ela é atualizada sem criar outra cópia.
+                {previewNeedsPath ? ' Escolha Luz ou Trevas em cada catedral antes de salvar.' : ''}
+              </p>
+            </>
+          ) : (
+            <p className="mt-auto text-xs text-on-surface-variant">
+              Nenhum CSV selecionado no momento. Escolha um arquivo acima para pré-visualizar e editar antes de gravar.
             </p>
-          </>
-        ) : null}
-      </section>
+          )}
+        </section>
+      </div>
 
       {message ? <p className="text-sm text-secondary">{message}</p> : null}
 
@@ -325,19 +336,47 @@ export default function AdminReferencePage() {
         {list.isLoading ? <p className="mt-3 text-sm text-on-surface-variant">Carregando…</p> : null}
         {meta.extra === 'faith' ? (
           <div className="mt-4 space-y-4">
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
               <FaithColumn
                 title="Luz"
                 hint="Estas catedrais só aparecem no Caminho Iluminado."
                 rows={faithGroups.luz}
-                busy={moveFaith.isPending}
+                busy={moveFaith.isPending || saveSaved.isPending}
+                editingId={editingSavedId}
+                draft={savedDraft}
+                onStartEdit={(row) => {
+                  setEditingSavedId(row.id)
+                  setSavedDraft({
+                    name: row.name,
+                    description: row.description,
+                    className: row.className,
+                    faithPath: row.faithPath,
+                  })
+                }}
+                onChangeDraft={setSavedDraft}
+                onCancelEdit={() => setEditingSavedId(null)}
+                onSaveEdit={(row) => saveSaved.mutate(row)}
                 onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
               />
               <FaithColumn
                 title="Trevas"
                 hint="Estas catedrais só aparecem no Caminho Negro."
                 rows={faithGroups.trevas}
-                busy={moveFaith.isPending}
+                busy={moveFaith.isPending || saveSaved.isPending}
+                editingId={editingSavedId}
+                draft={savedDraft}
+                onStartEdit={(row) => {
+                  setEditingSavedId(row.id)
+                  setSavedDraft({
+                    name: row.name,
+                    description: row.description,
+                    className: row.className,
+                    faithPath: row.faithPath,
+                  })
+                }}
+                onChangeDraft={setSavedDraft}
+                onCancelEdit={() => setEditingSavedId(null)}
+                onSaveEdit={(row) => saveSaved.mutate(row)}
                 onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
               />
             </div>
@@ -346,7 +385,21 @@ export default function AdminReferencePage() {
                 title="Sem caminho"
                 hint="Escolha Luz ou Trevas. Enquanto estiverem aqui, não entram na ficha."
                 rows={faithGroups.none}
-                busy={moveFaith.isPending}
+                busy={moveFaith.isPending || saveSaved.isPending}
+                editingId={editingSavedId}
+                draft={savedDraft}
+                onStartEdit={(row) => {
+                  setEditingSavedId(row.id)
+                  setSavedDraft({
+                    name: row.name,
+                    description: row.description,
+                    className: row.className,
+                    faithPath: row.faithPath,
+                  })
+                }}
+                onChangeDraft={setSavedDraft}
+                onCancelEdit={() => setEditingSavedId(null)}
+                onSaveEdit={(row) => saveSaved.mutate(row)}
                 onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
               />
             ) : null}
@@ -354,7 +407,7 @@ export default function AdminReferencePage() {
               <p className="text-sm text-on-surface-variant">Nenhuma catedral salva.</p>
             ) : null}
           </div>
-        ) : editableSaved ? (
+        ) : (
           <div className="mt-3 space-y-3">
             <div className="relative max-w-md">
               <span className="material-symbols-outlined pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-on-surface-variant">
@@ -443,19 +496,14 @@ export default function AdminReferencePage() {
                 </li>
               ))}
               {!list.isLoading && visibleSaved.length === 0 ? (
-                <li className="text-sm text-on-surface-variant">Nenhum item encontrado.</li>
+                <li className="text-sm text-on-surface-variant">
+                  {saved.length === 0
+                    ? 'Nenhum item salvo. As telas usam a lista do código até a primeira importação.'
+                    : 'Nenhum item encontrado.'}
+                </li>
               ) : null}
             </ul>
           </div>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {saved.map((row) => (
-              <SavedRow key={row.id} row={row} />
-            ))}
-            {!list.isLoading && saved.length === 0 ? (
-              <li className="text-sm text-on-surface-variant">Nenhum item salvo. As telas usam a lista do código até a primeira importação.</li>
-            ) : null}
-          </ul>
         )}
       </section>
     </div>
@@ -467,16 +515,28 @@ function FaithColumn({
   hint,
   rows,
   busy,
+  editingId,
+  draft,
+  onStartEdit,
+  onChangeDraft,
+  onCancelEdit,
+  onSaveEdit,
   onMove,
 }: {
   title: string
   hint: string
   rows: ReferenceEntry[]
   busy: boolean
+  editingId: string | null
+  draft: Draft
+  onStartEdit: (row: ReferenceEntry) => void
+  onChangeDraft: (updater: (current: Draft) => Draft) => void
+  onCancelEdit: () => void
+  onSaveEdit: (row: ReferenceEntry) => void
   onMove: (row: ReferenceEntry, faithPath: 'luz' | 'trevas') => void
 }) {
   return (
-    <section className="rounded border border-outline-variant/40 p-3">
+    <section className="flex h-full flex-col rounded border border-outline-variant/40 p-3">
       <h3 className="font-serif text-base text-on-surface">{title}</h3>
       <p className="mt-1 text-xs text-on-surface-variant">{hint}</p>
       {rows.length === 0 ? (
@@ -485,45 +545,73 @@ function FaithColumn({
         <ul className="mt-3 space-y-2">
           {rows.map((row) => (
             <li key={row.id} className="rounded border border-outline-variant/30 px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-on-surface">{row.name}</p>
-                <select
-                  className="input-feudal w-auto pl-3 text-xs"
-                  value={row.faithPath}
-                  disabled={busy}
-                  aria-label={`Caminho de ${row.name}`}
-                  onChange={(event) => {
-                    const next = event.target.value
-                    if (next !== 'luz' && next !== 'trevas') return
-                    onMove(row, next)
-                  }}
-                >
-                  {row.faithPath !== 'luz' && row.faithPath !== 'trevas' ? (
-                    <option value="">Escolher caminho</option>
-                  ) : null}
-                  <option value="luz">Luz</option>
-                  <option value="trevas">Trevas</option>
-                </select>
-              </div>
-              {row.description ? <p className="mt-1 text-xs text-on-surface-variant">{row.description}</p> : null}
+              {editingId === row.id ? (
+                <div className="space-y-2">
+                  <label className="block text-[10px] uppercase text-on-surface-variant">
+                    Nome
+                    <input
+                      className="input-feudal mt-1 pl-3 normal-case"
+                      value={draft.name}
+                      onChange={(event) => onChangeDraft((current) => ({ ...current, name: event.target.value }))}
+                    />
+                  </label>
+                  <label className="block text-[10px] uppercase text-on-surface-variant">
+                    Descrição
+                    <textarea
+                      className="input-feudal mt-1 min-h-16 pl-3 normal-case"
+                      value={draft.description}
+                      onChange={(event) => onChangeDraft((current) => ({ ...current, description: event.target.value }))}
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-primary text-xs"
+                      disabled={busy || !draft.name.trim()}
+                      onClick={() => onSaveEdit(row)}
+                    >
+                      Salvar
+                    </button>
+                    <button type="button" className="btn-secondary text-xs" onClick={onCancelEdit}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-on-surface">{row.name}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" className="btn-secondary text-xs" onClick={() => onStartEdit(row)}>
+                        Editar
+                      </button>
+                      <select
+                        className="input-feudal w-auto pl-3 text-xs"
+                        value={row.faithPath}
+                        disabled={busy}
+                        aria-label={`Caminho de ${row.name}`}
+                        onChange={(event) => {
+                          const next = event.target.value
+                          if (next !== 'luz' && next !== 'trevas') return
+                          onMove(row, next)
+                        }}
+                      >
+                        {row.faithPath !== 'luz' && row.faithPath !== 'trevas' ? (
+                          <option value="">Escolher caminho</option>
+                        ) : null}
+                        <option value="luz">Luz</option>
+                        <option value="trevas">Trevas</option>
+                      </select>
+                    </div>
+                  </div>
+                  {row.description ? <p className="mt-1 text-xs text-on-surface-variant">{row.description}</p> : null}
+                </>
+              )}
             </li>
           ))}
         </ul>
       )}
     </section>
-  )
-}
-
-function SavedRow({ row }: { row: ReferenceEntry }) {
-  return (
-    <li className="rounded border border-outline-variant/40 px-3 py-2">
-      <p className="text-sm text-on-surface">
-        {row.className ? `${row.className} · ` : ''}
-        {row.name}
-        {row.faithPath ? ` · ${row.faithPath}` : ''}
-      </p>
-      {row.description ? <p className="text-xs text-on-surface-variant">{row.description}</p> : null}
-    </li>
   )
 }
 

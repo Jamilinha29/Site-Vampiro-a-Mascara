@@ -19,8 +19,8 @@ export function getRecoveryCapabilities() {
     supabaseAuthActive,
     externalEmailDeliveryConfirmed: customSmtpVerified,
     note: customSmtpVerified
-      ? 'Recuperação via Supabase Auth ativa com envio SMTP validado.'
-      : 'Supabase Auth ativo; no plano Free o SMTP padrão entrega apenas para membros da equipe até configurar SMTP próprio.',
+      ? 'Recuperação de senha ativa.'
+      : 'Recuperação de senha disponível conforme configuração de envio do servidor.',
   }
 }
 

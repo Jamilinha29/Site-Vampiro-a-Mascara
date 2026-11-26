@@ -74,8 +74,8 @@ export default function ReviewStepPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-5">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
+        <div className="flex h-full flex-col gap-5">
           <Panel title="Atributos em destaque">
             <div className="grid gap-4 sm:grid-cols-3">
               {ATTRIBUTE_GROUPS.map((group) => (
@@ -163,7 +163,7 @@ export default function ReviewStepPage() {
             </div>
           </Panel>
 
-          <Panel title="Vitalidade (travada após criar)">
+          <Panel title="Vitalidade (travada após criar)" className="flex-1">
             <dl className="space-y-2 text-sm">
               <Row label="HP" value={store.hpValue != null ? `${store.hpValue} (${store.hpDie})` : '—'} />
               <Row
@@ -185,7 +185,7 @@ export default function ReviewStepPage() {
           </Panel>
         </div>
 
-        <div className="space-y-5">
+        <div className="flex h-full flex-col gap-5">
           <Panel title="Arquétipo & máscara">
             <dl className="space-y-2 text-sm">
               <Row label="Natureza" value={store.archetype} />
@@ -207,7 +207,7 @@ export default function ReviewStepPage() {
             </dl>
           </Panel>
 
-          <Panel title="Juramento de lealdade">
+          <Panel title="Juramento de lealdade" className="flex-1">
             <p className="mb-3 text-xs text-on-surface-variant">
               Ao concluir, o personagem será inscrito nos registros feudais da crônica. Use os links
               &quot;Editar&quot; acima para corrigir qualquer campo antes de finalizar.
@@ -230,9 +230,9 @@ export default function ReviewStepPage() {
   )
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
+function Panel({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <section className="rounded-lg border border-outline-variant/35 bg-surface-container-low/60 p-4">
+    <section className={`flex flex-col rounded-lg border border-outline-variant/35 bg-surface-container-low/60 p-4 ${className}`}>
       <h3 className="mb-3 font-serif text-lg text-on-surface">{title}</h3>
       {children}
     </section>

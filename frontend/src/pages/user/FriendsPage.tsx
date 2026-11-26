@@ -56,8 +56,8 @@ export default function FriendsPage() {
         </p>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
-        <section className="mesa-panel flex h-full flex-col p-4 lg:col-span-5">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col p-4">
           <h2 className="font-headline-sm text-base text-on-surface">Buscar na corte</h2>
           <p className="mt-1 text-xs text-on-surface-variant">
             Localize contas pelo nome, @handle ou Código ID numérico.
@@ -137,7 +137,7 @@ export default function FriendsPage() {
           </ul>
         </section>
 
-        <div className="flex flex-col gap-4 lg:col-span-7">
+        <div className="flex h-full flex-col gap-4">
           {(book?.incoming.length ?? 0) > 0 ? (
             <section className="mesa-panel p-4">
               <h2 className="font-headline-sm text-base text-on-surface">Pedidos recebidos</h2>

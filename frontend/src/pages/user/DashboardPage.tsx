@@ -103,8 +103,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-12 lg:items-stretch">
-        <section className="mesa-panel flex h-full flex-col justify-center p-4 lg:col-span-7">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col justify-center p-4">
           {active ? (
             <div className="flex flex-col gap-4 sm:flex-row">
               <div className="mx-auto flex h-40 w-32 shrink-0 items-center justify-center overflow-hidden rounded border border-secondary/35 bg-surface-container-high sm:mx-0">
@@ -160,7 +160,7 @@ export default function DashboardPage() {
           )}
         </section>
 
-        <aside className="grid gap-3.5 sm:grid-cols-2 lg:col-span-5 lg:grid-cols-1 lg:grid-rows-2">
+        <aside className="grid h-full gap-3.5 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-2">
           <div className="mesa-panel flex h-full flex-col justify-between p-4">
             <div>
               <h3 className="font-label-sm text-xs text-secondary uppercase">Carteira imperial</h3>

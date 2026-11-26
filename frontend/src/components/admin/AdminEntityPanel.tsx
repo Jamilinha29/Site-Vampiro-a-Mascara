@@ -91,11 +91,8 @@ export function AdminEntityPanel({
     queryFn: () => api.adminListEntities(kind),
   })
 
-  useEffect(() => {
-    if (!editId || loadedEdit.current === editId) return
-    const item = items.find((row) => row.id === editId)
-    if (!item) return
-    loadedEdit.current = editId
+  function loadEntity(item: ChronicleEntity) {
+    loadedEdit.current = item.id
     setEditingId(item.id)
     setName(item.name)
     setDesc(item.description ?? '')
@@ -115,6 +112,13 @@ export function AdminEntityPanel({
     setImageUrl(item.imageUrl)
     setError(null)
     setNotice(null)
+  }
+
+  useEffect(() => {
+    if (!editId || loadedEdit.current === editId) return
+    const item = items.find((row) => row.id === editId)
+    if (!item) return
+    loadEntity(item)
   }, [editId, items])
 
   const update = useMutation({
@@ -225,7 +229,7 @@ export function AdminEntityPanel({
   }
 
   return (
-    <section className="admin-form-panel admin-form-panel--compact">
+    <section className="admin-form-panel admin-form-panel--compact flex h-full flex-col">
       <header>
         <h2 className="font-label-sm text-xs text-secondary uppercase">
           {editingId ? `Editar ${title}` : title}
@@ -434,43 +438,45 @@ export function AdminEntityPanel({
         </label>
       ) : null}
 
-      {error ? <p className="text-sm text-primary">{error}</p> : null}
-      {notice ? <p className="text-sm text-secondary">{notice}</p> : null}
+      <div className="mt-auto space-y-2.5 pt-2">
+        {error ? <p className="text-sm text-primary">{error}</p> : null}
+        {notice ? <p className="text-sm text-secondary">{notice}</p> : null}
 
-      <p className="text-[11px] text-on-surface-variant">
-        Salvar cria um <strong className="font-normal text-secondary">rascunho</strong>. Use{' '}
-        <strong className="font-normal text-secondary">Publicar</strong> na lista abaixo para o jogador ver na mesa, glossário ou bestiário.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="btn-primary text-sm"
-          disabled={create.isPending || update.isPending}
-          onClick={submit}
-        >
-          {editingId ? 'Salvar alterações' : 'Salvar rascunho'}
-        </button>
-        {editingId ? (
+        <p className="text-[11px] text-on-surface-variant">
+          Salvar cria um <strong className="font-normal text-secondary">rascunho</strong>. Use{' '}
+          <strong className="font-normal text-secondary">Publicar</strong> na lista abaixo para o jogador ver na mesa, glossário ou bestiário.
+        </p>
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="btn-secondary text-sm"
-            onClick={() => {
-              setEditingId(null)
-              loadedEdit.current = null
-              setName('')
-              setDesc('')
-              setHpMax('')
-              setManaMax('')
-              setLocation('')
-              setStatsText('')
-              setFileName('')
-              setFileUrl(undefined)
-              setImageUrl(undefined)
-            }}
+            className="btn-primary text-sm"
+            disabled={create.isPending || update.isPending}
+            onClick={submit}
           >
-            Novo cadastro
+            {editingId ? 'Salvar alterações' : 'Salvar rascunho'}
           </button>
-        ) : null}
+          {editingId ? (
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={() => {
+                setEditingId(null)
+                loadedEdit.current = null
+                setName('')
+                setDesc('')
+                setHpMax('')
+                setManaMax('')
+                setLocation('')
+                setStatsText('')
+                setFileName('')
+                setFileUrl(undefined)
+                setImageUrl(undefined)
+              }}
+            >
+              Novo cadastro
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {hideRegistry ? null : (
@@ -499,7 +505,11 @@ export function AdminEntityPanel({
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center justify-between gap-2 rounded border border-outline-variant/35 bg-surface-container-lowest/40 px-3 py-2"
+                  className={`flex items-center justify-between gap-2 rounded border px-3 py-2 ${
+                    editingId === item.id
+                      ? 'border-secondary/50 bg-secondary/10'
+                      : 'border-outline-variant/35 bg-surface-container-lowest/40'
+                  }`}
                 >
                   <div className="min-w-0">
                     <p className="truncate font-serif text-sm text-on-surface">{item.name}</p>
@@ -511,6 +521,9 @@ export function AdminEntityPanel({
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
+                    <button type="button" className="btn-secondary px-2 py-1 text-[10px]" onClick={() => loadEntity(item)}>
+                      Editar
+                    </button>
                     {item.visibility === 'draft' ? (
                       <button type="button" className="btn-secondary px-2 py-1 text-[10px]" onClick={() => publish.mutate(item.id)}>
                         Publicar
@@ -531,7 +544,11 @@ export function AdminEntityPanel({
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center justify-between gap-2 rounded border border-primary/25 bg-surface-container-lowest/40 px-3 py-2"
+                  className={`flex items-center justify-between gap-2 rounded border px-3 py-2 ${
+                    editingId === item.id
+                      ? 'border-secondary/50 bg-secondary/10'
+                      : 'border-primary/25 bg-surface-container-lowest/40'
+                  }`}
                 >
                   <div className="min-w-0">
                     <p className="truncate font-serif text-sm text-on-surface">{item.name}</p>
@@ -547,6 +564,9 @@ export function AdminEntityPanel({
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
+                    <button type="button" className="btn-secondary px-2 py-1 text-[10px]" onClick={() => loadEntity(item)}>
+                      Editar
+                    </button>
                     {item.visibility === 'draft' ? (
                       <button type="button" className="btn-secondary px-2 py-1 text-[10px]" onClick={() => publish.mutate(item.id)}>
                         Publicar
@@ -563,11 +583,15 @@ export function AdminEntityPanel({
               ) : null}
             </ul>
           ) : registryVariant === 'cards' ? (
-            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            <ul className="mt-3 grid auto-rows-fr gap-2 sm:grid-cols-2">
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="flex flex-col gap-2 rounded border border-outline-variant/40 bg-surface-container-lowest/50 p-3"
+                  className={`flex h-full flex-col justify-between gap-2 rounded border p-3 ${
+                    editingId === item.id
+                      ? 'border-secondary/50 bg-secondary/10'
+                      : 'border-outline-variant/40 bg-surface-container-lowest/50'
+                  }`}
                 >
                   <div>
                     <p className="font-serif text-sm text-on-surface">{item.name}</p>
@@ -576,6 +600,9 @@ export function AdminEntityPanel({
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <button type="button" className="btn-secondary text-[10px]" onClick={() => loadEntity(item)}>
+                      Editar
+                    </button>
                     {item.visibility === 'draft' ? (
                       <button type="button" className="btn-secondary text-[10px]" onClick={() => publish.mutate(item.id)}>
                         Publicar
@@ -596,7 +623,11 @@ export function AdminEntityPanel({
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-outline-variant/40 bg-surface-container-lowest/40 px-3 py-2 text-sm"
+                  className={`flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm ${
+                    editingId === item.id
+                      ? 'border-secondary/50 bg-secondary/10'
+                      : 'border-outline-variant/40 bg-surface-container-lowest/40'
+                  }`}
                 >
                   <div>
                     <span className="font-serif text-on-surface">{item.name}</span>
@@ -606,6 +637,9 @@ export function AdminEntityPanel({
                     </span>
                   </div>
                   <div className="flex gap-2">
+                    <button type="button" className="btn-secondary text-xs" onClick={() => loadEntity(item)}>
+                      Editar
+                    </button>
                     {item.visibility === 'draft' ? (
                       <button type="button" className="btn-secondary text-xs" onClick={() => publish.mutate(item.id)}>
                         Publicar

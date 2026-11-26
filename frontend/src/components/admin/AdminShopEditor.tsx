@@ -227,17 +227,26 @@ export function AdminShopEditor() {
       </div>
 
       <section className="admin-form-panel admin-form-panel--compact">
-        <header>
-          <h2 className="font-label-sm text-xs text-secondary uppercase">Cadastrar — {tabs.find((t) => t.id === tab)?.label}</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            Mesmo estilo da loja do jogador. Estoque limita compras por usuário.
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="font-label-sm text-xs text-secondary uppercase">
+              {editingId ? 'Editar' : 'Cadastrar'} — {tabs.find((t) => t.id === tab)?.label}
+            </h2>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              Mesmo estilo da loja do jogador. Estoque limita compras por usuário.
+            </p>
+          </div>
+          {editingId ? (
+            <button type="button" className="btn-secondary text-xs" onClick={resetForm}>
+              Novo item
+            </button>
+          ) : null}
         </header>
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-xs uppercase text-on-surface-variant">
             Nome
-            <input className="input-feudal mt-1 pl-4" value={name} onChange={(e) => setName(e.target.value)} />
+            <input className="input-feudal mt-1 pl-4 normal-case" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           {tab === 'gear' ? (
             <label className="block text-xs uppercase text-on-surface-variant">

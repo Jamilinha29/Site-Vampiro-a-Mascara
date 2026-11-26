@@ -200,7 +200,7 @@
   }
 
   .input-feudal {
-    @apply w-full max-w-full rounded border border-outline-variant/70 bg-surface-container-lowest py-1.5 pl-9 pr-3 text-xs sm:text-sm text-on-surface placeholder:text-outline/60 transition focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none;
+    @apply w-full max-w-full rounded border border-outline-variant/70 bg-surface-container-lowest py-1.5 pl-9 pr-3 text-xs sm:text-sm normal-case text-on-surface placeholder:text-outline/60 transition focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none;
   }
 
   .safe-px {

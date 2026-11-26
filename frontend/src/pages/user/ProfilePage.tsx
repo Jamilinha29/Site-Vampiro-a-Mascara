@@ -137,14 +137,14 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid auto-rows-fr grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: 'Personagens', value: profile.accountMetrics.characters },
           { label: 'Sessões', value: profile.accountMetrics.sessions },
           { label: 'Crônicas', value: profile.accountMetrics.chronicles },
           { label: 'XP total', value: profile.accountMetrics.totalXp },
         ].map((m) => (
-          <div key={m.label} className="card-surface p-3.5 text-center">
+          <div key={m.label} className="card-surface flex h-full flex-col justify-center p-3.5 text-center">
             <p className="text-[0.65rem] text-on-surface-variant uppercase">{m.label}</p>
             <div className="mt-1">
               <MetricValue value={m.value} />

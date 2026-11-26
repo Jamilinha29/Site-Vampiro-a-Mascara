@@ -69,7 +69,7 @@ export function AdminAchievementsPanel() {
       >
         Criar conquista
       </button>
-      <ul className="max-h-72 space-y-3 overflow-y-auto">
+      <ul className="mt-2 max-h-72 flex-1 space-y-3 overflow-y-auto">
         {achievements.length === 0 ? <li className="text-sm text-on-surface-variant">Nenhuma conquista criada ainda.</li> : null}
         {achievements.map((item) => (
           <li key={item.id} className="rounded border border-outline-variant/40 p-3">

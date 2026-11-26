@@ -219,7 +219,7 @@ export default function AdminProfilePage() {
 
       <AdminCharacterReviews />
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
         <AdminNoticesPanel />
         <AdminAchievementsPanel />
       </div>
