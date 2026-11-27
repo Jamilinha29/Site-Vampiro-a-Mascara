@@ -270,7 +270,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     ).toMatchObject({ canEnterLive: true })
   })
 
-  it('AdminShell renders gothic transparent sidebar sections and HomePage uses fluid full-width containers', () => {
+  it('AdminShell renders grouped sidebar sections with original colors and centered profile card, and HomePage uses fluid containers', () => {
     useAuthStore.setState({
       session: {
         accessToken: 'tok-nar',
@@ -296,8 +296,13 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(screen.getByText('Comunidade')).toBeInTheDocument()
     expect(screen.getByText('Recursos')).toBeInTheDocument()
     expect(screen.getByText('Mestre de Mesa')).toBeInTheDocument()
+    expect(screen.getByText('Compêndio')).toBeInTheDocument()
+    expect(screen.getByText('Alianças')).toBeInTheDocument()
+    expect(screen.getByText('Conquistas e Recompensas')).toBeInTheDocument()
+    expect(screen.getByText('Mercado')).toBeInTheDocument()
     const aside = shellContainer.querySelector('aside')
-    expect(aside?.className).toContain('bg-transparent')
+    expect(aside?.className).toContain('border-outline-variant/30')
+    expect(shellContainer.querySelector('svg')).toBeNull()
 
     cleanup()
 

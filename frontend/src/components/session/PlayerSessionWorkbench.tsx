@@ -727,7 +727,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </SessionPanel>
       </div>
 
-      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-60 xl:left-64">
+      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-52 xl:left-56">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-on-surface-variant">
             Turno · <strong className="text-primary">{character?.name ?? '—'}</strong>

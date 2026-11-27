@@ -9,7 +9,7 @@ const PLAYER_NAV_GROUPS: readonly SidebarNavGroup[] = [
   {
     label: 'Sua jornada',
     items: [
-      { to: '/user/characters', label: 'Personagens', icon: 'groups' },
+      { to: '/user/characters', label: 'Personagens', icon: 'badge' },
       { to: '/user/sessions', label: 'Sessões', icon: 'calendar_month' },
     ],
   },
@@ -17,18 +17,18 @@ const PLAYER_NAV_GROUPS: readonly SidebarNavGroup[] = [
     label: 'Biblioteca',
     items: [
       { to: '/user/archive', label: 'Glossário', icon: 'menu_book' },
-      { to: '/user/downloads', label: 'Arquivos', icon: 'inventory_2' },
+      { to: '/user/downloads', label: 'Arquivos', icon: 'folder' },
     ],
   },
   {
     label: 'Comunidade',
-    items: [{ to: '/user/friends', label: 'Amigos', icon: 'diversity_3' }],
+    items: [{ to: '/user/friends', label: 'Alianças', icon: 'group' }],
   },
   {
     label: 'Recursos',
     items: [
       { to: '/user/shop', label: 'Mercado', icon: 'storefront' },
-      { to: '/user/settings', label: 'Configurações', icon: 'settings' },
+      { to: '/user/settings', label: 'Configurações', icon: 'tune' },
     ],
   },
 ]
