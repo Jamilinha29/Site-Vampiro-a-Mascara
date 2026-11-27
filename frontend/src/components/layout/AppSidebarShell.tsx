@@ -104,13 +104,13 @@ export function AppSidebarShell({
         </Link>
       </div>
 
-      {/* Modelo centralizado de perfil (banner, foto e nome) mantendo as cores originais */}
-      <div className="border-b border-outline-variant/25 px-2.5 py-2.5">
+      {/* Modelo centralizado compacto de perfil (banner, foto e nome) mantendo as cores originais */}
+      <div className="border-b border-outline-variant/25 px-2.5 py-2">
         <Link
           to={profilePath}
-          className="group relative block overflow-hidden rounded-lg border border-outline-variant/35 bg-surface-container-low/80 pb-3 text-center transition hover:border-secondary/50"
+          className="group relative block overflow-hidden rounded-lg border border-outline-variant/35 bg-surface-container-low/80 pb-2 text-center transition hover:border-secondary/50"
         >
-          <div className="relative h-14 w-full overflow-hidden">
+          <div className="relative h-9 w-full overflow-hidden">
             {profile?.bannerUrl ? (
               <img
                 src={profile.bannerUrl}
@@ -123,21 +123,23 @@ export function AppSidebarShell({
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/15 via-surface-container-low/35 to-surface-container-low" />
           </div>
 
-          <div className="relative z-10 -mt-7 flex flex-col items-center px-2.5">
-            <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-secondary/75 bg-surface-container-high shadow-md">
-              {profile?.avatarUrl ? (
-                <img src={profile.avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-              ) : (
-                <span className="material-symbols-outlined text-2xl text-secondary">person</span>
-              )}
+          <div className="relative z-10 -mt-5 flex flex-col items-center px-2">
+            <div className="relative h-11 w-11 shrink-0">
+              <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-secondary/75 bg-surface-container-high shadow-md">
+                {profile?.avatarUrl ? (
+                  <img src={profile.avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-xl text-secondary">person</span>
+                )}
+              </div>
               <span
-                className="absolute right-0.5 bottom-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
+                className="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
                 title="Online"
               />
             </div>
 
-            <p className="mt-2 max-w-full truncate text-sm font-semibold text-on-surface">{displayName}</p>
-            <p className="mt-0.5 max-w-full truncate font-label-sm text-[9px] tracking-[0.14em] text-secondary uppercase">
+            <p className="mt-1 max-w-full truncate text-xs font-semibold leading-tight text-on-surface">{displayName}</p>
+            <p className="mt-0.5 max-w-full truncate font-label-sm text-[9px] leading-tight tracking-[0.14em] text-secondary uppercase">
               {roleLabel}
             </p>
           </div>
@@ -271,17 +273,17 @@ export function AppSidebarShell({
         ) : null}
 
         <header className="sticky top-0 z-30 border-b border-outline-variant/30 bg-surface-container-lowest/90 backdrop-blur-md">
-          <div className="safe-px flex h-12 items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-[clamp(1rem,2.5vw,2.5rem)] py-2 sm:min-h-[4.25rem]">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-outline-variant/40 text-on-surface-variant hover:border-secondary/50 hover:text-on-surface lg:hidden"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-outline-variant/40 text-on-surface-variant hover:border-secondary/50 hover:text-on-surface lg:hidden"
                 onClick={() => setDrawerOpen(true)}
                 aria-label="Abrir navegação"
               >
                 <span className="material-symbols-outlined text-xl">menu</span>
               </button>
-              <nav aria-label="Localização atual" className="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant">
+              <nav aria-label="Localização atual" className="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant sm:text-sm">
                 <Link to={homePath} className="hover:text-secondary">
                   {breadcrumbRoot}
                 </Link>
@@ -296,12 +298,12 @@ export function AppSidebarShell({
           </div>
         </header>
 
-        <main className="safe-px mx-auto w-full min-h-0 min-w-0 max-w-[74rem] flex-1 py-4 sm:py-5">
+        <main className="w-full min-h-0 min-w-0 flex-1 px-[clamp(1rem,2.5vw,2.5rem)] py-5 sm:py-6">
           <Outlet />
         </main>
 
-        <footer className="safe-px safe-pb mt-auto border-t border-outline-variant/25 py-2 text-[11px] text-outline">
-          <div className="mx-auto flex max-w-[74rem] flex-wrap items-center justify-between gap-2">
+        <footer className="safe-pb mt-auto border-t border-outline-variant/25 px-[clamp(1rem,2.5vw,2.5rem)] py-3 text-xs text-outline">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <span>As Crônicas de Beladona</span>
             <span className="italic">Uma história que continua.</span>
           </div>

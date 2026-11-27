@@ -53,24 +53,24 @@ const CODEX_SECTIONS = [
 export default function CodexHelpPage() {
   return (
     <ViewportPageShell>
-      <div className="my-auto w-full max-w-4xl space-y-6 py-4 text-on-surface">
-        <header className="card-surface flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <BrandLogo size="xs" withGlow className="h-10 w-10 shrink-0" />
+      <div className="my-auto w-full space-y-6 py-4 text-on-surface">
+        <header className="card-surface flex flex-wrap items-center justify-between gap-4 p-6 sm:p-7">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <BrandLogo size="sm" withGlow className="h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
             <div className="min-w-0">
-              <p className="font-label-sm text-[10px] font-semibold tracking-[0.2em] text-secondary uppercase">
+              <p className="font-label-sm text-xs font-semibold tracking-[0.2em] text-secondary uppercase">
                 Guia da Crônica
               </p>
-              <h1 className="font-headline-lg text-xl text-on-surface sm:text-2xl">
+              <h1 className="font-headline-lg text-2xl text-on-surface sm:text-3xl">
                 Códice de Beladona
               </h1>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/" className="btn-secondary text-xs">
+          <div className="flex flex-wrap gap-2.5">
+            <Link to="/" className="btn-secondary px-4 py-2 text-xs sm:text-sm">
               Página inicial
             </Link>
-            <Link to="/auth/login" className="btn-primary text-xs">
+            <Link to="/auth/login" className="btn-primary px-4 py-2 text-xs sm:text-sm">
               Entrar na crônica
             </Link>
           </div>

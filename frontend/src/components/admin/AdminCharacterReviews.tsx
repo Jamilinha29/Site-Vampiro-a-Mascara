@@ -31,15 +31,15 @@ export function AdminCharacterReviews() {
   const pending = data.filter((row) => row.approval === 'submitted' || row.approval === 'changes')
 
   return (
-    <section className="card-surface p-5">
+    <section className="admin-form-panel flex h-full flex-col">
       <h2 className="font-label-sm text-xs text-secondary uppercase">Fichas enviadas</h2>
-      <p className="mt-2 text-sm text-on-surface-variant">
+      <p className="text-sm text-on-surface-variant">
         {pending.length === 0
           ? 'Nenhuma ficha esperando decisão.'
           : `${pending.length} ficha(s) ainda pedem uma decisão.`}
       </p>
-      {isLoading ? <p className="mt-3 text-sm text-on-surface-variant">Carregando fichas…</p> : null}
-      <ul className="mt-4 space-y-3">
+      {isLoading ? <p className="mt-2 text-sm text-on-surface-variant">Carregando fichas…</p> : null}
+      <ul className="mt-2 max-h-96 flex-1 space-y-3 overflow-y-auto">
         {data.map((row) => {
           const key = `${row.email}:${row.characterId}`
           return (

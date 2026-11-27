@@ -96,7 +96,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
       <main className="auth-portal-main">
         <div className="auth-portal-fit">
         <div className="auth-portal-card relative shrink-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
-          <div className="grid w-full grid-cols-1 lg:grid-cols-2 lg:items-stretch">
+          <div className="grid min-h-[34rem] w-full grid-cols-1 lg:min-h-[40rem] lg:grid-cols-2 lg:items-stretch">
             <LoginColumn
               mode={mode}
               setMode={setMode}
@@ -114,7 +114,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
           </div>
 
           <div
-            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-center gap-3 overflow-hidden border-outline-variant/40 bg-surface-container p-4 shadow-2xl md:gap-4 md:p-5 lg:flex"
+            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-between gap-6 overflow-hidden border-outline-variant/40 bg-surface-container p-8 shadow-2xl lg:flex lg:p-10"
             style={{ transform: sliderTransform, borderRight: mode === 'register' ? '1px solid rgba(89,65,65,0.4)' : undefined, borderLeft: mode === 'login' ? '1px solid rgba(89,65,65,0.4)' : undefined }}
           >
             <SliderPanel mode={mode} />
@@ -142,27 +142,27 @@ function Ambient() {
 function AuthHeader() {
   return (
     <>
-      <header className="safe-px safe-pt relative z-20 flex w-full min-w-0 shrink-0 items-center justify-between gap-2 border-b border-outline-variant/40 bg-surface-container-lowest/85 py-1.5 shadow-md backdrop-blur-md sm:py-2">
+      <header className="safe-pt relative z-20 flex min-h-[5.25rem] w-full min-w-0 shrink-0 items-center justify-between gap-4 border-b border-outline-variant/40 bg-surface-container-lowest/85 px-[clamp(1.25rem,4vw,4.5rem)] py-3 shadow-md backdrop-blur-md">
         <Link
           to="/"
-          className="flex min-w-0 items-center gap-2.5 rounded-sm transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary sm:gap-3.5"
+          className="flex min-w-0 items-center gap-3.5 rounded-sm transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
         >
-          <BrandLogo size="xs" withGlow className="shrink-0" />
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate font-serif text-sm font-semibold text-on-surface sm:text-base">
+          <BrandLogo size="sm" withGlow className="h-11 w-11 shrink-0 sm:h-13 sm:w-13" />
+          <div className="flex min-w-0 flex-col leading-tight sm:flex-row sm:items-baseline sm:gap-2.5">
+            <span className="truncate font-serif text-lg font-semibold text-on-surface sm:text-xl">
               As Crônicas de Beladona
             </span>
-            <span className="hidden text-xs text-outline-variant sm:inline">·</span>
-            <span className="hidden truncate font-serif text-xs text-secondary italic sm:inline">
+            <span className="hidden text-sm text-outline-variant sm:inline">·</span>
+            <span className="hidden truncate font-serif text-sm text-secondary italic sm:inline">
               Plataforma da crônica
             </span>
           </div>
         </Link>
         <Link
           to="/ajuda/codice"
-          className="group flex shrink-0 items-center gap-1 rounded border border-outline-variant/40 bg-surface-container-low px-2 py-1.5 text-xs text-secondary shadow-sm transition hover:border-secondary/50 hover:text-white sm:gap-1.5 sm:px-3"
+          className="group flex shrink-0 items-center gap-2 rounded-md border border-outline-variant/50 bg-surface-container-low px-3.5 py-2 text-xs text-secondary shadow-sm transition hover:border-secondary/60 hover:text-white sm:px-4 sm:py-2.5 sm:text-sm"
         >
-          <span className="material-symbols-outlined text-sm text-secondary group-hover:text-primary">help_outline</span>
+          <span className="material-symbols-outlined text-base text-secondary group-hover:text-primary sm:text-lg">help_outline</span>
           <span className="hidden font-medium sm:inline">Códice de Acesso</span>
         </Link>
       </header>
@@ -173,30 +173,30 @@ function AuthHeader() {
 
 function TabSwitcher({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
-    <div className="auth-portal-tabs mb-2 flex justify-center">
-      <div className="inline-flex w-full items-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container-lowest/90 p-1 shadow-inner">
+    <div className="auth-portal-tabs mb-4 flex justify-center">
+      <div className="inline-flex w-full items-center gap-2 rounded-md border border-outline-variant/60 bg-surface-container-lowest/90 p-1.5 shadow-inner">
         <button
           type="button"
           onClick={() => setMode('login')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-center font-label-md text-xs tracking-wider uppercase transition ${
+          className={`flex flex-1 items-center justify-center gap-2 rounded px-4 py-2.5 text-center font-label-md text-xs tracking-wider uppercase transition sm:text-sm ${
             mode === 'login'
               ? 'border border-primary-container/70 bg-primary-container/20 font-bold text-primary shadow-sm'
               : 'border border-transparent font-semibold text-on-surface-variant hover:bg-surface-container/70 hover:text-primary'
           }`}
         >
-          <span className="material-symbols-outlined text-base">vpn_key</span>
+          <span className="material-symbols-outlined text-lg">vpn_key</span>
           Entrar
         </button>
         <button
           type="button"
           onClick={() => setMode('register')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-center font-label-md text-xs tracking-wider uppercase transition ${
+          className={`flex flex-1 items-center justify-center gap-2 rounded px-4 py-2.5 text-center font-label-md text-xs tracking-wider uppercase transition sm:text-sm ${
             mode === 'register'
               ? 'border border-primary-container/70 bg-primary-container/20 font-bold text-primary shadow-sm'
               : 'border border-transparent font-semibold text-on-surface-variant hover:bg-surface-container/70 hover:text-primary'
           }`}
         >
-          <span className="material-symbols-outlined text-base">history_edu</span>
+          <span className="material-symbols-outlined text-lg">history_edu</span>
           Criar conta
         </button>
       </div>
@@ -230,26 +230,26 @@ function LoginColumn({
   if (mode !== 'login') return null
 
   return (
-    <div className="auth-portal-column flex flex-col p-4 sm:p-5 lg:col-start-1">
+    <div className="auth-portal-column flex flex-col justify-center lg:col-start-1">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
         {adminMode ? (
           <>
-            <div className="auth-portal-heading mb-3 flex items-center justify-between gap-2 border-b border-outline-variant/40 pb-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="material-symbols-outlined shrink-0 text-xl text-secondary">military_tech</span>
+            <div className="auth-portal-heading mb-4 flex items-center justify-between gap-2 border-b border-outline-variant/40 pb-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="material-symbols-outlined shrink-0 text-2xl text-secondary">military_tech</span>
                 <div className="min-w-0">
-                  <h2 className="font-headline-sm text-sm font-bold tracking-wider text-secondary uppercase md:text-base">
+                  <h2 className="font-headline-sm text-lg font-bold tracking-wider text-secondary uppercase md:text-xl">
                     Login do mestre
                   </h2>
-                  <p className="auth-portal-subtitle text-[10px] font-medium tracking-wide text-on-surface-variant">
+                  <p className="auth-portal-subtitle text-xs font-medium tracking-wide text-on-surface-variant">
                     Correio narrador@… ou mestre@…
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                className="shrink-0 text-[11px] text-secondary hover:underline"
+                className="shrink-0 text-xs font-medium text-secondary hover:underline"
                 onClick={() => setAdminMode(false)}
               >
                 Voltar
@@ -259,28 +259,28 @@ function LoginColumn({
           </>
         ) : (
           <>
-            <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="material-symbols-outlined shrink-0 text-xl text-primary">vpn_key</span>
+            <div className="auth-portal-heading mb-4 flex items-center border-b border-outline-variant/40 pb-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="material-symbols-outlined shrink-0 text-2xl text-primary">vpn_key</span>
                 <div className="min-w-0">
-                  <h2 className="font-headline-sm text-base font-semibold text-on-surface md:text-lg">
+                  <h2 className="font-headline-sm text-xl font-semibold text-on-surface md:text-2xl">
                     Boas-vindas à sua crônica
                   </h2>
-                  <p className="auth-portal-subtitle text-xs text-on-surface-variant">
+                  <p className="auth-portal-subtitle mt-0.5 text-sm text-on-surface-variant">
                     Entre para continuar a sua história.
                   </p>
                 </div>
               </div>
             </div>
             <form
-              className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
+              className="auth-portal-form [&_.input-feudal]:py-2.5 [&_.input-feudal]:pl-11 [&_.input-feudal]:text-sm"
               onSubmit={(e) => {
                 e.preventDefault()
                 onSubmit(email, password, remember)
               }}
             >
               <Field label="E-mail de acesso" required hint="ex: valerius@corte-noturna.org" id={emailId}>
-                <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">shield_person</span>
+                <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">shield_person</span>
                 <input
                   id={emailId}
                   type="email"
@@ -291,8 +291,8 @@ function LoginColumn({
                   autoComplete="email"
                 />
               </Field>
-              <Field label="Senha" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline">Esqueci minha senha</Link>}>
-                <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
+              <Field label="Senha" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline sm:text-sm">Esqueci minha senha</Link>}>
+                <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">lock</span>
                 <input
                   id={passId}
                   type={showPass ? 'text' : 'password'}
@@ -302,11 +302,11 @@ function LoginColumn({
                   required
                   autoComplete="current-password"
                 />
-                <button type="button" className="absolute right-3 text-outline hover:text-on-surface" onClick={() => setShowPass((s) => !s)} aria-label="Revelar senha">
-                  <span className="material-symbols-outlined text-lg">{showPass ? 'visibility_off' : 'visibility'}</span>
+                <button type="button" className="absolute right-3.5 text-outline hover:text-on-surface" onClick={() => setShowPass((s) => !s)} aria-label="Revelar senha">
+                  <span className="material-symbols-outlined text-xl">{showPass ? 'visibility_off' : 'visibility'}</span>
                 </button>
               </Field>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-on-surface-variant">
+              <label className="flex cursor-pointer items-center gap-2.5 text-xs text-on-surface-variant sm:text-sm">
                 <input
                   type="checkbox"
                   checked={remember}
@@ -315,8 +315,8 @@ function LoginColumn({
                 />
                 Lembrar sessão
               </label>
-              <button type="submit" className="btn-primary w-full py-2 text-sm normal-case tracking-normal" disabled={loading}>
-                <span className="material-symbols-outlined text-lg">meeting_room</span>
+              <button type="submit" className="btn-primary w-full py-3 text-sm normal-case tracking-normal sm:text-base" disabled={loading}>
+                <span className="material-symbols-outlined text-xl">meeting_room</span>
                 {loading ? 'Abrindo…' : 'Entrar na crônica'}
               </button>
             </form>
@@ -340,17 +340,17 @@ function AuthSocialExtras({
   onOpenAdmin?: () => void
 }) {
   return (
-    <div className={`${compact ? 'mt-2 space-y-2' : 'mt-2.5 space-y-2.5'}`}>
+    <div className={`${compact ? 'mt-4 space-y-3' : 'mt-4 space-y-3'}`}>
       {!compact ? <AuthOuDivider /> : null}
       {allowAdmin ? (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <GoogleAuthButton context={googleContext} className="w-full" />
           <button
             type="button"
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container px-3 py-2 text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase transition hover:border-secondary/50 hover:text-secondary"
+            className="inline-flex w-full items-center justify-center gap-2 rounded border border-outline-variant/60 bg-surface-container px-4 py-2.5 text-xs font-semibold tracking-wider text-on-surface-variant uppercase transition hover:border-secondary/50 hover:text-secondary sm:text-sm"
             onClick={onOpenAdmin}
           >
-            <span className="material-symbols-outlined text-base">admin_panel_settings</span>
+            <span className="material-symbols-outlined text-lg">admin_panel_settings</span>
             ADM
           </button>
         </div>
@@ -378,7 +378,7 @@ function AdminMasterPanel({
   const [adminPassword, setAdminPassword] = useState('')
 
   return (
-    <div className={bare ? `space-y-2 ${className}` : `space-y-2 rounded-lg border border-secondary/35 bg-secondary/5 p-2.5 sm:p-3 ${className}`}>
+    <div className={bare ? `space-y-4 ${className}` : `space-y-3 rounded-lg border border-secondary/35 bg-secondary/5 p-3 sm:p-4 ${className}`}>
       {bare ? null : (
         <div className="flex items-center gap-2 border-b border-secondary/20 pb-2">
           <span className="material-symbols-outlined text-secondary">military_tech</span>
@@ -389,14 +389,14 @@ function AdminMasterPanel({
         </div>
       )}
       <form
-        className="space-y-3"
+        className="space-y-4 [&_.input-feudal]:py-2.5 [&_.input-feudal]:pl-11 [&_.input-feudal]:text-sm"
         onSubmit={(e) => {
           e.preventDefault()
           onAdminSubmit(adminEmail, adminPassword)
         }}
       >
         <Field label="Correio do conclave" required id={adminEmailId}>
-          <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">shield_person</span>
+          <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">shield_person</span>
           <input
             id={adminEmailId}
             type="email"
@@ -409,7 +409,7 @@ function AdminMasterPanel({
           />
         </Field>
         <Field label="Selo secreto" required id={adminPassId}>
-          <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
+          <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">lock</span>
           <input
             id={adminPassId}
             type="password"
@@ -421,7 +421,7 @@ function AdminMasterPanel({
             autoComplete="current-password"
           />
         </Field>
-        <button type="submit" className="btn-primary w-full py-2.5 text-sm" disabled={adminLoading}>
+        <button type="submit" className="btn-primary w-full py-3 text-sm sm:text-base" disabled={adminLoading}>
           {adminLoading ? 'Validando…' : 'Entrar — Início do mestre'}
         </button>
       </form>
@@ -471,7 +471,7 @@ function GoogleAuthButton({ context, className = '' }: { context: 'login' | 'reg
     <button
       type="button"
       disabled={busy}
-      className={`btn-secondary inline-flex items-center justify-center gap-2 py-2 text-xs ${className}`}
+      className={`btn-secondary inline-flex items-center justify-center gap-2 py-2.5 text-xs sm:text-sm ${className}`}
       onClick={() => void handleGoogle()}
     >
       <GoogleIcon />
@@ -500,24 +500,24 @@ function RegisterColumn({
   if (mode !== 'register') return null
 
   return (
-    <div className="auth-portal-column flex flex-col p-4 sm:p-5 lg:col-start-2">
+    <div className="auth-portal-column flex flex-col justify-center lg:col-start-2">
       <div>
         <TabSwitcher mode={mode} setMode={setMode} />
-        <div className="auth-portal-heading mb-3 flex items-center border-b border-outline-variant/40 pb-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="material-symbols-outlined shrink-0 text-xl text-secondary">history_edu</span>
+        <div className="auth-portal-heading mb-4 flex items-center border-b border-outline-variant/40 pb-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="material-symbols-outlined shrink-0 text-2xl text-secondary">history_edu</span>
             <div className="min-w-0">
-              <h2 className="font-headline-sm text-base font-semibold text-on-surface md:text-lg">
+              <h2 className="font-headline-sm text-xl font-semibold text-on-surface md:text-2xl">
                 Criar conta
               </h2>
-              <p className="auth-portal-subtitle text-xs text-on-surface-variant">
+              <p className="auth-portal-subtitle mt-0.5 text-sm text-on-surface-variant">
                 Seu próximo capítulo começa aqui.
               </p>
             </div>
           </div>
         </div>
         <form
-          className="auth-portal-form [&_.input-feudal]:py-2 [&_.input-feudal]:pl-9"
+          className="auth-portal-form [&_.input-feudal]:py-2.5 [&_.input-feudal]:pl-11 [&_.input-feudal]:text-sm"
           onSubmit={(e) => {
             e.preventDefault()
             onSubmit({
@@ -530,27 +530,27 @@ function RegisterColumn({
           }}
         >
           <Field label="Nome de exibição" required>
-            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">assignment_ind</span>
+            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">assignment_ind</span>
             <input className="input-feudal" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required placeholder="Preencha com seu nome" />
           </Field>
           <Field label="E-mail" required>
-            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">mail</span>
+            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">mail</span>
             <input type="email" className="input-feudal" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </Field>
           <Field label="Senha" required>
-            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">lock</span>
+            <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-xl text-outline">lock</span>
             <input type="password" className="input-feudal" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Mínimo de 8 caracteres" />
           </Field>
-          <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-on-surface-variant">
-            <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} required className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary-container" />
+          <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-snug text-on-surface-variant sm:text-[13px]">
+            <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} required className="mt-0.5 h-4 w-4 rounded border-outline-variant text-primary-container" />
             Aceito as Tradições de Caim e os Estatutos de Beladona.
           </label>
-          <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-snug text-on-surface-variant">
-            <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary-container" />
+          <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-snug text-on-surface-variant sm:text-[13px]">
+            <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-outline-variant text-primary-container" />
             Desejo receber avisos da crônica por corvo mensageiro.
           </label>
-          <button type="submit" className="btn-primary w-full py-2 text-sm normal-case tracking-normal" disabled={loading}>
-            <span className="material-symbols-outlined text-lg">history_edu</span>
+          <button type="submit" className="btn-primary w-full py-3 text-sm normal-case tracking-normal sm:text-base" disabled={loading}>
+            <span className="material-symbols-outlined text-xl">history_edu</span>
             {loading ? 'Criando…' : 'Criar conta'}
           </button>
         </form>
@@ -576,12 +576,12 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <label htmlFor={id} className="flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={id} className="flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase sm:text-[13px]">
           {label}
           {required ? <span className="text-primary">*</span> : null}
         </label>
-        {hint ? <span className="text-[11px] text-secondary opacity-80">{hint}</span> : action}
+        {hint ? <span className="text-xs text-secondary opacity-85">{hint}</span> : action}
       </div>
       <div className="relative flex items-center">{children}</div>
     </div>
@@ -608,32 +608,32 @@ function SliderPanel({ mode }: { mode: Mode }) {
   return (
     <>
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary-container/20 via-surface-container-high/90 to-surface-container-lowest" />
-      <div className="relative z-10 flex w-full items-center justify-between border-b border-outline-variant/30 pb-2 text-[10px] tracking-widest uppercase">
+      <div className="relative z-10 flex w-full items-center justify-between border-b border-outline-variant/30 pb-3 text-xs tracking-widest uppercase">
         <span className="flex items-center gap-1.5 text-secondary">
-          <span className="material-symbols-outlined text-sm text-primary">token</span>
+          <span className="material-symbols-outlined text-base text-primary">token</span>
           Um universo compartilhado
         </span>
         <span className="text-outline">Beladona</span>
       </div>
-      <div className="relative z-10 flex w-full flex-col items-center py-1">
+      <div className="relative z-10 flex w-full flex-col items-center py-4">
         <Link
           to="/"
-          className="relative flex aspect-square w-full max-w-[9rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary sm:max-w-[10rem] md:max-w-[11rem]"
+          className="relative flex aspect-square w-full max-w-[14rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary xl:max-w-[16rem]"
           aria-label="Voltar à página inicial"
         >
           <div className="pointer-events-none absolute inset-0 animate-pulse rounded-full border border-dashed border-outline-variant/40" />
-          <div className="pointer-events-none absolute inset-3 rounded-full border border-secondary/25" />
-          <BrandLogo size="lg" withGlow className="relative z-10" />
+          <div className="pointer-events-none absolute inset-4 rounded-full border border-secondary/25" />
+          <BrandLogo size="hero" withGlow className="relative z-10 h-36 sm:h-40 xl:h-44" />
         </Link>
-        <p className="mt-2 line-clamp-3 max-w-xs px-2 text-center font-serif text-xs leading-snug text-on-surface-variant italic">{quote}</p>
+        <p className="mt-5 max-w-sm px-2 text-center font-serif text-sm leading-relaxed text-on-surface-variant italic sm:text-base">{quote}</p>
       </div>
-      <div className="relative z-10 flex w-full items-center justify-between border-t border-outline-variant/30 pt-2 text-[11px] text-outline">
-        <span className="flex items-center gap-1 text-on-surface-variant">
-          <span className="material-symbols-outlined text-xs text-primary">verified_user</span>
+      <div className="relative z-10 flex w-full items-center justify-between border-t border-outline-variant/30 pt-3 text-xs text-outline">
+        <span className="flex items-center gap-1.5 text-on-surface-variant">
+          <span className="material-symbols-outlined text-sm text-primary">verified_user</span>
           Fichas · Sessões · Acervo
         </span>
-        <span className="flex items-center gap-1 text-secondary">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary" />
+        <span className="flex items-center gap-1.5 text-secondary">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-secondary" />
           Sua história continua
         </span>
       </div>

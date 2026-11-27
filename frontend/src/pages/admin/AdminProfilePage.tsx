@@ -247,9 +247,8 @@ export default function AdminProfilePage() {
         </section>
       </div>
 
-      <AdminCharacterReviews />
-
-      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-3 lg:items-stretch">
+        <AdminCharacterReviews />
         <AdminNoticesPanel />
         <AdminAchievementsPanel />
       </div>

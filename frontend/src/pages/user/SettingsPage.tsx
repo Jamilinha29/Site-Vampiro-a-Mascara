@@ -71,7 +71,7 @@ function PlayerSettingsForm({ profile }: { profile: UserProfile }) {
   })
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 pb-10">
+    <div className="w-full space-y-4 pb-10">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-headline-lg text-2xl text-on-surface">Configurações</h1>

@@ -254,7 +254,7 @@
   }
 
   .app-shell-main--wide {
-    @apply max-w-[1600px];
+    @apply max-w-full;
   }
 
   .auth-portal-shell {
@@ -263,19 +263,18 @@
   }
 
   .auth-portal-compact {
-    --auth-field-gap: clamp(0.45rem, 1.1vh, 0.65rem);
-    --auth-section-gap: clamp(0.5rem, 1.4vh, 0.75rem);
-    --auth-pad: clamp(0.85rem, 2.2vh, 1.25rem);
+    --auth-field-gap: clamp(0.85rem, 1.8vh, 1.15rem);
+    --auth-section-gap: clamp(1rem, 2.2vh, 1.5rem);
+    --auth-pad: clamp(1.5rem, 3vw, 2.75rem);
   }
 
   .auth-portal-main {
-    @apply relative z-10 mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col items-center justify-center overflow-x-clip overflow-y-auto px-4 py-3 sm:px-5 sm:py-4;
-    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    @apply relative z-10 flex w-full min-h-0 flex-1 flex-col items-center justify-center overflow-x-clip overflow-y-auto px-[clamp(1.25rem,4vw,4.5rem)] py-6 sm:py-10;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
   }
 
   .auth-portal-fit {
-    @apply flex w-full max-w-5xl shrink min-h-0 items-center justify-center;
-    max-height: 100%;
+    @apply flex w-full max-w-[82rem] shrink min-h-0 items-center justify-center;
   }
 
   .auth-portal-card {
@@ -285,7 +284,7 @@
   .auth-portal-form {
     display: flex;
     flex-direction: column;
-    gap: var(--auth-field-gap, 0.625rem);
+    gap: var(--auth-field-gap, 1rem);
   }
 
   .auth-portal-compact .auth-portal-column {
@@ -298,7 +297,7 @@
 
   .auth-portal-compact .auth-portal-heading {
     margin-bottom: var(--auth-section-gap);
-    padding-bottom: calc(var(--auth-section-gap) * 0.85);
+    padding-bottom: calc(var(--auth-section-gap) * 0.75);
   }
 }
 

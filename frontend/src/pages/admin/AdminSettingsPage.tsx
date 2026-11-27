@@ -69,7 +69,7 @@ function AdminSettingsForm({ profile }: { profile: UserProfile }) {
   })
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 pb-10">
+    <div className="w-full space-y-4 pb-10">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Configurações</h1>
         <p className="mt-1 text-sm text-on-surface-variant">Identidade pública e avisos do painel ADM.</p>
