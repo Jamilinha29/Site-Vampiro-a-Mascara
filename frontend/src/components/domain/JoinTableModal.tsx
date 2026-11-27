@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/api'
+import { formatScheduledDateTime, isScheduledTimeReached } from '../../lib/mesaSession'
 import { useToast } from '../ui/useToast'
 
 type Props = {
@@ -28,6 +29,28 @@ export function JoinTableModal({ open, onClose }: Props) {
   const join = useMutation({
     mutationFn: (roomCode: string) => api.joinSessionByCode(roomCode),
     onSuccess: (result) => {
+      const timeReached = isScheduledTimeReached(result.scheduledAt, Date.now())
+      if (!result.hasConfirmedPresence) {
+        push('Confirme sua participação na mesa em Sessões antes de entrar ao vivo.', 'info')
+        onClose()
+        navigate('/user/sessions')
+        return
+      }
+      if (!timeReached && result.scheduledAt) {
+        push(
+          `Participação confirmada! Esta mesa só abre ao vivo em ${formatScheduledDateTime(result.scheduledAt)}.`,
+          'info',
+        )
+        onClose()
+        navigate('/user/sessions')
+        return
+      }
+      if (result.status !== 'open') {
+        push('Participação confirmada! Aguardando o narrador abrir a mesa ao vivo.', 'info')
+        onClose()
+        navigate('/user/sessions')
+        return
+      }
       push('Sala autorizada. Bem-vindo à mesa.', 'success')
       onClose()
       navigate(`/user/sessions/${result.sessionId}/table`)

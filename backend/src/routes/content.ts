@@ -19,6 +19,7 @@ import {
   refreshEntitiesFromDatabase,
   requireSessionParticipant,
   sessionAccess,
+  sessionLiveAccess,
   syncSessionsIfStale,
 } from '../services/chronicleStore.js'
 import { errorPayload } from '../services/errors.js'
@@ -113,18 +114,36 @@ contentRouter.get('/scheduled-sessions', (req, res) => {
   res.json(listPublishedSessionsForPlayers(req.user?.email, { includeClosed: true }))
 })
 
-function denySession(res: import('express').Response, reason: 'not_found' | 'forbidden', requestId?: string) {
+function denySession(
+  res: import('express').Response,
+  reason: 'not_found' | 'forbidden' | 'presence_required' | 'before_schedule' | 'not_open',
+  requestId?: string,
+) {
   if (reason === 'not_found') {
     res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId }))
+    return
+  }
+  if (reason === 'presence_required') {
+    res
+      .status(403)
+      .json(errorPayload('FORBIDDEN', 'Confirme sua participação na mesa antes de acessar ao vivo.', { requestId }))
+    return
+  }
+  if (reason === 'before_schedule') {
+    res.status(409).json(errorPayload('CONFLICT', 'Esta mesa só abre ao vivo no horário marcado.', { requestId }))
+    return
+  }
+  if (reason === 'not_open') {
+    res.status(409).json(errorPayload('CONFLICT', 'Esta mesa ainda não está aberta ao vivo.', { requestId }))
     return
   }
   res.status(403).json(errorPayload('FORBIDDEN', 'Você não está nesta mesa.', { requestId }))
 }
 
 contentRouter.get('/sessions/:sessionId/live-state', (req, res) => {
-  const access = sessionAccess(req.params.sessionId, req.user!)
+  const access = sessionLiveAccess(req.params.sessionId, req.user!)
   if (!access.ok) {
-    denySession(res, access.reason)
+    denySession(res, access.reason, req.requestId)
     return
   }
   const sid = req.params.sessionId
@@ -138,9 +157,9 @@ contentRouter.get('/sessions/:sessionId/live-state', (req, res) => {
 })
 
 contentRouter.get('/sessions/:sessionId/scene-threats', (req, res) => {
-  const access = sessionAccess(req.params.sessionId, req.user!)
+  const access = sessionLiveAccess(req.params.sessionId, req.user!)
   if (!access.ok) {
-    denySession(res, access.reason)
+    denySession(res, access.reason, req.requestId)
     return
   }
   const threats = listSceneThreatsForSession(req.params.sessionId)
@@ -152,9 +171,9 @@ contentRouter.get('/sessions/:sessionId/scene-threats', (req, res) => {
 })
 
 contentRouter.get('/sessions/:sessionId/live-brief', (req, res) => {
-  const access = sessionAccess(req.params.sessionId, req.user!)
+  const access = sessionLiveAccess(req.params.sessionId, req.user!)
   if (!access.ok) {
-    denySession(res, access.reason)
+    denySession(res, access.reason, req.requestId)
     return
   }
   const brief = getSessionLiveBrief(req.params.sessionId)
@@ -166,9 +185,9 @@ contentRouter.get('/sessions/:sessionId/live-brief', (req, res) => {
 })
 
 contentRouter.get('/sessions/:sessionId/my-bag', (req, res) => {
-  const access = sessionAccess(req.params.sessionId, req.user!)
+  const access = sessionLiveAccess(req.params.sessionId, req.user!)
   if (!access.ok) {
-    denySession(res, access.reason)
+    denySession(res, access.reason, req.requestId)
     return
   }
   const bag = getSessionBagForPlayer(req.params.sessionId, req.user!.email)
@@ -182,7 +201,7 @@ contentRouter.get('/sessions/:sessionId/my-bag', (req, res) => {
 contentRouter.get('/sessions/:sessionId/act-summary', (req, res) => {
   const access = sessionAccess(req.params.sessionId, req.user!)
   if (!access.ok) {
-    denySession(res, access.reason)
+    denySession(res, access.reason, req.requestId)
     return
   }
   const row = getPlayerSessionActSummary(req.params.sessionId)
@@ -195,7 +214,11 @@ contentRouter.get('/sessions/:sessionId/act-summary', (req, res) => {
 
 contentRouter.get('/sessions/:sessionId/rolls', (req, res, next) => {
   try {
-    requireSessionParticipant(req.params.sessionId, req.user!)
+    const access = sessionLiveAccess(req.params.sessionId, req.user!)
+    if (!access.ok) {
+      denySession(res, access.reason, req.requestId)
+      return
+    }
     res.json(listRolls(req.params.sessionId, req.user!) ?? [])
   } catch (e) {
     next(e)
@@ -204,7 +227,11 @@ contentRouter.get('/sessions/:sessionId/rolls', (req, res, next) => {
 
 contentRouter.post('/sessions/:sessionId/rolls', async (req, res, next) => {
   try {
-    requireSessionParticipant(req.params.sessionId, req.user!)
+    const access = sessionLiveAccess(req.params.sessionId, req.user!)
+    if (!access.ok) {
+      denySession(res, access.reason, req.requestId)
+      return
+    }
     const body = z
       .object({
         formula: z.string().min(2).max(20),
@@ -228,7 +255,11 @@ contentRouter.post('/sessions/:sessionId/rolls', async (req, res, next) => {
 
 contentRouter.get('/sessions/:sessionId/actions', (req, res, next) => {
   try {
-    requireSessionParticipant(req.params.sessionId, req.user!)
+    const access = sessionLiveAccess(req.params.sessionId, req.user!)
+    if (!access.ok) {
+      denySession(res, access.reason, req.requestId)
+      return
+    }
     const limit = z.coerce.number().int().min(1).max(200).optional().parse(req.query.limit)
     res.json(listSessionActions(req.params.sessionId, limit ?? 60))
   } catch (e) {
@@ -238,7 +269,11 @@ contentRouter.get('/sessions/:sessionId/actions', (req, res, next) => {
 
 contentRouter.post('/sessions/:sessionId/actions', async (req, res, next) => {
   try {
-    requireSessionParticipant(req.params.sessionId, req.user!)
+    const access = sessionLiveAccess(req.params.sessionId, req.user!)
+    if (!access.ok) {
+      denySession(res, access.reason, req.requestId)
+      return
+    }
     const body = z
       .object({
         characterId: z.string().max(160).optional(),

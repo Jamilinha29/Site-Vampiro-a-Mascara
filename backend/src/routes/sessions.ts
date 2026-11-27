@@ -1,7 +1,13 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
-import { findScheduledSessionByAccessCode, syncSessionsIfStale } from '../services/chronicleStore.js'
+import {
+  evaluatePlayerLiveAccess,
+  findScheduledSessionByAccessCode,
+  hasConfirmedSessionPresence,
+  isScheduledTimeReached,
+  syncSessionsIfStale,
+} from '../services/chronicleStore.js'
 import { errorPayload } from '../services/errors.js'
 import { checkSharedRateLimit, resetSharedRateLimit } from '../services/rateLimitStore.js'
 
@@ -45,7 +51,19 @@ sessionsRouter.post('/join-by-code', requireUser, async (req, res, next) => {
     }
 
     await resetSharedRateLimit(key)
-    res.json({ sessionId: session.id })
+    const hasConfirmedPresence = hasConfirmedSessionPresence(session, email)
+    const scheduledTimeReached = isScheduledTimeReached(session)
+    const canEnterLive = evaluatePlayerLiveAccess(session, email).allowed
+    res.json({
+      sessionId: session.id,
+      title: session.chronicleName ?? session.title,
+      scheduledAt: session.scheduledAt,
+      status: session.status,
+      listing: session.listing ?? 'private',
+      hasConfirmedPresence,
+      scheduledTimeReached,
+      canEnterLive,
+    })
   } catch (e) {
     next(e)
   }

@@ -6,7 +6,7 @@ import { CreatedSkillsPanel } from '../characters/CreatedSkillsPanel'
 import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
 import { useAuthStore } from '../../stores/authStore'
-import { mesaDisplayName } from '../../lib/mesaSession'
+import { evaluateClientLiveGate, formatScheduledDateTime, mesaDisplayName } from '../../lib/mesaSession'
 import { FerreiroPanel } from './FerreiroPanel'
 import { SessionTableInfoPanel } from './SessionTableInfoPanel'
 import { DEFAULT_CHRONICLE_AMBIENCE, EXTERNAL_MAP_NOTICE, formatAmbienceChip } from '../../lib/chronicleAmbience'
@@ -41,8 +41,14 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   const [damageInput, setDamageInput] = useState(5)
   const [vitalsBusy, setVitalsBusy] = useState(false)
   const [deadTick, setDeadTick] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
-  const { data: scheduled = [] } = useQuery({
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 15_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const { data: scheduled = [], isLoading: loadingScheduled } = useQuery({
     queryKey: playerQueryKeys.scheduledSessions,
     queryFn: () => api.getScheduledSessions(),
   })
@@ -51,12 +57,19 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     queryFn: () => api.getMeProfile(),
   })
   const session = scheduled.find((s) => s.id === sessionId)
-  const isLive = session?.status === 'open'
+  const isStaff = auth?.role === 'admin' || auth?.role === 'narrator'
+  const gate = session ? evaluateClientLiveGate(session, auth?.email, nowMs) : null
+  const seat =
+    session?.mySeat ??
+    session?.seats?.find((s) => auth?.email && s.email?.toLowerCase() === auth.email.toLowerCase() && !s.leftAt)
+  const isLive = Boolean(session && (isStaff ? session.status === 'open' : gate?.canEnterLive))
+  const canPollLive = Boolean(session && (isStaff || (gate?.canEnterLive && seat)))
 
   const { data: liveState } = useQuery({
     queryKey: ['session-live-state', sessionId],
     queryFn: () => api.getSessionLiveState(sessionId),
-    refetchInterval: isLive ? 10_000 : false,
+    enabled: canPollLive,
+    refetchInterval: canPollLive ? 10_000 : false,
     refetchIntervalInBackground: false,
   })
   const threats = liveState?.threats ?? EMPTY_THREATS
@@ -65,9 +78,16 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   const persistedActions = liveState?.actions ?? []
   const sessionRolls = liveState?.rolls ?? []
 
-  const seat =
-    session?.mySeat ??
-    session?.seats?.find((s) => auth?.email && s.email?.toLowerCase() === auth.email.toLowerCase() && !s.leftAt)
+  const confirmPresence = useMutation({
+    mutationFn: () => api.confirmSessionPresence(sessionId),
+    onSuccess: () => {
+      push('Participação confirmada!', 'success')
+      void qc.invalidateQueries({ queryKey: playerQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['session-board'] })
+    },
+    onError: (e: Error) => push(e.message, 'error'),
+  })
+
   const character: ProfileCharacterSummary | undefined =
     profile?.characters.find((c) => c.id === seat?.characterId) ??
     profile?.characters.find((c) => c.isPrimary) ??
@@ -325,6 +345,48 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
       i.category === 'elixir' ||
       /mana|cura|vitalidade|poção|pocao|elixir/i.test(`${i.name} ${i.statsLabel ?? ''}`),
   )
+
+  if (!loadingScheduled && !isStaff && (!session || !gate?.canEnterLive || !seat)) {
+    const lockedReason = !session
+      ? 'Esta mesa não está disponível na sua conta. Confirme sua participação na Central de Sessões.'
+      : session.status === 'closed'
+        ? 'Esta mesa já foi encerrada pelo narrador.'
+        : !gate?.confirmed
+          ? 'Mesas agendadas só abrem ao vivo para quem confirmou participação antes de entrar.'
+          : !gate?.timeReached
+            ? `Sua participação está confirmada! Esta mesa só abre ao vivo no horário marcado: ${formatScheduledDateTime(session.scheduledAt)}.`
+            : session.status !== 'open'
+              ? 'Sua participação está confirmada. Aguardando o narrador abrir a mesa ao vivo.'
+              : 'Escolha um personagem na Central de Sessões para sentar à mesa ao vivo.'
+
+    return (
+      <div className="card-surface mx-auto max-w-xl space-y-4 p-6 text-center sm:p-8">
+        <p className="font-label-sm text-xs tracking-[0.2em] text-secondary uppercase">{chronicle}</p>
+        <h1 className="font-headline-lg text-2xl text-on-surface">Mesa ao vivo bloqueada</h1>
+        <p className="text-sm leading-relaxed text-on-surface-variant">{lockedReason}</p>
+        {session ? (
+          <p className="text-xs text-secondary">
+            Horário marcado: {formatScheduledDateTime(session.scheduledAt)}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap justify-center gap-2 pt-2">
+          {session && !gate?.confirmed && (session.listing ?? 'private') === 'public' && session.status !== 'closed' ? (
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              disabled={confirmPresence.isPending}
+              onClick={() => confirmPresence.mutate()}
+            >
+              {confirmPresence.isPending ? 'Confirmando…' : 'Confirmar participação'}
+            </button>
+          ) : null}
+          <Link to="/user/sessions" className="btn-secondary text-xs">
+            Voltar para Central de Sessões
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4 pb-28">
@@ -665,7 +727,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         </SessionPanel>
       </div>
 
-      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-52 xl:left-56">
+      <footer className="mesa-panel fixed right-0 bottom-0 left-0 z-40 border-t border-outline-variant/50 bg-surface/95 px-4 py-3 backdrop-blur-md lg:left-60 xl:left-64">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-on-surface-variant">
             Turno · <strong className="text-primary">{character?.name ?? '—'}</strong>

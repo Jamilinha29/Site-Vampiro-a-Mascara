@@ -225,6 +225,8 @@ export type PublicSessionDTO = {
 export type ParticipantSessionDTO = PublicSessionDTO & {
   mySeat: { characterId: string; characterName: string; joinedAt: string } | null
   hasConfirmedPresence: boolean
+  scheduledTimeReached: boolean
+  canEnterLive: boolean
   seats: Array<{
     displayName: string
     characterId: string
@@ -317,12 +319,50 @@ export function toPublicSessionDTO(row: ScheduledSession): PublicSessionDTO {
   }
 }
 
+export type PlayerLiveAccessResult =
+  | { allowed: true }
+  | { allowed: false; reason: 'closed' | 'not_open' | 'presence_required' | 'before_schedule' }
+
+export function isScheduledTimeReached(
+  session: Pick<ScheduledSession, 'scheduledAt'>,
+  nowMs = Date.now(),
+): boolean {
+  const raw = session.scheduledAt?.trim()
+  if (!raw) return true
+  const ts = Date.parse(raw)
+  if (Number.isNaN(ts)) return true
+  return nowMs >= ts
+}
+
+export function hasConfirmedSessionPresence(
+  session: Pick<ScheduledSession, 'presence'>,
+  email?: string,
+): boolean {
+  if (!email) return false
+  return (session.presence ?? []).some((p) => sameEmail(p.email, email))
+}
+
+export function evaluatePlayerLiveAccess(
+  session: ScheduledSession,
+  email?: string,
+  nowMs = Date.now(),
+): PlayerLiveAccessResult {
+  if (session.status === 'closed') return { allowed: false, reason: 'closed' }
+  if (!hasConfirmedSessionPresence(session, email)) return { allowed: false, reason: 'presence_required' }
+  if (!isScheduledTimeReached(session, nowMs)) return { allowed: false, reason: 'before_schedule' }
+  if (session.status !== 'open') return { allowed: false, reason: 'not_open' }
+  return { allowed: true }
+}
+
 export function toParticipantSessionDTO(row: ScheduledSession, viewerEmail?: string): ParticipantSessionDTO {
   const s = ensureSessionDefaults(row)
   const base = toPublicSessionDTO(s)
   const viewer = viewerEmail?.trim().toLowerCase() ?? ''
   const activeSeats = (s.seats ?? []).filter((seat) => !seat.leftAt)
   const myActiveSeat = viewer ? activeSeats.find((seat) => sameEmail(seat.email, viewer)) ?? null : null
+  const hasConfirmedPresence = hasConfirmedSessionPresence(s, viewer)
+  const scheduledTimeReached = isScheduledTimeReached(s)
+  const canEnterLive = evaluatePlayerLiveAccess(s, viewer).allowed
   return {
     ...base,
     mySeat: myActiveSeat
@@ -332,7 +372,9 @@ export function toParticipantSessionDTO(row: ScheduledSession, viewerEmail?: str
           joinedAt: myActiveSeat.joinedAt,
         }
       : null,
-    hasConfirmedPresence: Boolean(viewer && (s.presence ?? []).some((p) => sameEmail(p.email, viewer))),
+    hasConfirmedPresence,
+    scheduledTimeReached,
+    canEnterLive,
     seats: activeSeats.map((seat) => ({
       displayName: seat.displayName,
       characterId: seat.characterId,
@@ -905,6 +947,9 @@ export type LiveMesaSummaryDTO = {
   isCoNarrator: boolean
   allowCoNarrator: boolean
   isSeated: boolean
+  hasConfirmedPresence: boolean
+  scheduledTimeReached: boolean
+  canEnterLive: boolean
   seatedCount: number
   presenceCount: number
 }
@@ -921,6 +966,9 @@ export function listLiveMesasForNarrator(user: { email: string; role: string }):
         s.allowCoNarrator && (s.coNarratorEmails ?? []).some((e) => sameEmail(e, viewer)),
       )
       const isSeated = activeSeats.some((seat) => sameEmail(seat.email, viewer))
+      const hasConfirmedPresence = hasConfirmedSessionPresence(s, viewer)
+      const scheduledTimeReached = isScheduledTimeReached(s)
+      const canEnterLive = evaluatePlayerLiveAccess(s, viewer).allowed
       return {
         id: s.id,
         title: s.title,
@@ -933,6 +981,9 @@ export function listLiveMesasForNarrator(user: { email: string; role: string }):
         isCoNarrator,
         allowCoNarrator: Boolean(s.allowCoNarrator),
         isSeated,
+        hasConfirmedPresence,
+        scheduledTimeReached,
+        canEnterLive,
         seatedCount: activeSeats.length,
         presenceCount: (s.presence ?? []).length,
       }
@@ -1214,12 +1265,21 @@ export async function joinSessionWithCode(
     const raw = scheduledSessions.get(sessionId)
     if (!raw) return { ok: false as const, reason: 'not_found' as const }
     const row = ensureSessionDefaults(raw)
-    if (row.status !== 'open') {
+    if (row.status === 'closed') {
       return { ok: false as const, reason: 'not_open' as const }
     }
     const listing = row.listing ?? 'private'
     if (listing !== 'public' && row.accessCode.toUpperCase() !== accessCode.trim().toUpperCase()) {
       return { ok: false as const, reason: 'bad_code' as const }
+    }
+    if (!hasConfirmedSessionPresence(row, user.email)) {
+      return { ok: false as const, reason: 'presence_required' as const }
+    }
+    if (!isScheduledTimeReached(row)) {
+      return { ok: false as const, reason: 'before_schedule' as const, scheduledAt: row.scheduledAt }
+    }
+    if (row.status !== 'open') {
+      return { ok: false as const, reason: 'not_open' as const }
     }
     const seats = [...(row.seats ?? [])].filter((s) => !(sameEmail(s.email, user.email) && !s.leftAt))
     seats.push({
@@ -1319,6 +1379,26 @@ export function sessionAccess(sessionId: string, user: { email: string; role?: s
     return { ok: false as const, reason: 'forbidden' as const }
   }
   if (!seated) return { ok: false as const, reason: 'forbidden' as const }
+  return { ok: true as const, session }
+}
+
+export function sessionLiveAccess(sessionId: string, user: { email: string; role?: string }) {
+  const access = sessionAccess(sessionId, user)
+  if (!access.ok) return access
+  const session = access.session
+  const role = user.role ?? getProfile(user.email)?.role ?? 'player'
+  if (role === 'admin' || canManageSessionObj(session, { email: user.email, role })) {
+    return { ok: true as const, session }
+  }
+  if (!hasConfirmedSessionPresence(session, user.email)) {
+    return { ok: false as const, reason: 'presence_required' as const }
+  }
+  if (!isScheduledTimeReached(session)) {
+    return { ok: false as const, reason: 'before_schedule' as const, scheduledAt: session.scheduledAt }
+  }
+  if (session.status !== 'open') {
+    return { ok: false as const, reason: 'not_open' as const }
+  }
   return { ok: true as const, session }
 }
 

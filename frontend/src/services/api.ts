@@ -361,7 +361,16 @@ export const api = {
       body: JSON.stringify(body),
     }),
   joinSessionByCode: (code: string) =>
-    request<{ sessionId: string }>('/api/v1/sessions/join-by-code', {
+    request<{
+      sessionId: string
+      title?: string
+      scheduledAt?: string
+      status?: 'scheduled' | 'open' | 'closed'
+      listing?: 'public' | 'private'
+      hasConfirmedPresence?: boolean
+      scheduledTimeReached?: boolean
+      canEnterLive?: boolean
+    }>('/api/v1/sessions/join-by-code', {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
@@ -615,10 +624,14 @@ export const api = {
       `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/reschedule`,
       { method: 'POST' },
     ),
-  confirmSessionPresence: (sessionId: string) =>
-    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}/presence`, {
-      method: 'POST',
-    }),
+  confirmSessionPresence: (sessionId: string, accessCode?: string) =>
+    request<import('../types/chronicle').ScheduledSession>(
+      `/api/v1/me/sessions/${encodeURIComponent(sessionId)}/presence`,
+      {
+        method: 'POST',
+        ...(accessCode ? { body: JSON.stringify({ accessCode }) } : {}),
+      },
+    ),
   joinSessionWithCode: (sessionId: string, body: { accessCode: string; characterId: string }) =>
     request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}/join`, {
       method: 'POST',
@@ -949,6 +962,9 @@ export type SessionBoardCard = {
   listing: 'public' | 'private'
   narratorName: string
   seatedNames: string[]
+  hasConfirmedPresence?: boolean
+  scheduledTimeReached?: boolean
+  canEnterLive?: boolean
 }
 
 export type AuctionCard = {
@@ -996,7 +1012,15 @@ export type NewsPost = {
 
 export type DashboardPayload = {
   activeChronicle?: { name: string; act: string } | null
-  nextSession?: { id: string; title: string; scheduledAt: string; status?: string } | null
+  nextSession?: {
+    id: string
+    title: string
+    scheduledAt: string
+    status?: string
+    hasConfirmedPresence?: boolean
+    scheduledTimeReached?: boolean
+    canEnterLive?: boolean
+  } | null
   characters: Array<{
     id: string
     name: string

@@ -19,6 +19,9 @@ import {
 import { JoinTableModal } from '../../frontend/src/components/domain/JoinTableModal'
 import { CharacterInventoryPanel } from '../../frontend/src/components/characters/CharacterInventoryPanel'
 import { ToastProvider } from '../../frontend/src/components/ui/ToastProvider'
+import { evaluateClientLiveGate } from '../../frontend/src/lib/mesaSession'
+import { AdminShell } from '../../frontend/src/components/layout/AdminShell'
+import HomePage from '../../frontend/src/pages/public/HomePage'
 
 describe('frontend auth storage, progression, API error contract & modals (T21-T33)', () => {
   beforeEach(() => {
@@ -227,5 +230,83 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     )
     expect(screen.getByText('Anel Antigo')).toBeInTheDocument()
     expect(screen.getByText('0.0 kg')).toBeInTheDocument()
+  })
+
+  it('evaluateClientLiveGate only opens live for confirmed participants once scheduled time arrives', () => {
+    const now = Date.parse('2026-11-27T20:00:00.000Z')
+    const future = '2026-11-27T21:00:00.000Z'
+    const due = '2026-11-27T20:00:00.000Z'
+
+    expect(
+      evaluateClientLiveGate(
+        { status: 'open', scheduledAt: due, hasConfirmedPresence: false, presence: [] },
+        'jog@ci.local',
+        now,
+      ),
+    ).toMatchObject({ canEnterLive: false, reason: 'presence_required' })
+
+    expect(
+      evaluateClientLiveGate(
+        { status: 'open', scheduledAt: future, hasConfirmedPresence: true, presence: [] },
+        'jog@ci.local',
+        now,
+      ),
+    ).toMatchObject({ canEnterLive: false, reason: 'before_schedule' })
+
+    expect(
+      evaluateClientLiveGate(
+        { status: 'scheduled', scheduledAt: due, hasConfirmedPresence: true, presence: [] },
+        'jog@ci.local',
+        now,
+      ),
+    ).toMatchObject({ canEnterLive: false, reason: 'not_open' })
+
+    expect(
+      evaluateClientLiveGate(
+        { status: 'open', scheduledAt: due, hasConfirmedPresence: true, presence: [] },
+        'jog@ci.local',
+        now,
+      ),
+    ).toMatchObject({ canEnterLive: true })
+  })
+
+  it('AdminShell renders gothic transparent sidebar sections and HomePage uses fluid full-width containers', () => {
+    useAuthStore.setState({
+      session: {
+        accessToken: 'tok-nar',
+        userId: 'n1',
+        email: 'mestre@ci.local',
+        displayName: 'mestre',
+        role: 'narrator',
+      },
+      rememberSession: true,
+    })
+
+    const { container: shellContainer } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminShell />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('Painel principal')).toBeInTheDocument()
+    expect(screen.getByText('Gestão da crônica')).toBeInTheDocument()
+    expect(screen.getByText('Biblioteca')).toBeInTheDocument()
+    expect(screen.getByText('Comunidade')).toBeInTheDocument()
+    expect(screen.getByText('Recursos')).toBeInTheDocument()
+    expect(screen.getByText('Mestre de Mesa')).toBeInTheDocument()
+    const aside = shellContainer.querySelector('aside')
+    expect(aside?.className).toContain('bg-transparent')
+
+    cleanup()
+
+    const { container: homeContainer } = render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    )
+    expect(homeContainer.innerHTML).not.toContain('max-w-6xl')
+    expect(screen.getByRole('banner')).toBeInTheDocument()
   })
 })

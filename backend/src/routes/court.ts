@@ -5,8 +5,11 @@ import { requireNarrator } from '../middlewares/requireNarrator.js'
 import {
   ensureHandoutForScheduledSession,
   entityMatchesCatalogScope,
+  evaluatePlayerLiveAccess,
   getEntity,
   getScheduledSession,
+  hasConfirmedSessionPresence,
+  isScheduledTimeReached,
   listEntities,
   listScheduledSessionsForManager,
   requireSessionManager,
@@ -152,6 +155,9 @@ courtRouter.get('/session-board', (req, res) => {
   const card = (s: (typeof rows)[number]) => {
     const narrator = s.narratorEmail ? loadProfile(s.narratorEmail) : null
     const seated = (s.seats ?? []).filter((seat) => !seat.leftAt)
+    const hasConfirmedPresence = hasConfirmedSessionPresence(s, me)
+    const scheduledTimeReached = isScheduledTimeReached(s)
+    const canEnterLive = evaluatePlayerLiveAccess(s, me).allowed
     return {
       id: s.id,
       title: s.chronicleName ?? s.title,
@@ -160,6 +166,9 @@ courtRouter.get('/session-board', (req, res) => {
       listing: s.listing ?? 'private',
       narratorName: narrator?.displayName ?? 'Narrador',
       seatedNames: seated.map((seat) => seat.displayName),
+      hasConfirmedPresence,
+      scheduledTimeReached,
+      canEnterLive,
     }
   }
   const matches = (s: ReturnType<typeof card>) => {

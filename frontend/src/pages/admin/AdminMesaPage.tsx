@@ -5,12 +5,12 @@ import { AdminMesaWorkbench } from '../../components/admin/AdminMesaWorkbench'
 import { useToast } from '../../components/ui/useToast'
 import { api } from '../../services/api'
 import { adminQueryKeys, playerQueryKeys } from '../../lib/queryKeys'
-import { findTodayMesaSession, mesaDisplayName } from '../../lib/mesaSession'
+import { findTodayMesaSession, formatScheduledDateTime, isScheduledTimeReached, mesaDisplayName } from '../../lib/mesaSession'
 import type { LiveMesaSummary } from '../../types/chronicle'
 
 type JoinModalState = {
   mesa: LiveMesaSummary
-  mode: 'co-narrator' | 'player'
+  mode: 'co-narrator' | 'player' | 'confirm'
 } | null
 
 export default function AdminMesaPage() {
@@ -53,6 +53,18 @@ export default function AdminMesaPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
       void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       navigate(`/admin/mesa/${joined.id}`)
+    },
+    onError: (e: Error) => push(e.message, 'error'),
+  })
+
+  const confirmParticipation = useMutation({
+    mutationFn: ({ id, code }: { id: string; code?: string }) => api.confirmSessionPresence(id, code),
+    onSuccess: () => {
+      push('Participação confirmada na mesa.', 'success')
+      setJoinModal(null)
+      setAccessCode('')
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
+      void qc.invalidateQueries({ queryKey: playerQueryKeys.scheduledSessions })
     },
     onError: (e: Error) => push(e.message, 'error'),
   })
@@ -171,10 +183,11 @@ export default function AdminMesaPage() {
                   </div>
                   <h2 className="mt-3 font-serif text-xl text-on-surface">{title}</h2>
                   <p className="mt-1 text-xs text-on-surface-variant">
-                    Narrador principal: <strong className="text-on-surface">{m.narratorName}</strong>
+                    Narrador principal: <strong className="text-on-surface">{m.narratorName}</strong> ·{' '}
+                    {formatScheduledDateTime(m.scheduledAt)}
                   </p>
                   <p className="mt-1 text-xs text-on-surface-variant">
-                    {m.seatedCount} jogador(es) sentado(s) ·{' '}
+                    {m.seatedCount} jogador(es) sentado(s) · {m.presenceCount} confirmado(s) ·{' '}
                     {m.allowCoNarrator ? 'Aceita narrador secundário' : 'Apenas narrador principal'}
                   </p>
                 </div>
@@ -206,6 +219,26 @@ export default function AdminMesaPage() {
                     <Link to={`/user/sessions/${m.id}/table`} className="btn-secondary text-xs">
                       Ir para mesa (jogador)
                     </Link>
+                  ) : !m.hasConfirmedPresence ? (
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      disabled={confirmParticipation.isPending}
+                      onClick={() => {
+                        if (isPublic) {
+                          confirmParticipation.mutate({ id: m.id })
+                        } else {
+                          setAccessCode('')
+                          setJoinModal({ mesa: m, mode: 'confirm' })
+                        }
+                      }}
+                    >
+                      Confirmar participação
+                    </button>
+                  ) : !isScheduledTimeReached(m.scheduledAt) ? (
+                    <button type="button" className="btn-secondary text-xs" disabled>
+                      Abre em {formatScheduledDateTime(m.scheduledAt)}
+                    </button>
                   ) : (
                     <button
                       type="button"
@@ -233,7 +266,11 @@ export default function AdminMesaPage() {
           >
             <div className="card-surface w-full max-w-md space-y-4 p-6">
               <h2 className="font-headline-sm text-lg text-on-surface">
-                {joinModal.mode === 'co-narrator' ? 'Entrar como narrador secundário' : 'Participar da mesa'}
+                {joinModal.mode === 'co-narrator'
+                  ? 'Entrar como narrador secundário'
+                  : joinModal.mode === 'confirm'
+                    ? 'Confirmar participação na mesa'
+                    : 'Participar da mesa'}
               </h2>
               <p className="text-xs text-on-surface-variant">
                 {joinModal.mesa.chronicleName || joinModal.mesa.title} ·{' '}
@@ -289,6 +326,15 @@ export default function AdminMesaPage() {
                     onClick={() => joinCoNarrator.mutate({ id: joinModal.mesa.id, code: accessCode.trim() })}
                   >
                     {joinCoNarrator.isPending ? 'Entrando…' : 'Confirmar'}
+                  </button>
+                ) : joinModal.mode === 'confirm' ? (
+                  <button
+                    type="button"
+                    className="btn-primary text-xs"
+                    disabled={(joinModal.mesa.listing === 'private' && !accessCode.trim()) || confirmParticipation.isPending}
+                    onClick={() => confirmParticipation.mutate({ id: joinModal.mesa.id, code: accessCode.trim() })}
+                  >
+                    {confirmParticipation.isPending ? 'Confirmando…' : 'Confirmar participação'}
                   </button>
                 ) : (
                   <button

@@ -160,6 +160,22 @@ describe('unified live session state endpoint', () => {
       .set('Authorization', `Bearer ${narratorToken}`)
       .expect(200)
 
+    // Sem confirmar participação antes, o jogador não pode entrar ao vivo
+    await request(app)
+      .post(`/api/v1/me/sessions/${sessionId}/join`)
+      .set('Authorization', `Bearer ${playerToken}`)
+      .send({ accessCode, characterId: charRes.body.id })
+      .expect(403)
+
+    // Após confirmar participação (com código na mesa privada), pode entrar no horário devido
+    const presenceRes = await request(app)
+      .post(`/api/v1/me/sessions/${sessionId}/presence`)
+      .set('Authorization', `Bearer ${playerToken}`)
+      .send({ accessCode })
+      .expect(200)
+    expect(presenceRes.body.hasConfirmedPresence).toBe(true)
+    expect(presenceRes.body.canEnterLive).toBe(true)
+
     await request(app)
       .post(`/api/v1/me/sessions/${sessionId}/join`)
       .set('Authorization', `Bearer ${playerToken}`)
@@ -180,5 +196,110 @@ describe('unified live session state endpoint', () => {
     expect(Array.isArray(liveRes.body.actions)).toBe(true)
     expect(Array.isArray(liveRes.body.rolls)).toBe(true)
     expect(Array.isArray(liveRes.body.myBag?.rewards)).toBe(true)
+  })
+
+  it('blocks live entry before scheduled time even when open and confirmed, and unlocks only for confirmed users on schedule', async () => {
+    await ensureProfile('narrador.sched@test.local', 'Narrador Agenda', 'narrator')
+    await ensureProfile('confirmado.sched@test.local', 'Jogador Confirmado', 'player')
+    await ensureProfile('naoconfirmado.sched@test.local', 'Jogador Sem Confirmar', 'player')
+
+    const narTok = `dev-${Buffer.from('narrador.sched@test.local').toString('base64url')}`
+    const confirmedTok = `dev-${Buffer.from('confirmado.sched@test.local').toString('base64url')}`
+    const unconfirmedTok = `dev-${Buffer.from('naoconfirmado.sched@test.local').toString('base64url')}`
+
+    const charConfirmed = await request(app)
+      .post('/api/v1/me/characters')
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .send({ name: 'Elena', species: 'Vampiro', hp: { current: 10, max: 10 } })
+      .expect(201)
+
+    const charUnconfirmed = await request(app)
+      .post('/api/v1/me/characters')
+      .set('Authorization', `Bearer ${unconfirmedTok}`)
+      .send({ name: 'Victor', species: 'Vampiro', hp: { current: 10, max: 10 } })
+      .expect(201)
+
+    // 1) Mesa futura (2h à frente): mesmo aberta pelo narrador e com presença confirmada, não abre ao vivo antes do horário
+    const futureAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+    const futureSess = await request(app)
+      .post('/api/v1/admin/chronicle/scheduled-sessions')
+      .set('Authorization', `Bearer ${narTok}`)
+      .send({ title: 'Vigília Futura', scheduledAt: futureAt, listing: 'public' })
+      .expect(201)
+
+    await request(app)
+      .post(`/api/v1/admin/chronicle/scheduled-sessions/${futureSess.body.id}/open`)
+      .set('Authorization', `Bearer ${narTok}`)
+      .expect(200)
+
+    const confirmFuture = await request(app)
+      .post(`/api/v1/me/sessions/${futureSess.body.id}/presence`)
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .expect(200)
+    expect(confirmFuture.body.hasConfirmedPresence).toBe(true)
+    expect(confirmFuture.body.scheduledTimeReached).toBe(false)
+    expect(confirmFuture.body.canEnterLive).toBe(false)
+
+    const earlyJoin = await request(app)
+      .post(`/api/v1/me/sessions/${futureSess.body.id}/join`)
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .send({ accessCode: '', characterId: charConfirmed.body.id })
+      .expect(409)
+    expect(earlyJoin.body.error.message).toMatch(/horário marcado/i)
+
+    // 2) Mesa no horário devido: só abre ao vivo para quem confirmou participação
+    const dueAt = new Date(Date.now() - 60_000).toISOString()
+    const dueSess = await request(app)
+      .post('/api/v1/admin/chronicle/scheduled-sessions')
+      .set('Authorization', `Bearer ${narTok}`)
+      .send({ title: 'Vigília no Horário', scheduledAt: dueAt, listing: 'public' })
+      .expect(201)
+
+    // Antes do narrador abrir: mesmo confirmado e no horário, aguarda o narrador
+    await request(app)
+      .post(`/api/v1/me/sessions/${dueSess.body.id}/presence`)
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .expect(200)
+
+    await request(app)
+      .post(`/api/v1/me/sessions/${dueSess.body.id}/join`)
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .send({ accessCode: '', characterId: charConfirmed.body.id })
+      .expect(409)
+
+    await request(app)
+      .post(`/api/v1/admin/chronicle/scheduled-sessions/${dueSess.body.id}/open`)
+      .set('Authorization', `Bearer ${narTok}`)
+      .expect(200)
+
+    // Não confirmado continua bloqueado
+    const unconfirmedJoin = await request(app)
+      .post(`/api/v1/me/sessions/${dueSess.body.id}/join`)
+      .set('Authorization', `Bearer ${unconfirmedTok}`)
+      .send({ accessCode: '', characterId: charUnconfirmed.body.id })
+      .expect(403)
+    expect(unconfirmedJoin.body.error.message).toMatch(/Confirme sua participação/i)
+
+    // Board mostra canEnterLive=true só para quem confirmou
+    const boardConfirmed = await request(app)
+      .get('/api/v1/court/session-board?q=Vigília')
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .expect(200)
+    const dueCardConfirmed = boardConfirmed.body.publicTables.find((t: { id: string }) => t.id === dueSess.body.id)
+    expect(dueCardConfirmed?.canEnterLive).toBe(true)
+
+    const boardUnconfirmed = await request(app)
+      .get('/api/v1/court/session-board?q=Vigília')
+      .set('Authorization', `Bearer ${unconfirmedTok}`)
+      .expect(200)
+    const dueCardUnconfirmed = boardUnconfirmed.body.publicTables.find((t: { id: string }) => t.id === dueSess.body.id)
+    expect(dueCardUnconfirmed?.canEnterLive).toBe(false)
+
+    // Confirmado entra ao vivo com sucesso
+    await request(app)
+      .post(`/api/v1/me/sessions/${dueSess.body.id}/join`)
+      .set('Authorization', `Bearer ${confirmedTok}`)
+      .send({ accessCode: '', characterId: charConfirmed.body.id })
+      .expect(200)
   })
 })

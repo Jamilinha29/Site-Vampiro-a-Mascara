@@ -6,7 +6,7 @@ import { SessionTableMetaForm } from '../../components/session/SessionTableInfoP
 import { useToast } from '../../components/ui/useToast'
 import { api } from '../../services/api'
 import { adminQueryKeys, invalidatePlayerPublishedContent } from '../../lib/queryKeys'
-import { mesaDisplayName } from '../../lib/mesaSession'
+import { formatScheduledDateTime, isScheduledTimeReached, mesaDisplayName } from '../../lib/mesaSession'
 import {
   DEFAULT_SESSION_RPG,
   newSessionTableMetaDefaults,
@@ -196,6 +196,9 @@ export default function AdminSessionsPage() {
               value={scheduledLocal}
               onChange={(e) => setScheduledLocal(e.target.value)}
             />
+            <span className="mt-1 block text-[11px] normal-case text-on-surface-variant/80">
+              A mesa só abre ao vivo para jogadores que confirmaram participação a partir deste horário.
+            </span>
           </label>
           <label className="block text-xs uppercase text-on-surface-variant">
             Acesso
@@ -237,8 +240,14 @@ export default function AdminSessionsPage() {
                   <div>
                     <p className="font-serif text-on-surface">{mesaDisplayName(s)}</p>
                     <p className="mt-1 text-xs text-on-surface-variant">
-                      {s.status === 'open' ? 'Ao vivo' : s.status === 'closed' ? 'Encerrada' : 'Agendada'} ·{' '}
-                      {new Date(s.scheduledAt).toLocaleString('pt-BR')}
+                      {s.status === 'open'
+                        ? isScheduledTimeReached(s.scheduledAt)
+                          ? 'Ao vivo'
+                          : 'Liberada · aguarda horário'
+                        : s.status === 'closed'
+                          ? 'Encerrada'
+                          : 'Agendada'}{' '}
+                      · {formatScheduledDateTime(s.scheduledAt)}
                     </p>
                     <p className="mt-1 text-xs text-secondary">
                       {(s.listing ?? 'private') === 'public' ? 'Pública' : 'Privada'} · Código da mesa:{' '}
@@ -253,9 +262,11 @@ export default function AdminSessionsPage() {
                     )}
                     {s.presence?.length ? (
                       <p className="mt-1 text-xs text-on-surface-variant">
-                        Presenças: {s.presence.map((p) => p.displayName).join(', ')}
+                        Confirmados ({s.presence.length}): {s.presence.map((p) => p.displayName).join(', ')}
                       </p>
-                    ) : null}
+                    ) : (
+                      <p className="mt-1 text-xs text-outline">Nenhuma participação confirmada ainda.</p>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button

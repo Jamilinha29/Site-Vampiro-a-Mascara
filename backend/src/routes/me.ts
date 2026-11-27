@@ -429,7 +429,7 @@ meRouter.get('/dashboard', async (req, res, next) => {
     const now = Date.now()
     const upcoming = scheduled.filter((s) => s.status !== 'closed' && new Date(s.scheduledAt).getTime() >= now)
     const nextSession =
-      upcoming.find((s) => s.status === 'open') ??
+      scheduled.find((s) => s.canEnterLive) ??
       upcoming[0] ??
       scheduled.filter((s) => s.status !== 'closed').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0] ??
       null
@@ -454,6 +454,9 @@ meRouter.get('/dashboard', async (req, res, next) => {
           title: nextSession.chronicleName ?? nextSession.title,
           scheduledAt: nextSession.scheduledAt,
           status: nextSession.status,
+          hasConfirmedPresence: nextSession.hasConfirmedPresence,
+          scheduledTimeReached: nextSession.scheduledTimeReached,
+          canEnterLive: nextSession.canEnterLive,
         }
         : null,
       characters: displayChars.map((c) => ({
@@ -498,7 +501,7 @@ meRouter.post('/sessions/:sessionId/presence', async (req, res, next) => {
         result.reason === 'closed'
           ? 'A mesa já foi encerrada.'
           : result.reason === 'forbidden'
-            ? 'Sem permissão para confirmar nesta mesa.'
+            ? 'Código da sala inválido para confirmar participação nesta mesa privada.'
             : 'Sessão não encontrada'
       res.status(status).json(
         errorPayload(status === 409 ? 'CONFLICT' : status === 403 ? 'FORBIDDEN' : 'NOT_FOUND', message, {
@@ -546,14 +549,37 @@ meRouter.post('/sessions/:sessionId/join', async (req, res, next) => {
       { id: character.id, name: character.name },
     )
     if (!result.ok) {
+      const scheduledLabel =
+        result.reason === 'before_schedule' && result.scheduledAt
+          ? new Date(result.scheduledAt).toLocaleString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : ''
       const message =
         result.reason === 'bad_code'
           ? 'Código da mesa inválido'
-          : result.reason === 'not_open'
-            ? 'A mesa ainda não foi aberta ou já foi encerrada pelo narrador'
-            : 'Sessão não encontrada'
-      const status = result.reason === 'bad_code' ? 403 : result.reason === 'not_open' ? 409 : 404
-      res.status(status).json(errorPayload(status === 403 ? 'FORBIDDEN' : status === 409 ? 'CONFLICT' : 'NOT_FOUND', message, { requestId: req.requestId }))
+          : result.reason === 'presence_required'
+            ? 'Confirme sua participação na mesa antes de entrar ao vivo.'
+            : result.reason === 'before_schedule'
+              ? `Esta mesa só abre ao vivo no horário marcado${scheduledLabel ? ` (${scheduledLabel})` : ''}.`
+              : result.reason === 'not_open'
+                ? 'A mesa ainda não foi aberta ou já foi encerrada pelo narrador'
+                : 'Sessão não encontrada'
+      const status =
+        result.reason === 'bad_code' || result.reason === 'presence_required'
+          ? 403
+          : result.reason === 'not_open' || result.reason === 'before_schedule'
+            ? 409
+            : 404
+      res.status(status).json(
+        errorPayload(status === 403 ? 'FORBIDDEN' : status === 409 ? 'CONFLICT' : 'NOT_FOUND', message, {
+          requestId: req.requestId,
+        }),
+      )
       return
     }
     await resetSharedRateLimit(key)

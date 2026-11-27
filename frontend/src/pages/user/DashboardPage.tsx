@@ -179,6 +179,15 @@ export default function DashboardPage() {
                   <p className="text-sm text-on-surface-variant">
                     {new Date(data.nextSession.scheduledAt).toLocaleString('pt-BR')}
                   </p>
+                  <p className="mt-1.5 text-xs text-secondary">
+                    {data.nextSession.canEnterLive
+                      ? 'Participação confirmada · Mesa aberta ao vivo'
+                      : data.nextSession.hasConfirmedPresence
+                        ? data.nextSession.scheduledTimeReached
+                          ? 'Participação confirmada · Aguardando o mestre abrir'
+                          : 'Participação confirmada · Abre ao vivo no horário marcado'
+                        : 'Confirme sua participação em Sessões para liberar ao vivo'}
+                  </p>
                 </>
               ) : (
                 <p className="mt-2 text-sm text-on-surface-variant">Aguardando agenda do narrador.</p>

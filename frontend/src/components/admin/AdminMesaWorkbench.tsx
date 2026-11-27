@@ -5,7 +5,7 @@ import type { ChronicleAmbience, ScheduledSession } from '../../types/chronicle'
 import { useMesaHandout } from '../../hooks/useMesaHandout'
 import { useAuthStore } from '../../stores/authStore'
 import { StatBar } from '../domain/StatBar'
-import { mesaDisplayName } from '../../lib/mesaSession'
+import { formatScheduledDateTime, isScheduledTimeReached, mesaDisplayName } from '../../lib/mesaSession'
 import { MesaAuctionDesk } from './MesaAuctionDesk'
 import { MesaCoinGrant } from './MesaCoinGrant'
 import { MesaSceneThreatsPanel } from './MesaSceneThreatsPanel'
@@ -96,6 +96,16 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
       void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
       void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       logAudit(allow ? 'Narrador secundário liberado nesta mesa' : 'Narrador secundário bloqueado nesta mesa')
+    },
+  })
+
+  const openSessionMutation = useMutation({
+    mutationFn: () => api.adminOpenScheduledSession(session.id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
+      invalidatePlayerPublishedContent(qc)
+      logAudit('Mesa liberada pelo narrador')
     },
   })
 
@@ -293,6 +303,16 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
+            {session.status === 'scheduled' ? (
+              <button
+                type="button"
+                className="btn-primary text-xs"
+                disabled={openSessionMutation.isPending}
+                onClick={() => openSessionMutation.mutate()}
+              >
+                {openSessionMutation.isPending ? 'Abrindo…' : 'Abrir ao vivo'}
+              </button>
+            ) : null}
             <button
               type="button"
               className={`btn-secondary text-xs ${restMode ? 'border-secondary text-secondary' : ''}`}
@@ -336,6 +356,17 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
             </Link>
           </div>
         </div>
+        {session.status === 'scheduled' ? (
+          <div className="border-t border-outline-variant/30 bg-surface-container-low/60 px-4 py-2 text-xs text-on-surface-variant sm:px-6">
+            Agendada para <strong className="text-on-surface">{formatScheduledDateTime(session.scheduledAt)}</strong> — clique em{' '}
+            <strong className="text-secondary">Abrir ao vivo</strong> para liberar aos jogadores confirmados no horário marcado.
+          </div>
+        ) : session.status === 'open' && !isScheduledTimeReached(session.scheduledAt) ? (
+          <div className="border-t border-secondary/30 bg-secondary/10 px-4 py-2 text-xs text-secondary sm:px-6">
+            Mesa liberada pelo narrador — abrirá ao vivo para jogadores confirmados em{' '}
+            <strong>{formatScheduledDateTime(session.scheduledAt)}</strong>.
+          </div>
+        ) : null}
         {restMode ? (
           <div className="border-t border-secondary/30 bg-secondary/10 px-4 py-2 text-xs text-secondary sm:px-6">
             Descanso ativo — mesa pausada para intervalo; jogadores veem aviso na sala.

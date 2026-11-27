@@ -94,6 +94,7 @@ export type SessionPresence = {
   email?: string
   displayName: string
   confirmedAt: string
+  isMe?: boolean
 }
 
 export type SessionSeat = {
@@ -103,6 +104,7 @@ export type SessionSeat = {
   characterName: string
   joinedAt: string
   leftAt?: string
+  isMe?: boolean
 }
 
 export type SessionActionRecord = {
@@ -141,6 +143,9 @@ export type ScheduledSession = {
   coNarratorEmails?: string[]
   mySeat?: SessionSeat | null
   myPresenceConfirmed?: boolean
+  hasConfirmedPresence?: boolean
+  scheduledTimeReached?: boolean
+  canEnterLive?: boolean
   tableMeta?: SessionTableMeta
   /** Senha/código da mesa gerado na criação. Vazio na lista do jogador. */
   accessCode?: string
@@ -169,6 +174,9 @@ export type LiveMesaSummary = {
   isCoNarrator: boolean
   allowCoNarrator: boolean
   isSeated: boolean
+  hasConfirmedPresence?: boolean
+  scheduledTimeReached?: boolean
+  canEnterLive?: boolean
   seatedCount: number
   presenceCount: number
 }
