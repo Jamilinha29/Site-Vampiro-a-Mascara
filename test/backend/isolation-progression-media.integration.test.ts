@@ -302,4 +302,83 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
     expect(entry?.isCoNarrator).toBe(true)
     expect(entry?.accessCode).toBeUndefined()
   })
+
+  it('hardens media URLs against IPv6/CGNAT SSRF, forged private:// refs, narrator ownership and backup access', async () => {
+    expect(isSafePublicMediaUrl('http://[::ffff:169.254.169.254]/latest')).toBe(false)
+    expect(isSafePublicMediaUrl('http://[fc00::1]/secret')).toBe(false)
+    expect(isSafePublicMediaUrl('http://[fe80::1]/secret')).toBe(false)
+    expect(isSafePublicMediaUrl('http://100.64.0.1/internal')).toBe(false)
+    expect(isSafePublicMediaUrl('http://app.localhost/internal')).toBe(false)
+    expect(isSafePublicMediaUrl('javascript:alert(1)')).toBe(false)
+
+    const adminToken = signDevToken('admin.hardening@ci.local', 'Admin', 'admin').accessToken
+    const narratorToken = signDevToken('narrador.hardening@ci.local', 'Narrador', 'narrator').accessToken
+
+    // Forjar private:// ou javascript: em entidade ou importação é bloqueado
+    const forgedCreate = await request(app)
+      .post('/api/v1/admin/chronicle/entities')
+      .set('Authorization', `Bearer ${narratorToken}`)
+      .send({
+        kind: 'download',
+        name: 'Arquivo Forjado',
+        description: 'Tentativa IDOR',
+        downloadCategory: 'rules',
+        fileName: 'segredo.pdf',
+        fileUrl: 'private://revelacoes/outro-usuario.pdf',
+      })
+    expect(forgedCreate.status).toBe(400)
+
+    const forgedImport = await request(app)
+      .post('/api/v1/admin/chronicle/entities/import')
+      .set('Authorization', `Bearer ${narratorToken}`)
+      .send([
+        {
+          kind: 'archive',
+          name: 'XSS Import',
+          description: 'Teste',
+          imageUrl: 'javascript:alert(1)',
+        },
+      ])
+    expect(forgedImport.status).toBe(400)
+
+    // Entidade global criada por admin não pode ser editada nem apagada por narrador comum
+    const adminEntity = await request(app)
+      .post('/api/v1/admin/chronicle/entities')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        kind: 'archive',
+        archiveCategory: 'chronicles',
+        name: 'Códice Global',
+        description: 'Canônico',
+      })
+    expect(adminEntity.status).toBe(201)
+
+    const narratorPatch = await request(app)
+      .patch(`/api/v1/admin/chronicle/entities/${adminEntity.body.id}`)
+      .set('Authorization', `Bearer ${narratorToken}`)
+      .send({ name: 'Sequestrado' })
+    expect(narratorPatch.status).toBe(403)
+
+    const narratorDelete = await request(app)
+      .delete(`/api/v1/admin/chronicle/entities/${adminEntity.body.id}`)
+      .set('Authorization', `Bearer ${narratorToken}`)
+    expect(narratorDelete.status).toBe(403)
+
+    // Endpoints de backup exigem estritamente admin
+    const narratorBackup = await request(app)
+      .get('/api/v1/admin/chronicle/backup')
+      .set('Authorization', `Bearer ${narratorToken}`)
+    expect(narratorBackup.status).toBe(403)
+
+    const narratorDrill = await request(app)
+      .post('/api/v1/admin/chronicle/backup/drill')
+      .set('Authorization', `Bearer ${narratorToken}`)
+      .send({ backup: {} })
+    expect(narratorDrill.status).toBe(403)
+
+    const adminBackup = await request(app)
+      .get('/api/v1/admin/chronicle/backup')
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(adminBackup.status).toBe(200)
+  })
 })

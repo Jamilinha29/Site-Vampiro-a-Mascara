@@ -232,7 +232,7 @@ courtRouter.post('/auctions/:auctionId/bid', async (req, res, next) => {
     const seat = (session.seats ?? []).find(
       (s) => !s.leftAt && s.email.toLowerCase() === req.user!.email.toLowerCase(),
     )
-    const effectiveCharacterId = body.characterId ?? seat?.characterId
+    const effectiveCharacterId = seat?.characterId ?? body.characterId
     const result = await placeBid({
       auctionId: req.params.auctionId,
       email: req.user!.email,
@@ -240,6 +240,7 @@ courtRouter.post('/auctions/:auctionId/bid', async (req, res, next) => {
       amount: body.amount,
       coin: body.coin,
       level: playerLevel(req.user!.email, effectiveCharacterId),
+      characterId: effectiveCharacterId,
     })
     if (!result.ok) {
       res.status(400).json(errorPayload('VALIDATION_ERROR', result.error, { requestId: req.requestId }))
@@ -433,13 +434,13 @@ admin.post('/grant-coins', async (req, res, next) => {
             participants: has
               ? participants
               : [
-                  ...participants,
-                  {
-                    displayName: seat.displayName,
-                    characterName: seat.characterName,
-                    rewards: [{ type: 'currency' as const, label }],
-                  },
-                ],
+                ...participants,
+                {
+                  displayName: seat.displayName,
+                  characterName: seat.characterName,
+                  rewards: [{ type: 'currency' as const, label }],
+                },
+              ],
           })
         }
         return { status: 200, body: { wallet, displayName: seat.displayName } }

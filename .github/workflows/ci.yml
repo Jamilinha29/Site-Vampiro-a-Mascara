@@ -1,5 +1,8 @@
 name: CI & Deploy Pipeline
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -68,20 +71,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Commit alterou supabase/migrations?
+      - name: Push alterou supabase/migrations?
         id: gate
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if git diff-tree --no-commit-id --name-only -r "${{ github.sha }}" | grep -q '^supabase/migrations/'; then
+          BEFORE="${{ github.event.before }}"
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          else
+            CHANGED=$(git diff-tree -m --first-parent --no-commit-id --name-only -r "${{ github.sha }}")
+          fi
+          if printf '%s\n' "$CHANGED" | grep -q '^supabase/migrations/'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Nenhuma migração neste commit — passo ignorado."
+            echo "Nenhuma migração neste push — passo ignorado."
           fi
 
       - uses: supabase/setup-cli@v1

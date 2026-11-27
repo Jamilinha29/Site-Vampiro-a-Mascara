@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ProfileMediaSettings } from '../../components/profile/ProfileMediaSettings'
 import { api } from '../../services/api'
@@ -15,54 +15,41 @@ function SettingsSection({ title, children }: { title: string; children: React.R
   )
 }
 
-export default function SettingsPage() {
+function PlayerSettingsForm({ profile }: { profile: UserProfile }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const session = useAuthStore((s) => s.session)
   const setSession = useAuthStore((s) => s.setSession)
   const logout = useAuthStore((s) => s.logout)
 
-  const { data: profile, isLoading } = useQuery({
-    queryKey: ['me-profile'],
-    queryFn: () => api.getMeProfile(),
-    enabled: !!session,
-  })
-
-  const [displayName, setDisplayName] = useState('')
-  const [handle, setHandle] = useState('')
-  const [fiefOrigin, setFiefOrigin] = useState('')
-  const [narrativePreference, setNarrativePreference] = useState('')
-  const [bio, setBio] = useState('')
-  const [visibility, setVisibility] = useState<UserProfile['preferences']['visibility']>('court')
-  const [notifySessions, setNotifySessions] = useState(true)
-  const [notifyChronicle, setNotifyChronicle] = useState(true)
-  const [saved, setSaved] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!profile) return
-    setDisplayName(profile.displayName)
-    setHandle(profile.handle)
-    setFiefOrigin(profile.preferences.fiefOrigin ?? '')
-    setNarrativePreference(profile.preferences.narrativePreference ?? '')
-    setBio(profile.preferences.bio ?? '')
-    setVisibility(profile.preferences.visibility ?? 'court')
-    setNotifySessions(profile.preferences.notifySessions ?? true)
-    setNotifyChronicle(profile.preferences.notifyChronicle ?? true)
-  }, [profile])
+  const [displayName, setDisplayName] = useState(profile.displayName)
+  const [handle, setHandle] = useState(profile.handle)
+  const [fiefOrigin, setFiefOrigin] = useState(profile.preferences.fiefOrigin ?? '')
+  const [narrativePreference, setNarrativePreference] = useState(profile.preferences.narrativePreference ?? '')
+  const [bio, setBio] = useState(profile.preferences.bio ?? '')
+  const [visibility, setVisibility] = useState<UserProfile['preferences']['visibility']>(
+    profile.preferences.visibility ?? 'court',
+  )
+  const [notifySessions, setNotifySessions] = useState(profile.preferences.notifySessions ?? true)
+  const [notifyChronicle, setNotifyChronicle] = useState(profile.preferences.notifyChronicle ?? true)
+  const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null)
 
   const saveAccount = useMutation({
     mutationFn: async () => {
       const accountPatch: { displayName?: string; handle?: string } = {}
-      if (displayName.trim() !== profile?.displayName) {
+      if (displayName.trim() !== profile.displayName) {
         accountPatch.displayName = displayName.trim()
       }
-      if (handle.trim() !== profile?.handle) {
+      if (handle.trim() !== profile.handle) {
         accountPatch.handle = handle.trim()
       }
       if (accountPatch.displayName !== undefined || accountPatch.handle !== undefined) {
         const updatedAccount = await api.patchMeAccount(accountPatch)
         setDisplayName(updatedAccount.displayName)
         setHandle(updatedAccount.handle)
+        if (session && updatedAccount.displayName) {
+          setSession({ ...session, displayName: updatedAccount.displayName })
+        }
       }
       await api.patchMePreferences({
         fiefOrigin: fiefOrigin.trim() || null,
@@ -74,18 +61,14 @@ export default function SettingsPage() {
       })
     },
     onSuccess: async () => {
-      setSaved('Preferências salvas.')
+      setFeedback({ text: 'Preferências salvas.', isError: false })
       void qc.invalidateQueries({ queryKey: ['me-profile'] })
-      if (session && displayName.trim()) {
-        setSession({ ...session, displayName: displayName.trim() })
-      }
     },
-    onError: (e: Error) => setSaved(e.message),
+    onError: (e: Error) => {
+      void qc.invalidateQueries({ queryKey: ['me-profile'] })
+      setFeedback({ text: e.message, isError: true })
+    },
   })
-
-  if (isLoading || !profile) {
-    return <p className="text-sm text-on-surface-variant">Carregando configurações…</p>
-  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-10">
@@ -198,7 +181,7 @@ export default function SettingsPage() {
           <button
             type="button"
             className="btn-primary text-xs"
-            disabled={saveAccount.isPending || displayName.trim().length < 2}
+            disabled={saveAccount.isPending || displayName.trim().length < 2 || handle.trim().length < 3}
             onClick={() => saveAccount.mutate()}
           >
             {saveAccount.isPending ? 'Salvando…' : 'Salvar alterações'}
@@ -221,8 +204,40 @@ export default function SettingsPage() {
             Sair da conta
           </button>
         </div>
-        {saved ? <p className="mt-2 text-xs text-secondary">{saved}</p> : null}
+        {feedback ? (
+          <p className={`mt-2 text-xs ${feedback.isError ? 'text-primary' : 'text-secondary'}`}>{feedback.text}</p>
+        ) : null}
       </SettingsSection>
     </div>
+  )
+}
+
+export default function SettingsPage() {
+  const session = useAuthStore((s) => s.session)
+  const { data: profile, isLoading, isError, refetch } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api.getMeProfile(),
+    enabled: !!session,
+  })
+
+  if (isLoading) {
+    return <p className="text-sm text-on-surface-variant">Carregando configurações…</p>
+  }
+  if (isError || !profile) {
+    return (
+      <div className="card-surface mx-auto max-w-md space-y-3 p-5">
+        <p className="text-sm text-primary">Não foi possível carregar suas configurações.</p>
+        <button type="button" className="btn-secondary text-xs" onClick={() => void refetch()}>
+          Tentar novamente
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <PlayerSettingsForm
+      key={`${profile.userId}:${profile.displayName}:${profile.handle}:${profile.preferences.visibility}`}
+      profile={profile}
+    />
   )
 }

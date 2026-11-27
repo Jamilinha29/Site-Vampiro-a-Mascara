@@ -17,6 +17,7 @@
     "verify:git": "node scripts/verify-git-clean.js",
     "verify:bundle": "node scripts/verify-git-clean.js --check-dist",
     "backup:export": "node scripts/backup-disaster.mjs export",
+    "backup:decrypt": "node scripts/backup-disaster.mjs decrypt",
     "backup:check": "node scripts/backup-disaster.mjs check",
     "docker:dev": "docker compose up --build",
     "docker:prod": "docker compose -f compose.prod.yaml up --build",
@@ -26,7 +27,7 @@
   "author": "",
   "license": "MIT",
   "type": "commonjs",
-  "private": "true",
+  "private": true,
   "workspaces": [
     "frontend",
     "backend"

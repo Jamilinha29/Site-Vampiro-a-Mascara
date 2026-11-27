@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { PlayerBestiaryExplorer } from '../../components/content/PlayerBestiaryExplorer'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import { ATTR_KEYS } from '../../lib/glossaryCatalog'
 import { playerQueryKeys } from '../../lib/queryKeys'
 import { api } from '../../services/api'
@@ -53,11 +53,21 @@ function tomeCode(item: ChronicleEntity, index: number) {
   return `TOMO Nº ${n} — ${kind}`
 }
 
+function resolveTabFromSection(section: string | null): TabId | null {
+  if (section === 'bestiary') return 'bestiary'
+  if (section === 'rituals') return 'rituals'
+  if (section === 'relics' || section === 'amulets' || section === 'charms') return 'charms'
+  if (section === 'chronicles' || section === 'others') return 'others'
+  return null
+}
+
 export default function ArchivePage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const qc = useQueryClient()
   const { push } = useToast()
-  const [tab, setTab] = useState<TabId>('rituals')
+  const sectionParam = searchParams.get('section')
+  const [localTab, setLocalTab] = useState<TabId>('rituals')
+  const tab: TabId = resolveTabFromSection(sectionParam) ?? localTab
   const [query, setQuery] = useState('')
   const [rarity, setRarity] = useState('all')
   const filtersReady = useRef(false)
@@ -78,6 +88,8 @@ export default function ArchivePage() {
     void api.getSavedFilters().then((saved) => {
       if (typeof saved.archiveQuery === 'string') setQuery(saved.archiveQuery)
       if (saved.archiveRarity) setRarity(saved.archiveRarity)
+      setPage(1)
+      setSelectedId(null)
       filtersReady.current = true
     })
   }, [])
@@ -90,13 +102,16 @@ export default function ArchivePage() {
     return () => window.clearTimeout(timer)
   }, [query, rarity])
 
-  useEffect(() => {
-    const section = searchParams.get('section')
-    if (section === 'bestiary') setTab('bestiary')
-    else if (section === 'rituals') setTab('rituals')
-    else if (section === 'relics' || section === 'amulets' || section === 'charms') setTab('charms')
-    else if (section === 'chronicles' || section === 'others') setTab('others')
-  }, [searchParams])
+  function selectTab(next: TabId) {
+    setLocalTab(next)
+    setPage(1)
+    setSelectedId(null)
+    if (sectionParam) {
+      const params = new URLSearchParams(searchParams)
+      params.delete('section')
+      setSearchParams(params, { replace: true })
+    }
+  }
 
   const { data: chronicles = [] } = useQuery({
     queryKey: ['content-archive', 'chronicles'],
@@ -262,11 +277,6 @@ export default function ArchivePage() {
   const selected = selectedId ? (items.find((i) => i.id === selectedId) ?? null) : null
   const selectedIndex = selected ? items.findIndex((i) => i.id === selected.id) : -1
 
-  useEffect(() => {
-    setPage(1)
-    setSelectedId(null)
-  }, [tab, query, rarity, sort])
-
   return (
     <div className="space-y-5">
       <header>
@@ -285,10 +295,22 @@ export default function ArchivePage() {
             className="input-feudal w-full pl-10"
             placeholder="Buscar tomo, relíquia, ritual…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+              setSelectedId(null)
+            }}
           />
         </div>
-        <select className="input-feudal w-full pl-3.5" value={rarity} onChange={(e) => setRarity(e.target.value)}>
+        <select
+          className="input-feudal w-full pl-3.5"
+          value={rarity}
+          onChange={(e) => {
+            setRarity(e.target.value)
+            setPage(1)
+            setSelectedId(null)
+          }}
+        >
           <option value="all">Raridade: todas</option>
           <option value="ancestral">Raridade: Ancestral</option>
           <option value="raro">Raridade: Raro</option>
@@ -299,7 +321,11 @@ export default function ArchivePage() {
         <select
           className="input-feudal w-full pl-3.5"
           value={sort}
-          onChange={(e) => setSort(e.target.value as typeof sort)}
+          onChange={(e) => {
+            setSort(e.target.value as typeof sort)
+            setPage(1)
+            setSelectedId(null)
+          }}
         >
           <option value="recent">Mais recentes</option>
           <option value="name">Nome A–Z</option>
@@ -317,7 +343,7 @@ export default function ArchivePage() {
                 ? 'border-secondary bg-secondary text-surface-container-lowest'
                 : 'border-secondary/70 bg-transparent text-secondary hover:bg-secondary/10'
             }`}
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
           >
             {t.label} ({counts[t.id]})
           </button>

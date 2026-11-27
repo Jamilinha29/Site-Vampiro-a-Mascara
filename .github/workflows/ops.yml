@@ -1,5 +1,8 @@
 name: Ops & Keepalive
 
+permissions:
+  contents: read
+
 # Unifica monitoramento de saúde (Vercel) e keepalive do Supabase Free sem excesso de execuções.
 on:
   schedule:

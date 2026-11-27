@@ -94,3 +94,19 @@ export const CONSUMABLE_KINDS = [
 ] as const
 
 export const MAX_ATTRIBUTE_MODS = 3
+
+export const defaultCreatureStats = (): {
+  for: number
+  des: number
+  vig: number
+  int: number
+  sab: number
+  car: number
+} => ({
+  for: 3,
+  des: 2,
+  vig: 3,
+  int: 2,
+  sab: 2,
+  car: 1,
+})

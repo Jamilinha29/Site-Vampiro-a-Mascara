@@ -1,33 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { SessionHandout } from '../types/chronicle'
 import { api } from '../services/api'
 import { adminQueryKeys, invalidatePlayerPublishedContent } from '../lib/queryKeys'
 
 export function useMesaHandout(sessionId: string) {
   const qc = useQueryClient()
-  const [narrativeSummary, setNarrativeSummary] = useState('')
-  const [dirty, setDirty] = useState(false)
+  const [draftState, setDraftState] = useState<{ sessionId: string; text: string } | null>(null)
 
   const query = useQuery({
     queryKey: adminQueryKeys.mesaHandout(sessionId),
     queryFn: () => api.adminGetMesaHandout(sessionId),
+    enabled: Boolean(sessionId),
   })
 
   const handout = query.data
-
-  useEffect(() => {
-    if (handout && !dirty) {
-      setNarrativeSummary(handout.narrativeSummary)
-    }
-  }, [handout, dirty])
+  const dirty = draftState !== null && draftState.sessionId === sessionId
+  const narrativeSummary = dirty ? draftState.text : (handout?.narrativeSummary ?? '')
 
   const saveNarrative = useMutation({
     mutationFn: () => api.adminPatchMesaHandoutNarrative(sessionId, narrativeSummary),
     onSuccess: (updated) => {
       qc.setQueryData(adminQueryKeys.mesaHandout(sessionId), updated)
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
-      setDirty(false)
+      setDraftState(null)
     },
   })
 
@@ -50,8 +46,7 @@ export function useMesaHandout(sessionId: string) {
     error: query.error,
     narrativeSummary,
     setNarrativeSummary: (value: string) => {
-      setNarrativeSummary(value)
-      setDirty(true)
+      setDraftState({ sessionId, text: value })
     },
     dirty,
     saveNarrative,

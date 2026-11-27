@@ -41,11 +41,10 @@ export function PlayerBestiaryExplorer({ query = '' }: { query?: string }) {
           <button
             key={t.id}
             type="button"
-            className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wider uppercase ${
-              tier === t.id
+            className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wider uppercase ${tier === t.id
                 ? 'bg-primary-container text-white'
                 : 'border border-outline-variant/40 text-on-surface-variant'
-            }`}
+              }`}
             onClick={() => {
               setTier(t.id)
               setSelectedId(null)
@@ -102,13 +101,12 @@ function BestiaryCard({
   const pe = entity.manaMax ?? 0
   const rarity = capitalize(entity.rarity ?? 'comum')
   const size = entity.creatureSize ?? sizeLabel(entity)
-  const place = entity.sceneTrigger?.trim() || 'Sem local registrado'
+  const place = entity.location?.trim() || 'Sem local registrado'
 
   return (
     <article
-      className={`flex flex-col overflow-hidden rounded-2xl border bg-[#141414] ${
-        active ? 'border-primary/70' : 'border-white/10'
-      }`}
+      className={`flex flex-col overflow-hidden rounded-2xl border bg-[#141414] ${active ? 'border-primary/70' : 'border-white/10'
+        }`}
     >
       <div className="relative h-40 overflow-hidden bg-black">
         {entity.imageUrl ? (
@@ -378,6 +376,11 @@ function capitalize(s: string) {
 }
 
 function threatLevel(entity: ChronicleEntity, tier: string) {
+  if (entity.threatLevel === 'cataclismico') return 10
+  if (entity.threatLevel === 'letal') return 8
+  if (entity.threatLevel === 'perigoso') return 6
+  if (entity.threatLevel === 'comum') return 4
+  if (entity.threatLevel === 'inofensivo') return 1
   if (entity.rarity === 'proibido') return 9
   if (entity.rarity === 'ancestral') return 8
   if (entity.rarity === 'raro') return 6

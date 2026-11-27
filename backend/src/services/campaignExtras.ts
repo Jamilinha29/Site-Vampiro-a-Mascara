@@ -1,6 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { commitDocument, documentWeight, loadDocument, runExclusive } from './campaignDocuments.js'
+import {
+  checkRemoteDocumentRevision,
+  commitDocument,
+  documentWeight,
+  getLoadedDocumentRevision,
+  loadDocument,
+  runExclusive,
+} from './campaignDocuments.js'
 import {
   listEntities,
   listHandouts,
@@ -135,8 +142,56 @@ export function listBoard() {
   return [...board]
 }
 
+async function syncBoardIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('campaign-board')
+  if (remoteRev > getLoadedDocumentRevision('campaign-board')) {
+    const doc = await loadDocument<BoardCard[]>('campaign-board')
+    if (doc && Array.isArray(doc.body)) board.splice(0, board.length, ...doc.body)
+  }
+}
+
+async function syncSecretsIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('mesa-secrets')
+  if (remoteRev > getLoadedDocumentRevision('mesa-secrets')) {
+    const doc = await loadDocument<TableSecret[]>('mesa-secrets')
+    if (doc && Array.isArray(doc.body)) secrets.splice(0, secrets.length, ...doc.body)
+  }
+}
+
+async function syncRulesIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('campaign-rules')
+  if (remoteRev > getLoadedDocumentRevision('campaign-rules')) {
+    const doc = await loadDocument<CampaignRules>('campaign-rules')
+    if (doc?.body?.maxLevel) {
+      writeRules({
+        ...readRules(),
+        ...doc.body,
+        maxLevel: Math.min(MAX_CHARACTER_LEVEL, doc.body.maxLevel),
+        subclassLevel: Math.min(MAX_CHARACTER_LEVEL, doc.body.subclassLevel),
+        secondarySubclassLevel: Math.min(
+          MAX_CHARACTER_LEVEL,
+          doc.body.secondarySubclassLevel ?? SECOND_SUBCLASS_CHOICE_LEVEL,
+        ),
+        startingXp: doc.body.startingXp ?? 0,
+        shopBudgetCopper: doc.body.shopBudgetCopper ?? 0,
+      })
+    }
+  }
+}
+
+async function syncBackupMetaIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('backup-metadata')
+  if (remoteRev > getLoadedDocumentRevision('backup-metadata')) {
+    const doc = await loadDocument<BackupMetadataEntry[]>('backup-metadata')
+    if (doc && Array.isArray(doc.body)) {
+      backupMetadata.splice(0, backupMetadata.length, ...doc.body.slice(-100))
+    }
+  }
+}
+
 export async function addBoardCard(card: Omit<BoardCard, 'id'>) {
   return runExclusive('store:board', async () => {
+    await syncBoardIfStale()
     const row = { ...card, id: randomUUID() }
     const backup = [...board]
     board.unshift(row)
@@ -152,6 +207,7 @@ export async function addBoardCard(card: Omit<BoardCard, 'id'>) {
 
 export async function removeBoardCard(id: string) {
   return runExclusive('store:board', async () => {
+    await syncBoardIfStale()
     const index = board.findIndex((card) => card.id === id)
     if (index < 0) return false
     const backup = [...board]
@@ -173,6 +229,7 @@ export async function proposeRules(
   decision: 'keep-existing' | 'mark-review',
 ) {
   return runExclusive('store:rules', async () => {
+    await syncRulesIfStale()
     const maxLevel = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, next.maxLevel))
     const subclassLevel = Math.min(maxLevel, Math.max(1, next.subclassLevel))
     const secondarySubclassLevel = Math.min(
@@ -198,8 +255,19 @@ export async function proposeRules(
       throw err
     }
     if (decision === 'mark-review') {
+      const grouped = new Map<string, { email: string; characterId: string; reasons: string[] }>()
       for (const row of affected) {
-        await noteRuleChange(row.email, row.characterId, `A regra mudou para a versão ${saved.version}. ${row.reason}`)
+        const key = `${row.email.toLowerCase()}::${row.characterId}`
+        const cur = grouped.get(key) ?? { email: row.email, characterId: row.characterId, reasons: [] }
+        cur.reasons.push(row.reason)
+        grouped.set(key, cur)
+      }
+      for (const row of grouped.values()) {
+        await noteRuleChange(
+          row.email,
+          row.characterId,
+          `A regra mudou para a versão ${saved.version}. ${row.reasons.join(' ')}`,
+        )
       }
     }
     return { rules: saved, decision, affected }
@@ -212,6 +280,7 @@ export function listSecrets(sessionId?: string) {
 
 export async function addSecret(input: Omit<TableSecret, 'id' | 'createdAt'>) {
   return runExclusive('store:secrets', async () => {
+    await syncSecretsIfStale()
     const row: TableSecret = { ...input, id: randomUUID(), createdAt: new Date().toISOString() }
     const backup = [...secrets]
     secrets.unshift(row)
@@ -227,6 +296,7 @@ export async function addSecret(input: Omit<TableSecret, 'id' | 'createdAt'>) {
 
 export async function removeSecret(id: string) {
   return runExclusive('store:secrets', async () => {
+    await syncSecretsIfStale()
     const index = secrets.findIndex((row) => row.id === id)
     if (index < 0) return false
     const backup = [...secrets]
@@ -243,6 +313,7 @@ export async function removeSecret(id: string) {
 
 export async function forgetSecretsForSession(sessionId: string) {
   return runExclusive('store:secrets', async () => {
+    await syncSecretsIfStale()
     const next = secrets.filter((row) => row.sessionId !== sessionId)
     if (next.length === secrets.length) return
     const backup = [...secrets]
@@ -316,9 +387,6 @@ export function collectStorageManifest() {
     note(entity.imageUrl)
     note(entity.fileUrl)
   }
-  for (const handout of listHandouts(true)) {
-    for (const monster of handout.monstersSlain ?? []) note(monster.statsText)
-  }
   return [...urls]
 }
 
@@ -383,9 +451,9 @@ const backupPayloadSchema = z
     (obj) =>
       Boolean(
         obj.profiles !== undefined ||
-          obj.sessions !== undefined ||
-          obj.handouts !== undefined ||
-          obj.wallets !== undefined,
+        obj.sessions !== undefined ||
+        obj.handouts !== undefined ||
+        obj.wallets !== undefined,
       ),
     { message: 'Arquivo de backup vazio ou sem seções reconhecidas.' },
   )
@@ -432,6 +500,14 @@ export function drillBackup(raw: unknown) {
     const portraits = profile.characters.filter((character) => character.portraitUrl).length
     return sum + portraits + (profile.avatarUrl ? 1 : 0) + (profile.bannerUrl ? 1 : 0)
   }, 0)
+  const manifestUrls = new Set<string>()
+  for (const profile of profiles) {
+    if (profile.avatarUrl?.trim()) manifestUrls.add(profile.avatarUrl.trim())
+    if (profile.bannerUrl?.trim()) manifestUrls.add(profile.bannerUrl.trim())
+    for (const character of profile.characters ?? []) {
+      if (character.portraitUrl?.trim()) manifestUrls.add(character.portraitUrl.trim())
+    }
+  }
   return {
     wrote: false,
     schemaVersion: file.schemaVersion ?? 'legacy',
@@ -445,13 +521,14 @@ export function drillBackup(raw: unknown) {
     silver: wallets.reduce((sum, wallet) => sum + (wallet.silver ?? 0), 0),
     copper: wallets.reduce((sum, wallet) => sum + (wallet.copper ?? 0), 0),
     imageReferences: images,
-    storageManifest: collectStorageManifest(),
+    storageManifest: [...manifestUrls],
     storageNote: 'A cópia guarda referências. Os arquivos binários do Storage devem ter cópia externa separada.',
   }
 }
 
 export async function recordBackupMetadata(input: Omit<BackupMetadataEntry, 'id' | 'createdAt'>) {
   return runExclusive('store:backup-meta', async () => {
+    await syncBackupMetaIfStale()
     const row: BackupMetadataEntry = {
       ...input,
       id: randomUUID(),
@@ -505,7 +582,9 @@ export async function restoreBackup(raw: unknown, operatorEmail = 'system') {
 
     try {
       if (file.profiles) await replaceProfiles(file.profiles)
-      if (file.sessions) await replaceSessionBundle(file.sessions, file.handouts)
+      if (file.sessions !== undefined || file.handouts !== undefined) {
+        await replaceSessionBundle(file.sessions, file.handouts)
+      }
       if (file.wallets) await replaceWalletMap(file.wallets)
 
       const checksum = createHash('sha256').update(JSON.stringify(file)).digest('hex')

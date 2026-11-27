@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import { app } from '../../backend/src/index.js'
+import { resetProfilesForTests } from '../../backend/src/services/profileStore.js'
 
 const playerToken = `dev-${Buffer.from('criar-ficha@ci.local').toString('base64url')}`
 
 describe('POST /api/v1/me/characters', () => {
+  beforeEach(() => {
+    resetProfilesForTests()
+  })
   it('creates a primary character for authenticated player', async () => {
     const res = await request(app)
       .post('/api/v1/me/characters')

@@ -49,7 +49,7 @@ Browser (React 19 + Vite) ──► /api/v1/* (Express :4000 / Vercel Serverless
 | **Frontend** | React 19, TypeScript, Vite 8, Tailwind CSS v4, React Router 7, TanStack Query v5, Zustand, Zod |
 | **Backend** | Node.js 22, Express 4, TypeScript (`tsx` / `tsc`), Helmet, CORS, `express-rate-limit`, `serverless-http` |
 | **Dados & Cloud** | Supabase (PostgreSQL, Auth, Storage), Resend, Vercel (SPA + Serverless) |
-| **Qualidade & Infra** | Vitest (14 suítes / 50 testes), Supertest, Oxlint, Docker Compose (`dev` / `prod` / `test`), GitHub Actions |
+| **Qualidade & Infra** | Vitest (15 suítes / 63 testes), Supertest, Oxlint (0 warnings), Docker Compose (`dev` / `prod` / `test`), GitHub Actions |
 
 ---
 
@@ -94,7 +94,7 @@ npm run dev:all
 ```bash
 npm run docker:dev     # Ambiente local em containers (API :4000 + Vite :5173)
 npm run docker:prod    # Build de produção local com Nginx (:8080) e .env
-npm run test:ci        # Suíte completa (14 arquivos / 50 testes)
+npm run test:ci        # Suíte completa (15 arquivos / 63 testes)
 npm run lint           # Type-check backend + Oxlint frontend
 ```
 

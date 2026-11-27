@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/api'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 
 export function AdminAchievementsPanel() {
   const [title, setTitle] = useState('')
@@ -28,16 +28,25 @@ export function AdminAchievementsPanel() {
       setHowToEarn('')
       push('Conquista criada.', 'success')
       void qc.invalidateQueries({ queryKey: ['admin-achievements'] })
+      void qc.invalidateQueries({ queryKey: ['achievement-mural'] })
     },
     onError: (e: Error) => push(e.message, 'error'),
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.adminDeleteAchievement(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-achievements'] }),
+    onSuccess: () => {
+      push('Conquista removida.', 'info')
+      void qc.invalidateQueries({ queryKey: ['admin-achievements'] })
+      void qc.invalidateQueries({ queryKey: ['achievement-mural'] })
+    },
+    onError: (e: Error) => push(e.message, 'error'),
   })
   const grant = useMutation({
     mutationFn: ({ id, email }: { id: string; email: string }) => api.adminGrantAchievement(id, email),
-    onSuccess: () => push('Conquista marcada para o amigo.', 'success'),
+    onSuccess: () => {
+      push('Conquista marcada para o amigo.', 'success')
+      void qc.invalidateQueries({ queryKey: ['achievement-mural'] })
+    },
     onError: (e: Error) => push(e.message, 'error'),
   })
 
@@ -101,7 +110,12 @@ export function AdminAchievementsPanel() {
               >
                 Marcar
               </button>
-              <button type="button" className="btn-secondary text-[10px]" onClick={() => remove.mutate(item.id)}>
+              <button
+                type="button"
+                className="btn-secondary text-[10px]"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(item.id)}
+              >
                 Apagar
               </button>
             </div>

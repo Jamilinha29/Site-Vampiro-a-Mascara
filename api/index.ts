@@ -14,8 +14,13 @@ export default async function handler(req: unknown, res: unknown) {
     return sls(req as Parameters<ServerlessHandler>[0], res as Parameters<ServerlessHandler>[1])
   } catch (err) {
     console.error('[api] handler failed:', err instanceof Error ? err.message : err)
-    const resLike = res as { statusCode?: number; setHeader?: (k: string, v: string) => void; end?: (b: string) => void }
-    if (typeof resLike.statusCode === 'number') {
+    const resLike = res as {
+      statusCode?: number
+      headersSent?: boolean
+      setHeader?: (k: string, v: string) => void
+      end?: (b: string) => void
+    }
+    if (typeof resLike.statusCode === 'number' && !resLike.headersSent) {
       resLike.statusCode = 503
       resLike.setHeader?.('content-type', 'application/json')
       resLike.end?.(

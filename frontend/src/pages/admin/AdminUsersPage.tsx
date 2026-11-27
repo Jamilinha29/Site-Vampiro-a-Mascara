@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 
 type Relation = 'none' | 'friend' | 'outgoing' | 'incoming'
 type RosterPlayer = {
@@ -75,10 +75,10 @@ export default function AdminUsersPage() {
     onError: (e: Error) => push(e.message, 'error'),
   })
 
-  const roster = data?.roster ?? []
-  const friends = roster.filter((player) => player.relation === 'friend')
-  const incoming = roster.filter((player) => player.relation === 'incoming')
-  const outgoing = roster.filter((player) => player.relation === 'outgoing')
+  const roster = useMemo(() => data?.roster ?? [], [data?.roster])
+  const friends = useMemo(() => roster.filter((player) => player.relation === 'friend'), [roster])
+  const incoming = useMemo(() => roster.filter((player) => player.relation === 'incoming'), [roster])
+  const outgoing = useMemo(() => roster.filter((player) => player.relation === 'outgoing'), [roster])
 
   const filteredRows = useMemo(() => {
     const base =
@@ -368,7 +368,7 @@ export default function AdminUsersPage() {
                         confirmRemove={confirmRemove}
                         setConfirmRemove={setConfirmRemove}
                         busy={remove.isPending || accept.isPending || invite.isPending}
-                        onRemove={() => remove.mutate(playerKey)}
+                        onRemove={() => remove.mutate(player.linkId ?? playerKey)}
                         onAccept={() => player.linkId && accept.mutate(player.linkId)}
                         onInvite={() => invite.mutate(player.id || player.email || playerKey)}
                       />
@@ -411,7 +411,7 @@ export default function AdminUsersPage() {
                           confirmRemove={confirmRemove}
                           setConfirmRemove={setConfirmRemove}
                           busy={remove.isPending || accept.isPending || invite.isPending}
-                          onRemove={() => remove.mutate(playerKey)}
+                          onRemove={() => remove.mutate(player.linkId ?? playerKey)}
                           onAccept={() => player.linkId && accept.mutate(player.linkId)}
                           onInvite={() => invite.mutate(player.id || player.email || playerKey)}
                         />
@@ -603,9 +603,14 @@ function RowAction({
 
   if (player.relation === 'incoming') {
     return (
-      <button type="button" className="btn-primary text-[10px]" disabled={busy} onClick={onAccept}>
-        Aceitar
-      </button>
+      <span className="flex items-center gap-1.5">
+        <button type="button" className="btn-primary text-[10px]" disabled={busy} onClick={onAccept}>
+          Aceitar
+        </button>
+        <button type="button" className="btn-secondary text-[10px]" disabled={busy} onClick={onRemove}>
+          Recusar
+        </button>
+      </span>
     )
   }
 

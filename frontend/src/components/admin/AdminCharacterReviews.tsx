@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/api'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 
 const approvalLabel: Record<string, string> = {
   draft: 'Rascunho',

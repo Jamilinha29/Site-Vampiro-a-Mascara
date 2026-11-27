@@ -24,11 +24,16 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
 
   const invalidate = (handout: SessionHandout) => {
     qc.setQueryData(adminQueryKeys.mesaHandout(sessionId), handout)
+    void qc.invalidateQueries({ queryKey: ['session-live-state', sessionId] })
+    void qc.invalidateQueries({ queryKey: ['session-live-brief', sessionId] })
   }
 
   const addNpc = useMutation({
     mutationFn: () => api.adminAddSceneNpc(sessionId, pickId),
-    onSuccess: invalidate,
+    onSuccess: (handout) => {
+      setPickId('')
+      invalidate(handout)
+    },
   })
 
   const removeNpc = useMutation({
@@ -72,6 +77,7 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
       ) : null}
 
       {addNpc.isError ? <p className="text-xs text-primary">{(addNpc.error as Error).message}</p> : null}
+      {removeNpc.isError ? <p className="text-xs text-primary">{(removeNpc.error as Error).message}</p> : null}
 
       {npcs.length === 0 ? (
         <p className="text-sm text-on-surface-variant">Nenhum NPC ativo na cena.</p>
@@ -85,6 +91,7 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
                   <button
                     type="button"
                     className="text-xs text-on-surface-variant hover:text-primary"
+                    disabled={removeNpc.isPending}
                     onClick={() => removeNpc.mutate(n.id)}
                   >
                     Remover

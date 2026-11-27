@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../../middlewares/optionalUser.js'
 import { requireNarrator } from '../../middlewares/requireNarrator.js'
+import { errorPayload } from '../../services/errors.js'
 import {
   REFERENCE_KINDS,
   deleteReference,
@@ -26,14 +27,18 @@ const entrySchema = z.object({
   sortOrder: z.number().int().min(0).max(10_000).optional(),
 })
 
-adminReferenceRouter.get('/:kind', async (req, res) => {
-  const kind = kindSchema.safeParse(req.params.kind)
-  if (!kind.success) {
-    res.status(400).json({ error: { message: 'Catálogo desconhecido' } })
-    return
+adminReferenceRouter.get('/:kind', async (req, res, next) => {
+  try {
+    const kind = kindSchema.safeParse(req.params.kind)
+    if (!kind.success) {
+      res.status(400).json(errorPayload('VALIDATION_ERROR', 'Catálogo desconhecido', { requestId: req.requestId }))
+      return
+    }
+    await refreshReferenceFromDatabase()
+    res.json(listReference(kind.data))
+  } catch (error) {
+    next(error)
   }
-  await refreshReferenceFromDatabase()
-  res.json(listReference(kind.data))
 })
 
 adminReferenceRouter.post('/:kind', async (req, res, next) => {
@@ -58,9 +63,15 @@ adminReferenceRouter.put('/:kind', async (req, res, next) => {
 
 adminReferenceRouter.delete('/:kind/:id', async (req, res, next) => {
   try {
+    const kind = kindSchema.parse(req.params.kind)
+    const belongs = listReference(kind).some((item) => item.id === req.params.id)
+    if (!belongs) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Item não encontrado', { requestId: req.requestId }))
+      return
+    }
     const ok = await deleteReference(req.params.id)
     if (!ok) {
-      res.status(404).json({ error: { message: 'Item não encontrado' } })
+      res.status(404).json(errorPayload('NOT_FOUND', 'Item não encontrado', { requestId: req.requestId }))
       return
     }
     res.status(204).send()

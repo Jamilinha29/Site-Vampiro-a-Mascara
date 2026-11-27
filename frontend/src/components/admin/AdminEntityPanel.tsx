@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
-import { readProfileImageFile } from '../../lib/profileMedia'
+import { useMemo, useState } from 'react'
+import { readDownloadFile, readProfileImageFile } from '../../lib/profileMedia'
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { ChronicleEntity, CreateEntityPayload, EntityKind } from '../../types/chronicle'
 import { api } from '../../services/api'
@@ -36,7 +36,27 @@ type Props = {
   editId?: string | null
 }
 
-export function AdminEntityPanel({
+export function AdminEntityPanel(props: Props) {
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['admin-entities', props.kind],
+    queryFn: () => api.adminListEntities(props.kind),
+  })
+  const initialEditItem = useMemo(
+    () => (props.editId ? (items.find((row) => row.id === props.editId) ?? null) : null),
+    [props.editId, items],
+  )
+  return (
+    <AdminEntityPanelForm
+      key={initialEditItem?.id ?? 'new'}
+      {...props}
+      items={items}
+      isLoading={isLoading}
+      initialEditItem={initialEditItem}
+    />
+  )
+}
+
+function AdminEntityPanelForm({
   kind,
   title,
   description,
@@ -61,38 +81,45 @@ export function AdminEntityPanel({
   hideRegistry = false,
   registryVariant = 'list',
   syncGlossary = false,
-  editId = null,
-}: Props) {
+  items,
+  isLoading,
+  initialEditItem,
+}: Props & {
+  items: ChronicleEntity[]
+  isLoading: boolean
+  initialEditItem: ChronicleEntity | null
+}) {
   const qc = useQueryClient()
-  const [name, setName] = useState('')
-  const [desc, setDesc] = useState('')
-  const [hpMax, setHpMax] = useState<number | ''>('')
-  const [manaMax, setManaMax] = useState<number | ''>('')
-  const [location, setLocation] = useState('')
-  const [statsText, setStatsText] = useState('')
-  const [creatureType, setCreatureType] = useState(creatureTypeOptions[0] ?? '')
-  const [archiveCategory, setArchiveCategory] = useState(fixedArchiveCategory ?? defaultArchiveCategory ?? 'chronicles')
-  const [shopCategory, setShopCategory] = useState(fixedShopCategory ?? defaultShopCategory ?? 'gear')
-  const [downloadCategory, setDownloadCategory] = useState(fixedDownloadCategory ?? defaultDownloadCategory ?? 'rules')
-  const [bestiaryTier, setBestiaryTier] = useState(fixedBestiaryTier ?? defaultBestiaryTier ?? 'classified')
-  const [priceGold, setPriceGold] = useState(0)
-  const [priceSilver, setPriceSilver] = useState(0)
-  const [fileName, setFileName] = useState('')
-  const [fileUrl, setFileUrl] = useState<string | undefined>()
-  const [imageUrl, setImageUrl] = useState<string | undefined>()
+  const [name, setName] = useState(initialEditItem?.name ?? '')
+  const [desc, setDesc] = useState(initialEditItem?.description ?? '')
+  const [hpMax, setHpMax] = useState<number | ''>(initialEditItem?.hpMax ?? '')
+  const [manaMax, setManaMax] = useState<number | ''>(initialEditItem?.manaMax ?? '')
+  const [location, setLocation] = useState(initialEditItem?.location ?? '')
+  const [statsText, setStatsText] = useState(initialEditItem?.statsText ?? '')
+  const [creatureType, setCreatureType] = useState(initialEditItem?.creatureType ?? creatureTypeOptions[0] ?? '')
+  const [archiveCategory, setArchiveCategory] = useState(
+    initialEditItem?.archiveCategory ?? fixedArchiveCategory ?? defaultArchiveCategory ?? 'chronicles',
+  )
+  const [shopCategory, setShopCategory] = useState(
+    initialEditItem?.shopCategory ?? fixedShopCategory ?? defaultShopCategory ?? 'gear',
+  )
+  const [downloadCategory, setDownloadCategory] = useState(
+    initialEditItem?.downloadCategory ?? fixedDownloadCategory ?? defaultDownloadCategory ?? 'rules',
+  )
+  const [bestiaryTier, setBestiaryTier] = useState(
+    initialEditItem?.bestiaryTier ?? fixedBestiaryTier ?? defaultBestiaryTier ?? 'classified',
+  )
+  const [priceGold, setPriceGold] = useState(initialEditItem?.priceGold ?? 0)
+  const [priceSilver, setPriceSilver] = useState(initialEditItem?.priceSilver ?? 0)
+  const [fileName, setFileName] = useState(initialEditItem?.fileName ?? '')
+  const [fileUrl, setFileUrl] = useState<string | undefined>(initialEditItem?.fileUrl)
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initialEditItem?.imageUrl)
   const canUploadImage = showImageUpload ?? (kind === 'npc' || kind === 'monster')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const loadedEdit = useRef<string | null>(null)
-
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ['admin-entities', kind],
-    queryFn: () => api.adminListEntities(kind),
-  })
+  const [editingId, setEditingId] = useState<string | null>(initialEditItem?.id ?? null)
 
   function loadEntity(item: ChronicleEntity) {
-    loadedEdit.current = item.id
     setEditingId(item.id)
     setName(item.name)
     setDesc(item.description ?? '')
@@ -114,12 +141,20 @@ export function AdminEntityPanel({
     setNotice(null)
   }
 
-  useEffect(() => {
-    if (!editId || loadedEdit.current === editId) return
-    const item = items.find((row) => row.id === editId)
-    if (!item) return
-    loadEntity(item)
-  }, [editId, items])
+  function resetForm() {
+    setEditingId(null)
+    setName('')
+    setDesc('')
+    setHpMax('')
+    setManaMax('')
+    setLocation('')
+    setStatsText('')
+    setFileName('')
+    setFileUrl(undefined)
+    setImageUrl(undefined)
+    setError(null)
+    setNotice(null)
+  }
 
   const update = useMutation({
     mutationFn: ({ id, body }: { id: string; body: CreateEntityPayload }) => api.adminUpdateEntity(id, body),
@@ -171,14 +206,28 @@ export function AdminEntityPanel({
   const publish = useMutation({
     mutationFn: (id: string) => api.adminPublishEntity(id),
     onSuccess: () => {
+      setError(null)
       void qc.invalidateQueries({ queryKey: ['admin-entities', kind] })
       invalidatePlayerPublishedContent(qc)
+    },
+    onError: (e: Error) => {
+      setNotice(null)
+      setError(e.message)
     },
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => api.adminDeleteEntity(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-entities', kind] }),
+    onSuccess: (_data, deletedId) => {
+      setError(null)
+      void qc.invalidateQueries({ queryKey: ['admin-entities', kind] })
+      invalidatePlayerPublishedContent(qc)
+      if (editingId === deletedId) resetForm()
+    },
+    onError: (e: Error) => {
+      setNotice(null)
+      setError(e.message)
+    },
   })
 
   function submit() {
@@ -221,8 +270,9 @@ export function AdminEntityPanel({
       body.fileName = fileName
       body.fileUrl = fileUrl
     }
-    if (canUploadImage && imageUrl) {
-      body.imageUrl = imageUrl
+    if (canUploadImage) {
+      if (imageUrl) body.imageUrl = imageUrl
+      else if (editingId) body.imageUrl = null
     }
     if (editingId) update.mutate({ id: editingId, body })
     else create.mutate(body)
@@ -422,15 +472,18 @@ export function AdminEntityPanel({
             className="mt-2 block text-sm"
             accept="application/pdf,image/*"
             onChange={async (e) => {
-              const file = e.target.files?.[0]
+              const input = e.currentTarget
+              const file = input.files?.[0]
               if (!file) return
               try {
-                const dataUrl = await readProfileImageFile(file)
+                const dataUrl = await readDownloadFile(file)
                 setFileName(file.name)
                 setFileUrl(dataUrl)
                 setError(null)
               } catch (err) {
                 setError(err instanceof Error ? err.message : 'Falha no upload')
+              } finally {
+                input.value = ''
               }
             }}
           />
@@ -459,19 +512,7 @@ export function AdminEntityPanel({
             <button
               type="button"
               className="btn-secondary text-sm"
-              onClick={() => {
-                setEditingId(null)
-                loadedEdit.current = null
-                setName('')
-                setDesc('')
-                setHpMax('')
-                setManaMax('')
-                setLocation('')
-                setStatsText('')
-                setFileName('')
-                setFileUrl(undefined)
-                setImageUrl(undefined)
-              }}
+              onClick={resetForm}
             >
               Novo cadastro
             </button>

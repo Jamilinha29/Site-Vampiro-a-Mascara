@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type CoinCode } from '../../services/api'
+import { api, ApiError, type CoinCode } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 
 type Props = {
   sessionId: string
@@ -25,8 +25,8 @@ function priceOf(item: { priceGold: number; priceSilver: number; priceCopper: nu
 
 export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive = true }: Props) {
   const [tab, setTab] = useState<'comercio' | 'leilao'>('comercio')
-  const [bidAmount, setBidAmount] = useState(1)
-  const [bidCoin, setBidCoin] = useState<CoinCode>('silver')
+  const [bidAmountByAuction, setBidAmountByAuction] = useState<Record<string, number>>({})
+  const [bidCoinByAuction, setBidCoinByAuction] = useState<Record<string, CoinCode>>({})
   const qc = useQueryClient()
   const { push } = useToast()
   const { data, isLoading } = useQuery({
@@ -59,18 +59,30 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive =
       buyOpRef.current = null
       push(`${res.itemName} comprado no ferreiro.`, 'success')
       void qc.invalidateQueries({ queryKey: ['wallet', 'active'] })
+      void qc.invalidateQueries({ queryKey: ['wallets', 'ledger'] })
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       void qc.invalidateQueries({ queryKey: ['ferreiro', sessionId] })
     },
-    onError: (e: Error) => push(e.message, 'error'),
+    onError: (e: Error) => {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+        buyOpRef.current = null
+      }
+      push(e.message, 'error')
+    },
   })
 
   const bid = useMutation({
-    mutationFn: (auctionId: string) => api.bidAuction(auctionId, { amount: bidAmount, coin: bidCoin, characterId }),
+    mutationFn: (auctionId: string) =>
+      api.bidAuction(auctionId, {
+        amount: bidAmountByAuction[auctionId] ?? 1,
+        coin: bidCoinByAuction[auctionId] ?? 'silver',
+        characterId,
+      }),
     onSuccess: () => {
       push('Lance registrado.', 'success')
       void qc.invalidateQueries({ queryKey: ['ferreiro', sessionId] })
       void qc.invalidateQueries({ queryKey: ['wallet', 'active'] })
+      void qc.invalidateQueries({ queryKey: ['wallets', 'ledger'] })
     },
     onError: (e: Error) => push(e.message, 'error'),
   })
@@ -81,6 +93,7 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive =
       push('Você desistiu do lance.', 'success')
       void qc.invalidateQueries({ queryKey: ['ferreiro', sessionId] })
       void qc.invalidateQueries({ queryKey: ['wallet', 'active'] })
+      void qc.invalidateQueries({ queryKey: ['wallets', 'ledger'] })
     },
     onError: (e: Error) => push(e.message, 'error'),
   })
@@ -129,7 +142,7 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive =
                 <button
                   type="button"
                   className="btn-secondary shrink-0 text-[10px]"
-                  disabled={locked || buy.isPending || !afford}
+                  disabled={!isLive || locked || buy.isPending || !afford}
                   onClick={() => buy.mutate(item.id)}
                 >
                   Comprar
@@ -163,24 +176,38 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive =
                       type="number"
                       min={1}
                       className="input-feudal w-20 py-1 pl-2 text-xs normal-case"
-                      value={bidAmount}
-                      onChange={(e) => setBidAmount(Number(e.target.value) || 1)}
-                      disabled={locked}
+                      value={bidAmountByAuction[auction.id] ?? 1}
+                      onChange={(e) =>
+                        setBidAmountByAuction((prev) => ({ ...prev, [auction.id]: Math.max(1, Number(e.target.value) || 1) }))
+                      }
+                      disabled={locked || !isLive}
                     />
                     <select
                       className="input-feudal py-1 pl-2 text-xs normal-case"
-                      value={bidCoin}
-                      onChange={(e) => setBidCoin(e.target.value as CoinCode)}
-                      disabled={locked}
+                      value={bidCoinByAuction[auction.id] ?? 'silver'}
+                      onChange={(e) =>
+                        setBidCoinByAuction((prev) => ({ ...prev, [auction.id]: e.target.value as CoinCode }))
+                      }
+                      disabled={locked || !isLive}
                     >
                       <option value="gold">Ouro</option>
                       <option value="silver">Prata</option>
                       <option value="copper">Bronze</option>
                     </select>
-                    <button type="button" className="btn-primary text-[10px]" disabled={locked || bid.isPending} onClick={() => bid.mutate(auction.id)}>
+                    <button
+                      type="button"
+                      className="btn-primary text-[10px]"
+                      disabled={!isLive || locked || bid.isPending}
+                      onClick={() => bid.mutate(auction.id)}
+                    >
                       Lance
                     </button>
-                    <button type="button" className="btn-secondary text-[10px]" onClick={() => withdraw.mutate(auction.id)}>
+                    <button
+                      type="button"
+                      className="btn-secondary text-[10px]"
+                      disabled={!isLive || locked || withdraw.isPending}
+                      onClick={() => withdraw.mutate(auction.id)}
+                    >
                       Desistir
                     </button>
                   </div>

@@ -4,6 +4,8 @@ import { getSupabaseBrowser } from '../../lib/supabaseBrowser'
 import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 
+const pkceExchangeCache = new Map<string, Promise<{ error: Error | null }>>()
+
 export function AuthCallbackPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -23,21 +25,27 @@ export function AuthCallbackPage() {
       const code = params.get('code')
       const flow = params.get('flow') === 'adm' ? 'adm' : 'player'
 
+      // Redireciona recuperação antes de consumir o código PKCE de uso único
+      if (type === 'recovery') {
+        const hash = window.location.hash || ''
+        navigate(`/auth/recover${window.location.search}${hash}`, { replace: true })
+        return
+      }
+
       try {
         if (code) {
-          const { error: exErr } = await sb.auth.exchangeCodeForSession(code)
+          let pending = pkceExchangeCache.get(code)
+          if (!pending) {
+            pending = sb.auth.exchangeCodeForSession(code).then(({ error: exErr }) => ({ error: exErr }))
+            pkceExchangeCache.set(code, pending)
+          }
+          const { error: exErr } = await pending
           if (exErr) throw exErr
         }
 
         const { data, error: sessErr } = await sb.auth.getSession()
         if (sessErr) throw sessErr
         const session = data.session
-
-        if (type === 'recovery') {
-          const hash = window.location.hash || ''
-          navigate(`/auth/recover${window.location.search}${hash}`, { replace: true })
-          return
-        }
 
         if (!session?.access_token || !session.user?.email) {
           throw new Error('Não foi possível validar o retorno da autenticação.')
@@ -96,6 +104,7 @@ export function AuthCallbackPage() {
 
         navigate('/user', { replace: true })
       } catch (err) {
+        useAuthStore.getState().clearSession()
         if (active) {
           setError(err instanceof Error ? err.message : 'Falha ao concluir autenticação com o provedor.')
         }

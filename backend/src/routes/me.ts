@@ -39,6 +39,11 @@ import { classFromHouse, listSubclassesForClass } from '../services/subclassCata
 export const meRouter = Router()
 
 meRouter.use(requireUser)
+meRouter.use((_req, _res, next) => {
+  void Promise.all([syncProfilesIfStale(), syncSessionsIfStale()])
+    .then(() => next())
+    .catch(() => next())
+})
 
 meRouter.get('/profile', async (req, res, next) => {
   try {
@@ -133,7 +138,10 @@ meRouter.patch('/profile/account', async (req, res, next) => {
   }
 })
 
-const poolSchema = z.object({ current: z.number(), max: z.number() })
+const poolSchema = z.object({
+  current: z.number().int().min(0).max(99_999),
+  max: z.number().int().min(0).max(99_999),
+})
 
 const createCharacterSchema = z.object({
   name: z.string().min(1).max(120),
@@ -221,6 +229,10 @@ const patchCharacterSchema = z.object({
       demeanor: z.string().max(120).nullable().optional(),
       concept: z.string().max(120).nullable().optional(),
       residence: z.string().max(120).nullable().optional(),
+      sire: z.string().max(120).nullable().optional(),
+      ambition: z.string().max(240).nullable().optional(),
+      secretWeakness: z.string().max(240).nullable().optional(),
+      sireRelation: z.string().max(240).nullable().optional(),
     })
     .optional(),
   inventory: z
@@ -338,7 +350,14 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
       }
     }
 
-    const updated = await patchCharacter(req.user!.email, req.params.characterId, body)
+    let portraitUrl = body.portraitUrl
+    if (body.portraitUrl !== undefined) {
+      portraitUrl = await storeProfileImage('avatar', body.portraitUrl)
+    }
+    const updated = await patchCharacter(req.user!.email, req.params.characterId, {
+      ...body,
+      ...(body.portraitUrl !== undefined ? { portraitUrl } : {}),
+    })
     if (!updated) {
       res.status(body.showOnHome ? 409 : 404).json(
         errorPayload(
@@ -348,6 +367,9 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
         ),
       )
       return
+    }
+    if (body.portraitUrl !== undefined && current.portraitUrl && current.portraitUrl !== updated.portraitUrl) {
+      void deleteStoredMedia(current.portraitUrl)
     }
     res.json(updated)
   } catch (e) {
@@ -458,10 +480,18 @@ meRouter.get('/dashboard', async (req, res, next) => {
 
 meRouter.post('/sessions/:sessionId/presence', async (req, res, next) => {
   try {
-    const result = await confirmSessionPresence(req.params.sessionId, {
-      email: req.user!.email,
-      displayName: req.user!.displayName,
-    })
+    const body = z
+      .object({ accessCode: z.string().max(32).optional() })
+      .parse(req.body ?? {})
+    const result = await confirmSessionPresence(
+      req.params.sessionId,
+      {
+        email: req.user!.email,
+        displayName: req.user!.displayName,
+        role: req.user!.role,
+      },
+      body.accessCode,
+    )
     if (!result.ok) {
       const status = result.reason === 'closed' ? 409 : result.reason === 'forbidden' ? 403 : 404
       const message =
@@ -567,7 +597,15 @@ meRouter.post('/sessions/:sessionId/replace-character', async (req, res, next) =
       res.status(404).json(errorPayload('NOT_FOUND', 'Sessão não encontrada', { requestId: req.requestId }))
       return
     }
-    const seated = session.seats.some((s) => s.email === req.user!.email && !s.leftAt)
+    if (session.status === 'closed') {
+      res.status(409).json(
+        errorPayload('CONFLICT', 'A mesa já foi encerrada.', { requestId: req.requestId }),
+      )
+      return
+    }
+    const seated = session.seats.some(
+      (s) => s.email.toLowerCase() === req.user!.email.toLowerCase() && !s.leftAt,
+    )
     if (!seated) {
       res.status(403).json(
         errorPayload('FORBIDDEN', 'Entre na mesa com o código antes de trocar o personagem', {

@@ -38,9 +38,11 @@ export function AppSidebarShell({
   routeLabels,
   headerRight,
 }: Props) {
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerOpenPath, setDrawerOpenPath] = useState<string | null>(null)
   const [offline, setOffline] = useState(!navigator.onLine)
   const location = useLocation()
+  const drawerOpen = drawerOpenPath === location.pathname
+  const setDrawerOpen = (open: boolean) => setDrawerOpenPath(open ? location.pathname : null)
   const navigate = useNavigate()
   const session = useAuthStore((s) => s.session)
   const logout = useAuthStore((s) => s.logout)
@@ -62,13 +64,9 @@ export function AppSidebarShell({
   }, [])
 
   useEffect(() => {
-    setDrawerOpen(false)
-  }, [location.pathname])
-
-  useEffect(() => {
     if (!drawerOpen) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false)
+      if (e.key === 'Escape') setDrawerOpenPath(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

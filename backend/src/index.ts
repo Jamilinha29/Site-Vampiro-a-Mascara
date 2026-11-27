@@ -37,6 +37,7 @@ import {
 } from './services/supabaseClient.js'
 
 const app = express()
+app.set('trust proxy', 1)
 const port = Number(process.env.PORT ?? 4000)
 
 app.use(helmet())
@@ -49,7 +50,7 @@ app.use(
     credentials: true,
   }),
 )
-app.use(express.json({ limit: '2mb' }))
+app.use(express.json({ limit: '4mb' }))
 app.use('/api/v1/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }), authRouter)
 app.use('/api/v1/registrations', rateLimit({ windowMs: 60 * 1000, max: 20 }), registrationsRouter)
 
@@ -120,11 +121,16 @@ app.get('/ready', async (req, res) => {
     if (supabase) {
       const admin = getSupabaseAdmin()
       const checkPromise = admin!.from('EntidadesCronica').select('id').limit(1)
-      const timeoutPromise = new Promise<{ error: Error }>((_, reject) =>
-        setTimeout(() => reject(new Error('Supabase readiness timeout')), 5000),
-      )
-      const { error } = (await Promise.race([checkPromise, timeoutPromise])) as { error: unknown }
-      if (error) throw error
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeoutPromise = new Promise<{ error: Error }>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Supabase readiness timeout')), 5000)
+      })
+      try {
+        const { error } = (await Promise.race([checkPromise, timeoutPromise])) as { error: unknown }
+        if (error) throw error
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
     }
     res.json({ ok: true, supabase })
   } catch {

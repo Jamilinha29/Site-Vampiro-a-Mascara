@@ -72,6 +72,10 @@ export type CharacterIdentity = {
   demeanor?: string | null
   concept?: string | null
   residence?: string | null
+  sire?: string | null
+  ambition?: string | null
+  secretWeakness?: string | null
+  sireRelation?: string | null
   patrons: string[]
   chronicleName?: string | null
   editCounts: {

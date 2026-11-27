@@ -50,9 +50,12 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
   const mesa = useMesaHandout(session.id)
   const [round, setRound] = useState(1)
   const [activeTurnIdx, setActiveTurnIdx] = useState(0)
-  const [audit, setAudit] = useState<string[]>([])
-  const [whisper, setWhisper] = useState('')
-  const whisperSyncRef = useRef<string | null>(null)
+  const [audit, setAudit] = useState<string[]>(() => [
+    `${new Date().toLocaleTimeString('pt-BR')} — Mesa aberta · ${chronicle}`,
+  ])
+  const [whisperDraft, setWhisperDraft] = useState<{ sessionId: string; text: string } | null>(null)
+  const whisper = whisperDraft?.sessionId === session.id ? whisperDraft.text : (mesa.handout?.narratorWhisper ?? '')
+  const setWhisper = (text: string) => setWhisperDraft({ sessionId: session.id, text })
   const [grantParticipant, setGrantParticipant] = useState('')
   const [grantXp, setGrantXp] = useState(10)
   const xpOpRef = useRef<string | null>(null)
@@ -67,25 +70,8 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
   })
 
   useEffect(() => {
-    if (mesa.handout?.narratorWhisper !== undefined && whisperSyncRef.current !== session.id) {
-      setWhisper(mesa.handout.narratorWhisper ?? '')
-      whisperSyncRef.current = session.id
-    }
-  }, [mesa.handout?.narratorWhisper, session.id])
-
-  useEffect(() => {
     xpOpRef.current = null
   }, [session.id, grantParticipant, grantXp])
-
-  useEffect(() => {
-    if (audit.length === 0) {
-      setAudit([`${new Date().toLocaleTimeString('pt-BR')} — Mesa aberta · ${chronicle}`])
-    }
-  }, [audit.length, chronicle])
-
-  useEffect(() => {
-    if (!editTableMeta) setTableMetaDraft(resolveSessionTableMeta(session))
-  }, [session, editTableMeta])
 
   const restModeMutation = useMutation({
     mutationFn: (restMode: boolean) => api.adminSetMesaRestMode(session.id, restMode),
@@ -185,6 +171,53 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         }),
       })
     },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.scheduledSessions })
+      void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
+    },
+    onError: (err: Error) => {
+      logAudit(`Falha ao marcar próxima sessão · ${err.message}`)
+    },
+  })
+
+  const awardXpMutation = useMutation({
+    mutationFn: () => {
+      const amount = Math.min(250, Math.max(1, Math.round(grantXp)))
+      xpOpRef.current ??= crypto.randomUUID()
+      return api.adminAwardCharacterXp({
+        sessionId: session.id,
+        participantDisplayName: grantParticipant,
+        amount,
+        operationId: xpOpRef.current,
+      })
+    },
+    onSuccess: () => {
+      const amount = Math.min(250, Math.max(1, Math.round(grantXp)))
+      xpOpRef.current = null
+      logAudit(`Concedido +${amount} XP para ${grantParticipant} (aplicado na ficha)`)
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaHandout(session.id) })
+    },
+    onError: (err: Error) => {
+      const status = 'status' in err ? Number((err as { status?: number }).status) : 0
+      if (status >= 400 && status < 500) xpOpRef.current = null
+      logAudit(`XP falhou · ${err.message}`)
+    },
+  })
+
+  const advanceRoundMutation = useMutation({
+    mutationFn: () => api.adminAdvanceTurn(session.id),
+    onSuccess: () => {
+      setRound((r) => {
+        const nextRound = r + 1
+        logAudit(`Rodada ${nextRound} iniciada`)
+        return nextRound
+      })
+      setActiveTurnIdx(0)
+    },
+    onError: (err: Error) => {
+      logAudit(`Avançar rodada falhou · ${err.message}`)
+    },
   })
 
   if (mesa.isLoading) {
@@ -226,25 +259,8 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
   }
 
   function grantXpToParticipant() {
-    if (!grantParticipant) return
-    const amount = Math.min(250, Math.max(1, Math.round(grantXp)))
-    xpOpRef.current ??= crypto.randomUUID()
-    void api
-      .adminAwardCharacterXp({
-        sessionId: session.id,
-        participantDisplayName: grantParticipant,
-        amount,
-        operationId: xpOpRef.current,
-      })
-      .then(() => {
-        xpOpRef.current = null
-        logAudit(`Concedido +${amount} XP para ${grantParticipant} (aplicado na ficha)`)
-        void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaHandout(session.id) })
-      })
-      .catch((e: unknown) => {
-        const message = e instanceof Error ? e.message : 'Falha ao conceder XP'
-        logAudit(`XP falhou · ${message}`)
-      })
+    if (!grantParticipant || awardXpMutation.isPending) return
+    awardXpMutation.mutate()
   }
 
   return (
@@ -532,12 +548,15 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
             <button
               type="button"
               className="btn-primary text-xs"
-              disabled={!grantParticipant || !live || mesa.patchHandout.isPending}
+              disabled={!grantParticipant || !live || awardXpMutation.isPending}
               onClick={grantXpToParticipant}
             >
-              Conceder XP
+              {awardXpMutation.isPending ? 'Concedendo…' : 'Conceder XP'}
             </button>
           </div>
+          {awardXpMutation.isError ? (
+            <p className="mt-1 text-xs text-primary">{(awardXpMutation.error as Error).message}</p>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             {[1, 5, 10, 25, 50, 100, 250].map((n) => (
               <button
@@ -634,14 +653,10 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
             <button
               type="button"
               className="btn-primary text-xs"
-              onClick={() => {
-                void api.adminAdvanceTurn(session.id).catch(() => {})
-                setRound((r) => r + 1)
-                setActiveTurnIdx(0)
-                logAudit(`Rodada ${round + 1} iniciada`)
-              }}
+              disabled={advanceRoundMutation.isPending}
+              onClick={() => advanceRoundMutation.mutate()}
             >
-              Concluir rodada
+              {advanceRoundMutation.isPending ? 'Avançando…' : 'Concluir rodada'}
             </button>
           ) : null}
           {handout.status === 'closed' && !handout.publishedToPlayers ? (

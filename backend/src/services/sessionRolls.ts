@@ -1,7 +1,14 @@
 import { randomInt, randomUUID } from 'node:crypto'
-import { commitDocument, documentWeight, loadDocument, runExclusive } from './campaignDocuments.js'
+import {
+  checkRemoteDocumentRevision,
+  commitDocument,
+  documentWeight,
+  getLoadedDocumentRevision,
+  loadDocument,
+  runExclusive,
+} from './campaignDocuments.js'
 import { recordOperationStrict } from './operationLog.js'
-import { sessionAccess } from './chronicleStore.js'
+import { isSessionManager, sessionAccess } from './chronicleStore.js'
 import { ForbiddenError, NotFoundError, ValidationError } from './errors.js'
 
 export type RollRow = {
@@ -19,8 +26,16 @@ export type RollRow = {
 
 const rolls: RollRow[] = []
 
+async function syncRollsIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('rolls')
+  if (remoteRev > getLoadedDocumentRevision('rolls')) {
+    await hydrateRolls()
+  }
+}
+
 export async function forgetRollsForSession(sessionId: string) {
   return runExclusive('store:rolls', async () => {
+    await syncRollsIfStale()
     const next = rolls.filter((row) => row.sessionId !== sessionId)
     if (next.length === rolls.length) return
     const backup = [...rolls]
@@ -59,15 +74,23 @@ export async function rollForSession(input: {
   }
   const match = /^(\d*)d(\d+)([+-]\d+)?$/i.exec(input.formula.trim())
   if (!match) throw new ValidationError('Rolagem inválida. Use 1d10 ou 2d6+1.')
-  const count = Math.min(20, Math.max(1, Number(match[1] || 1)))
+  const rawCount = match[1] ? Number(match[1]) : 1
+  if (!Number.isInteger(rawCount) || rawCount < 1 || rawCount > 20) {
+    throw new ValidationError('Rolagem inválida. Use entre 1 e 20 dados.')
+  }
+  const count = rawCount
   const sides = Number(match[2])
   if (![4, 6, 8, 10, 12, 20, 100].includes(sides)) {
     throw new ValidationError('Rolagem inválida. O dado precisa ser d4, d6, d8, d10, d12, d20 ou d100.')
   }
   const modifier = Number(match[3] || 0)
+  if (!Number.isSafeInteger(modifier) || Math.abs(modifier) > 1000) {
+    throw new ValidationError('Modificador inválido. Use um valor entre -1000 e +1000.')
+  }
   const dice = Array.from({ length: count }, () => randomInt(1, sides + 1))
   const total = dice.reduce((sum, face) => sum + face, 0) + modifier
-  const secret = Boolean(input.secret) && (input.role === 'narrator' || input.role === 'admin')
+  const manager = isSessionManager(input.sessionId, { email: input.email, role: input.role })
+  const secret = Boolean(input.secret) && manager
   const row: RollRow = {
     id: randomUUID(),
     at: new Date().toISOString(),
@@ -81,6 +104,7 @@ export async function rollForSession(input: {
     secret,
   }
   return runExclusive('store:rolls', async () => {
+    await syncRollsIfStale()
     const backup = [...rolls]
     rolls.push(row)
     if (rolls.length > 400) rolls.splice(0, rolls.length - 400)
@@ -104,10 +128,10 @@ export async function rollForSession(input: {
 export function listRolls(sessionId: string, viewer: { email: string; role?: string }) {
   const access = sessionAccess(sessionId, viewer)
   if (!access.ok) return null
-  const staff = viewer.role === 'narrator' || viewer.role === 'admin'
+  const manager = isSessionManager(sessionId, viewer)
   return rolls
     .filter((row) => row.sessionId === sessionId)
-    .filter((row) => !row.secret || staff || row.email.toLowerCase() === viewer.email.toLowerCase())
+    .filter((row) => !row.secret || manager || row.email.toLowerCase() === viewer.email.toLowerCase())
     .slice(-40)
     .map(({ email: _email, ...rest }) => rest)
 }

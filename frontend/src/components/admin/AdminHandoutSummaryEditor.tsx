@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { SessionHandout } from '../../types/chronicle'
 import { api } from '../../services/api'
-import { adminQueryKeys } from '../../lib/queryKeys'
+import { adminQueryKeys, invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 
 type Props = {
   handout: SessionHandout
@@ -11,13 +11,10 @@ type Props = {
 
 export function AdminHandoutSummaryEditor({ handout }: Props) {
   const qc = useQueryClient()
-  const [text, setText] = useState(handout.narrativeSummary)
-  const [dirty, setDirty] = useState(false)
-
-  useEffect(() => {
-    setText(handout.narrativeSummary)
-    setDirty(false)
-  }, [handout.id, handout.narrativeSummary])
+  const [draft, setDraft] = useState<{ id: string; text: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const dirty = draft !== null && draft.id === handout.id
+  const text = dirty ? draft.text : handout.narrativeSummary
 
   const save = useMutation({
     mutationFn: async () => {
@@ -27,17 +24,28 @@ export function AdminHandoutSummaryEditor({ handout }: Props) {
       return api.adminPatchHandout(handout.id, { narrativeSummary: text })
     },
     onSuccess: (updated) => {
+      setError(null)
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
       if (handout.scheduledSessionId) {
         qc.setQueryData(adminQueryKeys.mesaHandout(handout.scheduledSessionId), updated)
       }
-      setDirty(false)
+      invalidatePlayerPublishedContent(qc)
+      setDraft(null)
     },
+    onError: (e: Error) => setError(e.message),
   })
 
   const togglePublish = useMutation({
     mutationFn: (publishedToPlayers: boolean) => api.adminPatchHandout(handout.id, { publishedToPlayers }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts }),
+    onSuccess: (updated) => {
+      setError(null)
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
+      if (handout.scheduledSessionId) {
+        qc.setQueryData(adminQueryKeys.mesaHandout(handout.scheduledSessionId), updated)
+      }
+      invalidatePlayerPublishedContent(qc)
+    },
+    onError: (e: Error) => setError(e.message),
   })
 
   return (
@@ -48,11 +56,11 @@ export function AdminHandoutSummaryEditor({ handout }: Props) {
           className="input-feudal mt-1 min-h-32 w-full pl-4 font-serif text-sm normal-case"
           value={text}
           onChange={(e) => {
-            setText(e.target.value)
-            setDirty(true)
+            setDraft({ id: handout.id, text: e.target.value })
           }}
         />
       </label>
+      {error ? <p className="text-xs text-primary">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"

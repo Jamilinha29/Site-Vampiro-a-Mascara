@@ -33,8 +33,8 @@ import {
   ensureHandoutForScheduledSession,
   getEntity,
   getHandout,
-  getScheduledSession,
   hydrateEntitiesFromDatabase,
+  isSessionManager,
   joinSessionAsCoNarrator,
   listEntities,
   listHandouts,
@@ -63,12 +63,13 @@ import {
   updateScheduledSession,
 } from '../../services/chronicleStore.js'
 import { areFriends } from '../../services/courtStore.js'
-import { errorPayload } from '../../services/errors.js'
+import { errorPayload, ValidationError } from '../../services/errors.js'
 import { runIdempotent } from '../../services/idempotencyStore.js'
 import {
   catalogImageFolder,
   catalogImageIsPrivate,
   deleteStoredMedia,
+  isSafePublicMediaUrl,
   storeCatalogDownloadFile,
   storeCatalogImage,
   withReadableImages,
@@ -104,6 +105,20 @@ function canManageEntity(entity: { narratorScope?: string | null }, user: { emai
   return entity.narratorScope.trim().toLowerCase() === user.email.trim().toLowerCase()
 }
 
+function canEditEntity(entity: { narratorScope?: string | null }, user: { email: string; role: string }) {
+  if (user.role === 'admin') return true
+  if (!entity.narratorScope) return false
+  return entity.narratorScope.trim().toLowerCase() === user.email.trim().toLowerCase()
+}
+
+function validateNonDownloadFileUrl(url?: string) {
+  if (!url) return url
+  if (!isSafePublicMediaUrl(url)) {
+    throw new ValidationError('URL de arquivo inválida.')
+  }
+  return url
+}
+
 function canInspectPlayer(narrator: { email: string; role: string }, playerEmail: string) {
   if (narrator.role === 'admin') return true
   return (
@@ -130,7 +145,7 @@ const entitySchema = z.object({
   threatLevel: z.enum(['inofensivo', 'comum', 'perigoso', 'letal', 'cataclismico']).optional(),
   rarity: z.enum(['comum', 'incomum', 'raro', 'ancestral', 'proibido']).optional(),
   weightKg: z.number().min(0).optional(),
-  imageUrl: z.string().max(1_500_000).optional(),
+  imageUrl: z.string().max(1_500_000).nullable().optional(),
   hpMax: z.number().int().min(0).optional(),
   manaMax: z.number().int().min(0).optional(),
   location: z.string().max(200).optional(),
@@ -204,16 +219,18 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
   try {
     const body = entitySchema.parse(req.body)
     const id = randomUUID()
-    const imageUrl = await storeCatalogImage(
-      catalogImageFolder(body),
-      id,
-      body.imageUrl,
-      catalogImageIsPrivate(body) ? 'private' : 'public',
-    )
+    const imageUrl = body.imageUrl
+      ? await storeCatalogImage(
+          catalogImageFolder(body),
+          id,
+          body.imageUrl,
+          catalogImageIsPrivate(body) ? 'private' : 'public',
+        )
+      : undefined
     const fileUrl =
       body.kind === 'download' && body.fileUrl
-        ? await storeCatalogDownloadFile(id, body.fileUrl, body.fileName)
-        : body.fileUrl
+        ? await storeCatalogDownloadFile(id, body.fileUrl, undefined)
+        : validateNonDownloadFileUrl(body.fileUrl)
     const narratorScope =
       req.user!.role === 'admin' ? (body.narratorScope ?? null) : req.user!.email.toLowerCase()
     const created = await createEntity({
@@ -301,9 +318,23 @@ adminChronicleRouter.post('/entities/import', async (req, res, next) => {
         continue
       }
       names.add(key)
+      const id = randomUUID()
+      const imageUrl = row.imageUrl
+        ? await storeCatalogImage(
+            catalogImageFolder(row),
+            id,
+            row.imageUrl,
+            catalogImageIsPrivate(row) ? 'private' : 'public',
+            undefined,
+          )
+        : undefined
+      const fileUrl =
+        row.kind === 'download' && row.fileUrl
+          ? await storeCatalogDownloadFile(id, row.fileUrl, undefined)
+          : validateNonDownloadFileUrl(row.fileUrl)
       const narratorScope =
         req.user!.role === 'admin' ? (row.narratorScope ?? null) : req.user!.email.toLowerCase()
-      created.push(await createEntity({ ...row, narratorScope, visibility: 'draft' }))
+      created.push(await createEntity({ ...row, id, imageUrl, fileUrl, narratorScope, visibility: 'draft' }))
     }
     res.status(201).json({ imported: created.length, skipped, items: created })
   } catch (e) {
@@ -322,28 +353,42 @@ adminChronicleRouter.post('/entities/sync-from-database', async (_req, res, next
 
 adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const body = entitySchema.partial().parse(req.body)
     const current = getEntity(req.params.id)
     if (!current) {
       res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
-    if (!canManageEntity(current, req.user!)) {
+    if (!canEditEntity(current, req.user!)) {
       res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão para alterar este item.', { requestId: req.requestId }))
       return
     }
-    const patch: Partial<Omit<typeof current, 'id' | 'createdAt'>> = { ...body }
-    if (body.imageUrl !== undefined) {
-      const nextKind = { ...current, ...body }
-      patch.imageUrl = await storeCatalogImage(
-        catalogImageFolder(nextKind),
-        current.id,
-        body.imageUrl,
-        catalogImageIsPrivate(nextKind) ? 'private' : 'public',
-      )
+    const { imageUrl: rawImageUrl, ...restBody } = body
+    const patch: Partial<Omit<typeof current, 'id' | 'createdAt'>> = { ...restBody }
+    if (req.user!.role !== 'admin') {
+      delete patch.narratorScope
     }
-    if (body.fileUrl !== undefined && (body.kind ?? current.kind) === 'download') {
-      patch.fileUrl = await storeCatalogDownloadFile(current.id, body.fileUrl, body.fileName ?? current.fileName)
+    if (rawImageUrl !== undefined) {
+      if (rawImageUrl === null || rawImageUrl === '') {
+        patch.imageUrl = undefined
+      } else {
+        const nextKind = { ...current, ...restBody }
+        patch.imageUrl = await storeCatalogImage(
+          catalogImageFolder(nextKind),
+          current.id,
+          rawImageUrl,
+          catalogImageIsPrivate(nextKind) ? 'private' : 'public',
+          current.imageUrl,
+        )
+      }
+    }
+    if (body.fileUrl !== undefined) {
+      if ((body.kind ?? current.kind) === 'download') {
+        patch.fileUrl = await storeCatalogDownloadFile(current.id, body.fileUrl, current.fileUrl)
+      } else {
+        patch.fileUrl = validateNonDownloadFileUrl(body.fileUrl)
+      }
     }
     const updated = await updateEntity(req.params.id, patch)
     if (!updated) {
@@ -364,12 +409,13 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
 
 adminChronicleRouter.post('/entities/:id/publish', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const current = getEntity(req.params.id)
     if (!current) {
       res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
-    if (!canManageEntity(current, req.user!)) {
+    if (!canEditEntity(current, req.user!)) {
       res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão para publicar este item.', { requestId: req.requestId }))
       return
     }
@@ -386,12 +432,13 @@ adminChronicleRouter.post('/entities/:id/publish', async (req, res, next) => {
 
 adminChronicleRouter.delete('/entities/:id', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const current = getEntity(req.params.id)
     if (!current) {
       res.status(404).json(errorPayload('NOT_FOUND', 'Registro não encontrado', { requestId: req.requestId }))
       return
     }
-    if (!canManageEntity(current, req.user!)) {
+    if (!canEditEntity(current, req.user!)) {
       res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão para excluir este item.', { requestId: req.requestId }))
       return
     }
@@ -448,9 +495,8 @@ const handoutSchema = z.object({
 adminChronicleRouter.get('/handouts', (req, res) => {
   const rows = listHandouts(true).filter((h) => {
     if (req.user!.role === 'admin') return true
-    if (!h.scheduledSessionId) return !h.narratorEmail || h.narratorEmail === req.user!.email.toLowerCase()
-    const sess = getScheduledSession(h.scheduledSessionId)
-    return sess ? sess.narratorEmail?.toLowerCase() === req.user!.email.toLowerCase() : false
+    if (!h.scheduledSessionId) return !h.narratorEmail || h.narratorEmail.toLowerCase() === req.user!.email.toLowerCase()
+    return isSessionManager(h.scheduledSessionId, req.user!)
   })
   res.json(rows)
 })
@@ -509,16 +555,27 @@ adminChronicleRouter.patch('/handouts/:id', async (req, res, next) => {
   }
 })
 
-adminChronicleRouter.get('/handouts/:id', (req, res) => {
-  const row = getHandout(req.params.id)
-  if (!row) {
-    res.status(404).json(errorPayload('NOT_FOUND', 'Handout não encontrado', { requestId: req.requestId }))
-    return
+adminChronicleRouter.get('/handouts/:id', (req, res, next) => {
+  try {
+    const row = getHandout(req.params.id)
+    if (!row) {
+      res.status(404).json(errorPayload('NOT_FOUND', 'Handout não encontrado', { requestId: req.requestId }))
+      return
+    }
+    if (row.scheduledSessionId) {
+      requireSessionManager(row.scheduledSessionId, req.user!)
+    } else if (
+      req.user!.role !== 'admin' &&
+      row.narratorEmail &&
+      row.narratorEmail.toLowerCase() !== req.user!.email.toLowerCase()
+    ) {
+      res.status(403).json(errorPayload('FORBIDDEN', 'Sem permissão neste handout.', { requestId: req.requestId }))
+      return
+    }
+    res.json(row)
+  } catch (e) {
+    next(e)
   }
-  if (row.scheduledSessionId) {
-    requireSessionManager(row.scheduledSessionId, req.user!)
-  }
-  res.json(row)
 })
 
 adminChronicleRouter.get('/scheduled-sessions', (req, res) => {
@@ -1196,7 +1253,7 @@ adminChronicleRouter.post('/characters/:email/:characterId/restore-revision', re
   }
 })
 
-adminChronicleRouter.get('/backup', (req, res) => {
+adminChronicleRouter.get('/backup', requireAdmin, (req, res) => {
   res.json(campaignSnapshot(req.user!))
 })
 
@@ -1204,7 +1261,7 @@ adminChronicleRouter.get('/backup/metadata', requireAdmin, (_req, res) => {
   res.json(listBackupMetadata())
 })
 
-adminChronicleRouter.post('/backup/drill', (req, res, next) => {
+adminChronicleRouter.post('/backup/drill', requireAdmin, (req, res, next) => {
   try {
     res.json(drillBackup(req.body ?? {}))
   } catch (e) {
@@ -1212,7 +1269,7 @@ adminChronicleRouter.post('/backup/drill', (req, res, next) => {
   }
 })
 
-adminChronicleRouter.post('/backup/validate-storage', (req, res, next) => {
+adminChronicleRouter.post('/backup/validate-storage', requireAdmin, (req, res, next) => {
   try {
     const body = z
       .object({ paths: z.array(z.string()).max(2000).optional() })

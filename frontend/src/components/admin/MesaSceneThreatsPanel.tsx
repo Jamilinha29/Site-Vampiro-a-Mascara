@@ -16,6 +16,7 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
   const [pickId, setPickId] = useState('')
   const [hpDeltaByThreat, setHpDeltaByThreat] = useState<Record<string, string>>({})
   const [manaDeltaByThreat, setManaDeltaByThreat] = useState<Record<string, string>>({})
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const { data: monsters = [] } = useQuery({
     queryKey: adminQueryKeys.entities('monster'),
@@ -25,6 +26,7 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
   const publishedMonsters = monsters.filter((m) => m.visibility === 'published')
 
   const invalidate = (handout: SessionHandout) => {
+    setActionError(null)
     qc.setQueryData(adminQueryKeys.mesaHandout(sessionId), handout)
     void qc.invalidateQueries({ queryKey: adminQueryKeys.sceneThreats(sessionId) })
     void qc.invalidateQueries({ queryKey: ['session-scene-threats', sessionId] })
@@ -34,23 +36,31 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
   const addThreat = useMutation({
     mutationFn: () => api.adminAddSceneThreat(sessionId, pickId),
     onSuccess: invalidate,
+    onError: (e: Error) => setActionError(e.message),
   })
 
   const applyDelta = useMutation({
     mutationFn: (threatId: string) => {
       const hpRaw = (hpDeltaByThreat[threatId] ?? '-5').trim()
       const manaRaw = (manaDeltaByThreat[threatId] ?? '0').trim()
+      const hpParsed = hpRaw === '' ? undefined : Number(hpRaw)
+      const manaParsed = manaRaw === '' ? undefined : Number(manaRaw)
+      if ((hpParsed !== undefined && !Number.isFinite(hpParsed)) || (manaParsed !== undefined && !Number.isFinite(manaParsed))) {
+        throw new Error('Informe valores numéricos válidos para Δ HP e Δ Mana.')
+      }
       return api.adminApplySceneThreatDelta(sessionId, threatId, {
-        hpDelta: hpRaw ? Number(hpRaw) : undefined,
-        manaDelta: manaRaw ? Number(manaRaw) : undefined,
+        hpDelta: hpParsed,
+        manaDelta: manaParsed,
       })
     },
     onSuccess: invalidate,
+    onError: (e: Error) => setActionError(e.message),
   })
 
   const removeThreat = useMutation({
     mutationFn: (threatId: string) => api.adminRemoveSceneThreat(sessionId, threatId),
     onSuccess: invalidate,
+    onError: (e: Error) => setActionError(e.message),
   })
 
   return (
@@ -87,9 +97,7 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
         </div>
       ) : null}
 
-      {addThreat.isError ? (
-        <p className="text-xs text-primary">{(addThreat.error as Error).message}</p>
-      ) : null}
+      {actionError ? <p className="text-xs text-primary">{actionError}</p> : null}
 
       {threats.length === 0 ? (
         <p className="text-sm text-on-surface-variant">Nenhuma ameaça ativa na cena.</p>
@@ -103,6 +111,7 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
                   <button
                     type="button"
                     className="text-xs text-on-surface-variant hover:text-primary"
+                    disabled={removeThreat.isPending}
                     onClick={() => removeThreat.mutate(t.id)}
                   >
                     Remover

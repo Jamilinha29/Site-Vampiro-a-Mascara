@@ -1,5 +1,8 @@
 name: Disaster Backup
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: '0 4 * * *'
@@ -15,7 +18,7 @@ jobs:
         id: gate
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           BELADONA_BACKUP_KEY: ${{ secrets.BELADONA_BACKUP_KEY }}
         run: |
           if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SECRET_KEY" ] && [ -n "$BELADONA_BACKUP_KEY" ]; then
@@ -38,16 +41,15 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           BELADONA_BACKUP_KEY: ${{ secrets.BELADONA_BACKUP_KEY }}
-          BELADONA_EXTERNAL_BACKUP_TARGET: ${{ secrets.BELADONA_EXTERNAL_BACKUP_TARGET }}
           BELADONA_BACKUP_DIR: ${{ runner.temp }}/beladona-backups
         run: npm run backup:export
 
-      - name: Upload encrypted backup artifact
+      - name: Upload non-sensitive backup manifest only (never expose DB dump in public repo artifacts)
         if: steps.gate.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: beladona-encrypted-backup
-          path: ${{ runner.temp }}/beladona-backups/beladona-backup-*.json.gz.enc
+          name: beladona-backup-manifest
+          path: ${{ runner.temp }}/beladona-backups/latest-manifest.json
           retention-days: 30

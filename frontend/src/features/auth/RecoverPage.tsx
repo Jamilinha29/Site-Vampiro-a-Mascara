@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { ViewportPageShell } from '../../components/layout/ViewportPageShell'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import { getSupabaseBrowser } from '../../lib/supabaseBrowser'
 import { api } from '../../services/api'
 
@@ -27,12 +27,14 @@ function extractRecoveryTokenFromUrl(params: URLSearchParams) {
   }
 }
 
+const recoveryExchangeCache = new Map<string, Promise<{ accessToken: string | null; error: string | null }>>()
+
 export default function RecoverPage() {
   const [params] = useSearchParams()
   const { push } = useToast()
-  const [{ token, tokenHash, code, urlError }, setUrlState] = useState(() =>
-    extractRecoveryTokenFromUrl(params),
-  )
+  const parsedUrl = extractRecoveryTokenFromUrl(params)
+  const [exchangedToken, setExchangedToken] = useState('')
+  const [exchangeError, setExchangeError] = useState('')
   const [hasSupabaseRecoverySession, setHasSupabaseRecoverySession] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -41,9 +43,10 @@ export default function RecoverPage() {
   const [done, setDone] = useState(false)
   const [statusNote, setStatusNote] = useState<string | null>(null)
 
-  useEffect(() => {
-    setUrlState(extractRecoveryTokenFromUrl(params))
-  }, [params])
+  const token = exchangedToken || parsedUrl.token
+  const tokenHash = parsedUrl.tokenHash
+  const code = parsedUrl.code
+  const urlError = exchangeError || parsedUrl.urlError
 
   useEffect(() => {
     void api
@@ -63,20 +66,28 @@ export default function RecoverPage() {
       if (!active) return
       if (event === 'PASSWORD_RECOVERY' && session?.access_token) {
         setHasSupabaseRecoverySession(true)
-        setUrlState((prev) => ({ ...prev, token: session.access_token }))
+        setExchangedToken(session.access_token)
       }
     })
 
     if (code) {
-      void sb.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+      let pending = recoveryExchangeCache.get(code)
+      if (!pending) {
+        pending = sb.auth.exchangeCodeForSession(code).then(({ data, error }) => ({
+          accessToken: data.session?.access_token ?? null,
+          error: error?.message ?? null,
+        }))
+        recoveryExchangeCache.set(code, pending)
+      }
+      void pending.then(({ accessToken, error }) => {
         if (!active) return
         if (error) {
-          setUrlState((prev) => ({ ...prev, urlError: error.message }))
+          setExchangeError(error)
           return
         }
-        if (data.session?.access_token) {
+        if (accessToken) {
           setHasSupabaseRecoverySession(true)
-          setUrlState((prev) => ({ ...prev, token: data.session!.access_token }))
+          setExchangedToken(accessToken)
         }
       })
     }
@@ -107,10 +118,11 @@ export default function RecoverPage() {
         const sb = getSupabaseBrowser()
         if (sb) {
           const { error } = await sb.auth.updateUser({ password })
-          if (!error) {
-            await sb.auth.signOut().catch(() => {})
-            return { message: 'Selo novo gravado. Entre com ele.' }
+          if (error) {
+            throw new Error(error.message || 'Não foi possível gravar o selo novo.')
           }
+          await sb.auth.signOut().catch(() => {})
+          return { message: 'Selo novo gravado. Entre com ele.' }
         }
       }
       return api.confirmPasswordRecovery(token || tokenHash, password, Boolean(tokenHash && !token))

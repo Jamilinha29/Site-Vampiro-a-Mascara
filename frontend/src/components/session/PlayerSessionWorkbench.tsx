@@ -10,7 +10,7 @@ import { mesaDisplayName } from '../../lib/mesaSession'
 import { FerreiroPanel } from './FerreiroPanel'
 import { SessionTableInfoPanel } from './SessionTableInfoPanel'
 import { DEFAULT_CHRONICLE_AMBIENCE, EXTERNAL_MAP_NOTICE, formatAmbienceChip } from '../../lib/chronicleAmbience'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 import { resolveResourceProfile } from '../../lib/characterSheetKind'
 import {
   computeArmorClass,
@@ -65,11 +65,25 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   const persistedActions = liveState?.actions ?? []
   const sessionRolls = liveState?.rolls ?? []
 
-  const seat = session?.mySeat ?? session?.seats?.find((s) => s.email === auth?.email && !s.leftAt)
+  const seat =
+    session?.mySeat ??
+    session?.seats?.find((s) => auth?.email && s.email?.toLowerCase() === auth.email.toLowerCase() && !s.leftAt)
   const character: ProfileCharacterSummary | undefined =
     profile?.characters.find((c) => c.id === seat?.characterId) ??
     profile?.characters.find((c) => c.isPrimary) ??
     profile?.characters[0]
+
+  function syncCharacterInCache(updated: ProfileCharacterSummary) {
+    qc.setQueryData<import('../../types/profile').UserProfile>(playerQueryKeys.profile, (prev) =>
+      prev
+        ? {
+          ...prev,
+          characters: prev.characters.map((c) => (c.id === updated.id ? updated : c)),
+        }
+        : prev,
+    )
+    void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+  }
 
   const leave = useMutation({
     mutationFn: () => api.leaveSession(sessionId),
@@ -121,7 +135,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     if (!character) return
     if (character.hp.current <= 0 && !isSessionDead(sessionId, character.id)) {
       setSessionDead(sessionId, character.id, true)
-      setDeadTick((n) => n + 1)
+    } else if (character.hp.current > 0 && isSessionDead(sessionId, character.id)) {
+      setSessionDead(sessionId, character.id, false)
     }
   }, [character, sessionId])
 
@@ -133,7 +148,8 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   }, [character, threats])
 
   const dead =
-    !!character && (isSessionDead(sessionId, character.id) || character.hp.current <= 0)
+    !!character && (character.hp.current <= 0 || isSessionDead(sessionId, character.id))
+  const canActInCombat = Boolean(isLive && seat && !restMode && !dead)
   // re-render when death flag flips
   void deadTick
 
@@ -141,14 +157,15 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     if (!character || dead) return
     setSkillBusy(true)
     try {
-      await api.patchMeCharacter(character.id, {
+      const updated = await api.patchMeCharacter(character.id, {
         createdSkills: next,
         expectedRevision: character.sheetRevision,
       })
-      void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+      syncCharacterInCache(updated)
       push('Habilidades salvas na ficha.', 'success')
     } catch (e) {
       push(e instanceof Error ? e.message : 'Falha ao salvar habilidades', 'error')
+      throw e
     } finally {
       setSkillBusy(false)
     }
@@ -179,6 +196,14 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
       push('Personagem morto nesta sessão — ficha inutilizável.', 'error')
       return
     }
+    if (!isLive || !seat) {
+      push('Ação disponível apenas com a mesa aberta e você sentado.', 'error')
+      return
+    }
+    if (restMode) {
+      push('Mesa em modo descanso — ações de combate estão pausadas.', 'error')
+      return
+    }
     const cost = Math.max(0, skill.manaCost ?? 0)
     const manaPool = character.mana
     if (cost > 0) {
@@ -192,14 +217,13 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
       }
       setVitalsBusy(true)
       try {
-        await api.patchMeCharacter(character.id, {
+        const updated = await api.patchMeCharacter(character.id, {
           mana: { current: manaPool.current - cost, max: manaPool.max },
           expectedRevision: character.sheetRevision,
         })
-        void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+        syncCharacterInCache(updated)
       } catch (e) {
         push(e instanceof Error ? e.message : 'Falha ao gastar mana', 'error')
-        setVitalsBusy(false)
         return
       } finally {
         setVitalsBusy(false)
@@ -213,17 +237,17 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   }
 
   async function applyDamage(amount: number) {
-    if (!character || dead) return
+    if (!character || !canActInCombat) return
     const dmg = Math.max(0, Math.floor(amount))
     if (!dmg) return
     const nextHp = Math.max(0, character.hp.current - dmg)
     setVitalsBusy(true)
     try {
-      await api.patchMeCharacter(character.id, {
+      const updated = await api.patchMeCharacter(character.id, {
         hp: { current: nextHp, max: character.hp.max },
         expectedRevision: character.sheetRevision,
       })
-      void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+      syncCharacterInCache(updated)
       const line = `${character.name} sofreu ${dmg} de dano → ${nextHp}/${character.hp.max}`
       await recordAction('damage', line)
       if (nextHp <= 0) {
@@ -243,6 +267,10 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
   async function consumePotion(itemId: string) {
     if (!character || dead) {
       push('Personagem morto — não pode usar poções nesta sessão.', 'error')
+      return
+    }
+    if (!isLive || !seat) {
+      push('Uso de poções disponível apenas com a mesa aberta e você sentado.', 'error')
       return
     }
     const item = (character.inventory ?? []).find((i) => i.id === itemId)
@@ -265,13 +293,13 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
 
     setVitalsBusy(true)
     try {
-      await api.patchMeCharacter(character.id, {
+      const updated = await api.patchMeCharacter(character.id, {
         hp: { current: nextHp, max: character.hp.max },
         mana: nextMana,
         inventory: nextInventory,
         expectedRevision: character.sheetRevision,
       })
-      void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+      syncCharacterInCache(updated)
       const bits = [
         healHp ? `+${healHp} vida` : null,
         restoreMana ? `+${restoreMana} mana` : null,
@@ -323,11 +351,10 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           </div>
         </div>
         <div
-          className={`border-t px-4 py-2 text-xs sm:px-6 ${
-            restMode
-              ? 'border-secondary/30 bg-secondary/10 text-secondary'
-              : 'border-outline-variant/30 bg-surface-container-low/50 text-on-surface-variant'
-          }`}
+          className={`border-t px-4 py-2 text-xs sm:px-6 ${restMode
+            ? 'border-secondary/30 bg-secondary/10 text-secondary'
+            : 'border-outline-variant/30 bg-surface-container-low/50 text-on-surface-variant'
+            }`}
         >
           {restMode
             ? 'Modo descanso — mesa pausada; combate e feira restritos.'
@@ -412,7 +439,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                     <button
                       type="button"
                       className="btn-primary text-xs"
-                      disabled={vitalsBusy}
+                      disabled={vitalsBusy || !canActInCombat}
                       onClick={() => void applyDamage(damageInput)}
                     >
                       Aplicar dano
@@ -425,7 +452,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                           key={p.id}
                           type="button"
                           className="btn-secondary text-xs"
-                          disabled={vitalsBusy}
+                          disabled={vitalsBusy || !isLive || !seat}
                           onClick={() => void consumePotion(p.id)}
                         >
                           Usar {p.name}
@@ -444,6 +471,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 sessionId={sessionId}
                 characterName={character.name}
                 rolls={sessionRolls}
+                disabled={dead || !isLive || !seat}
                 onRolled={() => void qc.invalidateQueries({ queryKey: ['session-live-state', sessionId] })}
               />
 
@@ -455,7 +483,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                   className="input-feudal min-w-[9rem] flex-1 pl-3 text-xs normal-case"
                   value={replaceId}
                   onChange={(e) => setReplaceId(e.target.value)}
-                  disabled={dead}
+                  disabled={dead || !isLive || !seat}
                 >
                   <option value="">Substituir personagem…</option>
                   {(profile?.characters ?? [])
@@ -469,7 +497,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                 <button
                   type="button"
                   className="btn-secondary text-xs"
-                  disabled={dead || !replaceId || replaceChar.isPending}
+                  disabled={dead || !isLive || !seat || !replaceId || replaceChar.isPending}
                   onClick={() => replaceChar.mutate(replaceId)}
                 >
                   Trocar
@@ -490,10 +518,10 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
           {character && !dead ? (
             <CreatedSkillsPanel
               skills={skills}
-              busy={skillBusy || vitalsBusy}
+              busy={skillBusy || vitalsBusy || !isLive || !seat}
               compact
               onChange={saveSkills}
-              onUse={(s) => void activateSkill(s)}
+              onUse={canActInCombat ? (s) => void activateSkill(s) : undefined}
             />
           ) : character && dead ? (
             <p className="text-sm text-primary">Habilidades bloqueadas — personagem morto nesta sessão.</p>
@@ -510,11 +538,10 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
               {initiative.map((row, i) => (
                 <li
                   key={`${row.label}-${i}`}
-                  className={`flex justify-between rounded px-2 py-1.5 text-sm ${
-                    i === 0 && row.kind === 'pc'
-                      ? 'border border-primary/40 bg-primary/10'
-                      : 'border border-outline-variant/30'
-                  }`}
+                  className={`flex justify-between rounded px-2 py-1.5 text-sm ${i === 0 && row.kind === 'pc'
+                    ? 'border border-primary/40 bg-primary/10'
+                    : 'border border-outline-variant/30'
+                    }`}
                 >
                   <span className="font-serif">{row.label}</span>
                   <span className="text-xs text-on-surface-variant">{i + 1}º</span>
@@ -529,6 +556,21 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         <SessionPanel title="Teatro da mente" icon="theater_comedy" className="h-full">
           <p className="font-serif text-sm leading-relaxed whitespace-pre-wrap text-on-surface">{teatroText}</p>
           <p className="mt-3 text-xs text-on-surface-variant">Tom: {ambience.atmosphere}</p>
+          {(liveBrief?.sceneNpcs?.length ?? 0) > 0 ? (
+            <div className="mt-4 space-y-2 border-t border-outline-variant/30 pt-3">
+              <p className="font-label-sm text-[0.65rem] tracking-wider text-secondary uppercase">NPCs em cena</p>
+              <ul className="space-y-2">
+                {liveBrief!.sceneNpcs.map((npc) => (
+                  <li key={npc.id} className="rounded border border-outline-variant/30 bg-surface-container-low/40 px-3 py-2">
+                    <p className="font-serif text-sm text-on-surface">{npc.name}</p>
+                    {npc.description ? (
+                      <p className="mt-0.5 text-xs leading-relaxed text-on-surface-variant">{npc.description}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <p className="mt-auto rounded border border-outline-variant/30 bg-surface-container-low/40 px-3 py-2 text-xs text-on-surface-variant">
             {EXTERNAL_MAP_NOTICE}
           </p>
@@ -566,7 +608,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
               <button
                 type="button"
                 className="btn-secondary text-xs"
-                disabled={!declareText.trim()}
+                disabled={!declareText.trim() || !isLive || !seat}
                 onClick={() => {
                   const text = declareText.trim()
                   setDeclareText('')
@@ -646,7 +688,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             <button
               type="button"
               className="btn-primary text-xs"
-              disabled={restMode || !character}
+              disabled={restMode || !character || !isLive || !seat}
               onClick={() => {
                 void recordAction('turn_end', `${character?.name ?? 'Personagem'} concluiu o turno`).then(() => {
                   push('Turno concluído e registrado na mesa.', 'success')
@@ -666,14 +708,17 @@ function SessionRollBox({
   sessionId,
   characterName,
   rolls,
+  disabled = false,
   onRolled,
 }: {
   sessionId: string
   characterName: string
   rolls: Array<{ id: string; at: string; characterName: string; formula: string; total: number; secret: boolean }>
+  disabled?: boolean
   onRolled: () => void
 }) {
   const [formula, setFormula] = useState('1d10')
+  const [rolling, setRolling] = useState(false)
   const { push } = useToast()
   return (
     <div className="space-y-2 rounded border border-outline-variant/35 p-3">
@@ -682,6 +727,8 @@ function SessionRollBox({
         className="flex flex-wrap gap-2"
         onSubmit={(event) => {
           event.preventDefault()
+          if (disabled || rolling) return
+          setRolling(true)
           void api
             .rollAtSession(sessionId, { formula, characterName })
             .then((row) => {
@@ -689,13 +736,19 @@ function SessionRollBox({
               onRolled()
             })
             .catch((error: Error) => push(error.message, 'error'))
+            .finally(() => setRolling(false))
         }}
       >
         <label className="text-xs uppercase text-on-surface-variant">
           Fórmula
-          <input className="input-feudal mt-1 w-24 pl-3" value={formula} onChange={(event) => setFormula(event.target.value)} />
+          <input
+            className="input-feudal mt-1 w-24 pl-3"
+            value={formula}
+            disabled={disabled}
+            onChange={(event) => setFormula(event.target.value)}
+          />
         </label>
-        <button type="submit" className="btn-secondary self-end text-xs">
+        <button type="submit" className="btn-secondary self-end text-xs" disabled={disabled || rolling}>
           Rolar
         </button>
       </form>

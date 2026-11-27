@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { ValidationError } from './errors.js'
+import { PersistenceError, ValidationError } from './errors.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
 
 /** Foto e banner. O endereço público não leva o e-mail. */
@@ -92,25 +92,52 @@ export function inspectDownloadAsset(dataUrl: string): ParsedAsset {
   return { buffer, contentType, ext }
 }
 
+function isPrivateIpv4(host: string): boolean {
+  const parts = host.split('.').map((p) => Number(p))
+  if (parts.length !== 4 || !parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) return false
+  const [a, b] = parts
+  if (a === 10 || a === 127 || a === 0) return true
+  if (a === 169 && b === 254) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  return false
+}
+
 function isPrivateOrLocalHostname(hostname: string): boolean {
-  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '')
+  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
   if (!host) return true
   if (
     host === 'localhost' ||
     host === '::1' ||
+    host === '::' ||
+    host === '0:0:0:0:0:0:0:1' ||
+    host === '0:0:0:0:0:0:0:0' ||
     host === '0.0.0.0' ||
+    host.endsWith('.localhost') ||
     host.endsWith('.local') ||
     host.endsWith('.internal')
   ) {
     return true
   }
-  const parts = host.split('.').map((p) => Number(p))
-  if (parts.length === 4 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
-    const [a, b] = parts
-    if (a === 10 || a === 127 || a === 0) return true
-    if (a === 169 && b === 254) return true
-    if (a === 192 && b === 168) return true
-    if (a === 172 && b >= 16 && b <= 31) return true
+  if (isPrivateIpv4(host)) return true
+  if (host.includes(':')) {
+    // IPv4-mapped IPv6 (ex.: ::ffff:127.0.0.1 ou ::ffff:7f00:1)
+    if (host.startsWith('::ffff:')) {
+      const mapped = host.slice('::ffff:'.length)
+      if (isPrivateIpv4(mapped)) return true
+      const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(mapped)
+      if (hex) {
+        const hi = Number.parseInt(hex[1], 16)
+        const lo = Number.parseInt(hex[2], 16)
+        const v4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`
+        if (isPrivateIpv4(v4)) return true
+      }
+    }
+    // Unique-local (fc00::/7) e link-local (fe80::/10)
+    if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) {
+      return true
+    }
   }
   return false
 }
@@ -207,12 +234,26 @@ export async function ensureMediaBuckets() {
     { id: PRIVATE_BUCKET, isPublic: false, mimes: [...ALLOWED_DOWNLOADS] },
   ]
   const { data: existing, error: listError } = await sb.storage.listBuckets()
-  const existingIds = new Set((existing ?? []).map((b) => b.id))
-  if (!listError && requiredBuckets.every((b) => existingIds.has(b.id))) {
-    return
-  }
+  const existingById = new Map((existing ?? []).map((b) => [b.id, b]))
   for (const bucket of requiredBuckets) {
-    if (existingIds.has(bucket.id)) continue
+    const found = existingById.get(bucket.id)
+    if (found) {
+      if (bucket.id === PRIVATE_BUCKET) {
+        const allowed = (found as { allowed_mime_types?: string[] | null }).allowed_mime_types ?? []
+        if (allowed.length > 0 && !allowed.includes('application/pdf')) {
+          const { error: updErr } = await sb.storage.updateBucket(bucket.id, {
+            public: bucket.isPublic,
+            fileSizeLimit: MAX_BYTES,
+            allowedMimeTypes: bucket.mimes,
+          })
+          if (updErr) console.warn(`[storage] updateBucket ${bucket.id}:`, updErr.message)
+        }
+      }
+      continue
+    }
+    if (listError) {
+      // Ainda tenta criar caso listBuckets tenha falhado por permissão parcial
+    }
     const { error } = await sb.storage.createBucket(bucket.id, {
       public: bucket.isPublic,
       fileSizeLimit: MAX_BYTES,
@@ -226,14 +267,14 @@ export async function ensureMediaBuckets() {
 
 async function uploadPublic(bucket: string, path: string, asset: ParsedAsset) {
   const sb = getSupabaseAdmin()
-  if (!sb) throw new Error('Não foi possível guardar a imagem. O armazenamento não está configurado.')
+  if (!sb) throw new PersistenceError('Não foi possível guardar a imagem. O armazenamento não está configurado.')
   const { error } = await sb.storage.from(bucket).upload(path, asset.buffer, {
     contentType: asset.contentType,
     upsert: false,
   })
   if (error) {
     console.warn(`[storage] upload ${bucket}/${path}:`, error.message)
-    throw new Error('Não foi possível guardar a imagem. A versão anterior continua valendo.')
+    throw new PersistenceError('Não foi possível guardar a imagem. A versão anterior continua valendo.')
   }
   const publicUrl = sb.storage.from(bucket).getPublicUrl(path).data.publicUrl
   return `${publicUrl}?v=${Date.now()}`
@@ -241,14 +282,14 @@ async function uploadPublic(bucket: string, path: string, asset: ParsedAsset) {
 
 async function uploadPrivate(path: string, asset: ParsedAsset) {
   const sb = getSupabaseAdmin()
-  if (!sb) throw new Error('Não foi possível guardar o arquivo. O armazenamento não está configurado.')
+  if (!sb) throw new PersistenceError('Não foi possível guardar o arquivo. O armazenamento não está configurado.')
   const { error } = await sb.storage.from(PRIVATE_BUCKET).upload(path, asset.buffer, {
     contentType: asset.contentType,
     upsert: false,
   })
   if (error) {
     console.warn(`[storage] upload ${PRIVATE_BUCKET}/${path}:`, error.message)
-    throw new Error('Não foi possível guardar o arquivo privado. A versão anterior continua valendo.')
+    throw new PersistenceError('Não foi possível guardar o arquivo privado. A versão anterior continua valendo.')
   }
   return `${PRIVATE_PREFIX}${PRIVATE_BUCKET}/${path}`
 }

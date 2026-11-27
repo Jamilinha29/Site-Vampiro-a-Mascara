@@ -1,10 +1,10 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/api'
 import { useAuthStore, type AuthSession } from '../../stores/authStore'
 import { getSupabaseBrowser } from '../../lib/supabaseBrowser'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import { BrandLogo } from '../../components/brand/BrandLogo'
 
 function sessionFromLogin(data: {
@@ -34,14 +34,12 @@ type Props = {
 }
 
 export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
-  const [mode, setMode] = useState<Mode>(initialMode)
+  const [overrideMode, setOverrideMode] = useState<{ base: Mode; mode: Mode } | null>(null)
+  const mode = overrideMode && overrideMode.base === initialMode ? overrideMode.mode : initialMode
+  const setMode = (next: Mode) => setOverrideMode({ base: initialMode, mode: next })
   const navigate = useNavigate()
   const setSession = useAuthStore((s) => s.setSession)
   const { push } = useToast()
-
-  useEffect(() => {
-    setMode(initialMode)
-  }, [initialMode])
 
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string; remember: boolean }) =>
@@ -281,15 +279,16 @@ function LoginColumn({
                 onSubmit(email, password, remember)
               }}
             >
-              <Field label="E-mail ou nome de usuário" required hint="ex: valerius@corte-noturna.org" id={emailId}>
+              <Field label="E-mail de acesso" required hint="ex: valerius@corte-noturna.org" id={emailId}>
                 <span className="material-symbols-outlined pointer-events-none absolute left-3.5 text-lg text-outline">shield_person</span>
                 <input
                   id={emailId}
+                  type="email"
                   className="input-feudal"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  autoComplete="username"
+                  autoComplete="email"
                 />
               </Field>
               <Field label="Senha" required id={passId} action={<Link to="/auth/recover" className="text-xs text-secondary hover:underline">Esqueci minha senha</Link>}>
@@ -344,8 +343,8 @@ function AuthSocialExtras({
     <div className={`${compact ? 'mt-2 space-y-2' : 'mt-2.5 space-y-2.5'}`}>
       {!compact ? <AuthOuDivider /> : null}
       {allowAdmin ? (
-        <div className={`grid gap-2 ${compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
-          <GoogleAuthButton context={googleContext} className={compact ? 'hidden sm:inline-flex' : ''} />
+        <div className="grid grid-cols-2 gap-2">
+          <GoogleAuthButton context={googleContext} className="w-full" />
           <button
             type="button"
             className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-outline-variant/60 bg-surface-container px-3 py-2 text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase transition hover:border-secondary/50 hover:text-secondary"

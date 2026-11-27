@@ -121,6 +121,16 @@ authRouter.post('/recover', async (req, res, next) => {
 
 authRouter.post('/recover/confirm', async (req, res, next) => {
   try {
+    const rl = await checkSharedRateLimit(`recover-confirm:${req.ip}`, 10 * 60_000, 10)
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', String(rl.retryAfterSec))
+      res.status(429).json(
+        errorPayload('RATE_LIMITED', 'Muitas tentativas seguidas. Espere alguns minutos.', {
+          requestId: req.requestId,
+        }),
+      )
+      return
+    }
     const body = z
       .object({
         token: z.string().min(10).optional(),

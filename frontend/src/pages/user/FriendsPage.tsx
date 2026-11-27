@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 
 type TabKey = 'friends' | 'incoming' | 'outgoing' | 'search'
 
@@ -76,9 +76,9 @@ export default function FriendsPage() {
     onError: (e: Error) => push(e.message, 'error'),
   })
 
-  const friendsList = book?.friends ?? []
-  const incomingList = book?.incoming ?? []
-  const outgoingList = book?.outgoing ?? []
+  const friendsList = useMemo(() => book?.friends ?? [], [book?.friends])
+  const incomingList = useMemo(() => book?.incoming ?? [], [book?.incoming])
+  const outgoingList = useMemo(() => book?.outgoing ?? [], [book?.outgoing])
 
   const activeRows = useMemo<DisplayRow[]>(() => {
     let base: DisplayRow[] = []
@@ -211,11 +211,10 @@ export default function FriendsPage() {
             <button
               type="button"
               onClick={() => switchTab('friends')}
-              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${
-                tab === 'friends'
-                  ? 'bg-primary-container text-white'
-                  : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-              }`}
+              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${tab === 'friends'
+                ? 'bg-primary-container text-white'
+                : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-base">group</span>
               <span>Meus amigos</span>
@@ -227,11 +226,10 @@ export default function FriendsPage() {
             <button
               type="button"
               onClick={() => switchTab('incoming')}
-              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${
-                tab === 'incoming'
-                  ? 'bg-primary-container text-white'
-                  : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-              }`}
+              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${tab === 'incoming'
+                ? 'bg-primary-container text-white'
+                : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-base">mail</span>
               <span>Recebidas</span>
@@ -245,11 +243,10 @@ export default function FriendsPage() {
             <button
               type="button"
               onClick={() => switchTab('outgoing')}
-              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${
-                tab === 'outgoing'
-                  ? 'bg-primary-container text-white'
-                  : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-              }`}
+              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${tab === 'outgoing'
+                ? 'bg-primary-container text-white'
+                : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-base">send</span>
               <span>Enviadas</span>
@@ -263,11 +260,10 @@ export default function FriendsPage() {
             <button
               type="button"
               onClick={focusSearch}
-              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${
-                tab === 'search'
-                  ? 'bg-primary-container text-white'
-                  : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-              }`}
+              className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-xs font-semibold transition ${tab === 'search'
+                ? 'bg-primary-container text-white'
+                : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-base">person_add</span>
               <span>Adicionar</span>
@@ -365,11 +361,10 @@ export default function FriendsPage() {
                   type="button"
                   aria-label="Visualização em lista"
                   onClick={() => setViewMode('list')}
-                  className={`flex h-8 w-8 items-center justify-center rounded border transition ${
-                    viewMode === 'list'
-                      ? 'border-primary bg-primary-container text-white'
-                      : 'border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                  }`}
+                  className={`flex h-8 w-8 items-center justify-center rounded border transition ${viewMode === 'list'
+                    ? 'border-primary bg-primary-container text-white'
+                    : 'border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-base">view_list</span>
                 </button>
@@ -377,11 +372,10 @@ export default function FriendsPage() {
                   type="button"
                   aria-label="Visualização em grade"
                   onClick={() => setViewMode('grid')}
-                  className={`flex h-8 w-8 items-center justify-center rounded border transition ${
-                    viewMode === 'grid'
-                      ? 'border-primary bg-primary-container text-white'
-                      : 'border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
-                  }`}
+                  className={`flex h-8 w-8 items-center justify-center rounded border transition ${viewMode === 'grid'
+                    ? 'border-primary bg-primary-container text-white'
+                    : 'border-outline-variant/40 text-on-surface-variant hover:text-on-surface'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-base">grid_view</span>
                 </button>
@@ -703,15 +697,26 @@ function RowAction({
   }
 
   if (row.relation === 'incoming') {
+    const linkKey = row.linkId ?? row.targetKey
     return (
-      <button
-        type="button"
-        className="btn-primary text-[10px]"
-        disabled={busy}
-        onClick={() => onAccept(row.linkId ?? row.targetKey)}
-      >
-        Aceitar
-      </button>
+      <span className="flex items-center gap-1.5">
+        <button
+          type="button"
+          className="btn-primary text-[10px]"
+          disabled={busy}
+          onClick={() => onAccept(linkKey)}
+        >
+          Aceitar
+        </button>
+        <button
+          type="button"
+          className="btn-secondary text-[10px]"
+          disabled={busy}
+          onClick={() => onRemove(linkKey)}
+        >
+          Recusar
+        </button>
+      </span>
     )
   }
 

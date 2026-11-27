@@ -29,17 +29,23 @@ export function AdminCharacterPieChart({ series }: { series: Slice[] }) {
   const cx = 90
   const cy = 88
   const r = 72
-  let angle = -Math.PI / 2
 
-  const arcs =
-    total > 0
-      ? series.map((slice, i) => {
-          const sweep = (slice.count / total) * Math.PI * 2
-          const start = angle
-          angle += sweep
-          return { slice, path: slicePath(cx, cy, r, start, angle), className: SLICE_CLASSES[i % SLICE_CLASSES.length] }
-        })
-      : []
+  const arcs: Array<{ slice: Slice; path: string; className: string; index: number }> = []
+  if (total > 0) {
+    let angle = -Math.PI / 2
+    for (let i = 0; i < series.length; i++) {
+      const slice = series[i]
+      const sweep = (slice.count / total) * Math.PI * 2
+      const start = angle
+      angle += sweep
+      arcs.push({
+        slice,
+        path: slicePath(cx, cy, r, start, angle),
+        className: SLICE_CLASSES[i % SLICE_CLASSES.length],
+        index: i,
+      })
+    }
+  }
 
   return (
     <div className={adminChartShellClass}>
@@ -52,14 +58,14 @@ export function AdminCharacterPieChart({ series }: { series: Slice[] }) {
           ) : arcs.length === 1 ? (
             <circle cx={cx} cy={cy} r={r} className={arcs[0].className} stroke="currentColor" strokeWidth={0.5} />
           ) : (
-            arcs.map(({ slice, path, className }) => (
-              <path key={slice.label} d={path} className={className} stroke="currentColor" strokeWidth={0.5} />
+            arcs.map(({ slice, path, className, index }) => (
+              <path key={`${slice.label}-${index}`} d={path} className={className} stroke="currentColor" strokeWidth={0.5} />
             ))
           )}
         </svg>
         <ul className="max-h-[9.5rem] w-full flex-1 space-y-0.5 overflow-y-auto text-[9px] leading-tight text-on-surface-variant">
           {series.map((s, i) => (
-            <li key={s.label} className="flex items-center gap-1.5 truncate">
+            <li key={`${s.label}-${i}`} className="flex items-center gap-1.5 truncate">
               <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${SLICE_CLASSES[i % SLICE_CLASSES.length].replace('fill-', 'bg-')}`} aria-hidden />
               <span className="truncate">
                 {s.label}: <span className="font-medium text-on-surface">{s.count}</span>

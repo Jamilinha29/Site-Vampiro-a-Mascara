@@ -73,6 +73,7 @@ export type LedgerRow = {
 export type AuctionBid = {
   id: string
   bidderEmail: string | null
+  characterId?: string | null
   displayName: string
   amount: number
   coin: Coin
@@ -276,7 +277,8 @@ function pushLedger(email: string, kind: 'credit' | 'debit', coin: Coin, amount:
 type CoinMeta = { actorEmail?: string; sessionId?: string; operationId?: string }
 
 export async function creditCoins(email: string, coin: Coin, amount: number, label: string, meta?: CoinMeta) {
-  const qty = Math.max(0, Math.round(amount))
+  if (!Number.isFinite(amount)) return getCourtWallet(email)
+  const qty = Math.min(1_000_000_000, Math.max(0, Math.round(amount)))
   if (qty <= 0) return getCourtWallet(email)
   return runCourtMutation(async () => {
     const w = ensureWalletForCredit(email)
@@ -623,8 +625,16 @@ async function settleAuction(auction: Auction, force = false) {
     const entity = getEntity(auction.entityId)
     const session = getScheduledSession(auction.sessionId)
     const seat = session?.seats?.find((s) => !s.leftAt && emailKey(s.email) === emailKey(winner.bidderEmail!))
-    if (entity && (await grantEntityToCharacter(winner.bidderEmail, seat?.characterId, entity))) {
+    const targetCharacterId = winner.characterId ?? seat?.characterId
+    if (entity && targetCharacterId && (await grantEntityToCharacter(winner.bidderEmail, targetCharacterId, entity))) {
       auction.granted = true
+    } else {
+      // Estorna o lance caso o item não exista ou a entrega falhe (evita perda permanente de moedas)
+      refundBidInMemory(winner, `Estorno · entrega indisponível (${auction.itemName})`)
+      auction.status = 'cancelled'
+      auction.winnerEmail = null
+      auction.winnerLabel = null
+      auction.granted = false
     }
   }
   return auction
@@ -639,6 +649,7 @@ function auctionMaySettleNow(auction: Auction, nowMs: number) {
 }
 
 export async function settleOpenAuctions() {
+  await syncCourtIfStale()
   const nowMs = Date.now()
   if (!state.auctions.some((a) => auctionMaySettleNow(a, nowMs))) {
     return
@@ -664,7 +675,8 @@ function sanitizeAuction(a: Auction) {
   return {
     ...rest,
     bids: a.bids.map(({ bidderEmail: _be, ...bid }) => bid),
-    leading: [...a.bids.filter((b) => !b.withdrawn)]
+    leading: a.bids
+      .filter((b) => !b.withdrawn)
       .sort((x, y) => bidWorth(y) - bidWorth(x))
       .map(({ bidderEmail: _be, ...bid }) => bid)[0] ?? null,
   }
@@ -727,6 +739,9 @@ export async function releaseAuction(input: {
 }
 
 export async function addNpcBid(auctionId: string, displayName: string, amount: number, coin: Coin) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false as const, error: 'Valor de lance inválido' }
+  }
   return runCourtMutation(async () => {
     const auction = state.auctions.find((a) => a.id === auctionId)
     if (!auction || auction.status !== 'open' || new Date(auction.endsAt).getTime() <= Date.now()) {
@@ -736,7 +751,7 @@ export async function addNpcBid(auctionId: string, displayName: string, amount: 
       id: randomUUID(),
       bidderEmail: null,
       displayName: displayName.trim(),
-      amount: Math.max(1, Math.round(amount)),
+      amount: Math.min(1_000_000, Math.max(1, Math.round(amount))),
       coin,
       npc: true,
       withdrawn: false,
@@ -755,7 +770,11 @@ export async function placeBid(input: {
   amount: number
   coin: Coin
   level: number
+  characterId?: string
 }) {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    return { ok: false as const, error: 'Valor de lance inválido' }
+  }
   return runCourtMutation(async () => {
     for (const a of state.auctions) {
       if (a.status === 'open') await settleAuction(a)
@@ -770,7 +789,7 @@ export async function placeBid(input: {
     if (input.level < auction.requiredLevel) {
       return { ok: false as const, error: `Nível ${auction.requiredLevel} necessário para este lote` }
     }
-    const amount = Math.max(1, Math.round(input.amount))
+    const amount = Math.min(1_000_000, Math.max(1, Math.round(input.amount)))
     const mine = auction.bids.find(
       (b) => !b.withdrawn && b.bidderEmail && emailKey(b.bidderEmail) === emailKey(input.email),
     )
@@ -791,6 +810,7 @@ export async function placeBid(input: {
     auction.bids.push({
       id: randomUUID(),
       bidderEmail: input.email,
+      characterId: input.characterId ?? null,
       displayName: input.displayName,
       amount,
       coin: input.coin,

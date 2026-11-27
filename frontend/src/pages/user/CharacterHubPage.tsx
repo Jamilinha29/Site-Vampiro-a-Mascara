@@ -19,7 +19,7 @@ import { resolveSheetKind } from '../../lib/characterSheetKind'
 import { computeArmorClass, sumEquippedBonuses } from '../../lib/equipmentMods'
 import type { CharacterInventoryItem, CreatedSkill, ProfileCharacterSummary } from '../../types/profile'
 import { useAuthStore } from '../../stores/authStore'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 
 const TABS = [
   { id: 'inventario', label: 'Inventário' },
@@ -85,12 +85,16 @@ export default function CharacterHubPage() {
     const level = character?.level ?? 0
     const canSetSubclass = level >= SUBCLASS_CHOICE_LEVEL
     const canSetSecondary = level >= SECOND_SUBCLASS_CHOICE_LEVEL
-    await portrait.patchCharacter({
-      name: draft.name.trim() || character!.name,
-      subclass: canSetSubclass ? draft.subclass.trim() || null : undefined,
-      secondarySubclass: canSetSecondary ? draft.secondarySubclass.trim() || null : undefined,
-    })
-    setEditOpen(false)
+    try {
+      await portrait.patchCharacter({
+        name: draft.name.trim() || character!.name,
+        subclass: canSetSubclass ? draft.subclass.trim() || null : undefined,
+        secondarySubclass: canSetSecondary ? draft.secondarySubclass.trim() || null : undefined,
+      })
+      setEditOpen(false)
+    } catch (err) {
+      push(err instanceof Error ? err.message : 'Não foi possível salvar os dados.', 'error')
+    }
   }
 
   async function saveInventory(items: CharacterInventoryItem[]) {
@@ -125,10 +129,10 @@ export default function CharacterHubPage() {
     identity: character.identity,
   })
 
-  const tabClass = ({ isActive }: { isActive: boolean }) =>
+  const tabClass = (active: boolean) =>
     [
       'inline-flex items-center border-b-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition',
-      isActive
+      active
         ? 'border-primary text-primary'
         : 'border-transparent text-on-surface-variant hover:border-outline-variant hover:text-on-surface',
     ].join(' ')
@@ -226,10 +230,13 @@ export default function CharacterHubPage() {
               className="btn-secondary text-xs"
               disabled={character.approval === 'submitted' || character.approval === 'approved'}
               onClick={() => {
-                void api.submitCharacter(character.id).then(() => {
-                  push('Ficha enviada ao mestre.', 'success')
-                  void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
-                })
+                void api
+                  .submitCharacter(character.id)
+                  .then(() => {
+                    push('Ficha enviada ao mestre.', 'success')
+                    void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
+                  })
+                  .catch((err: Error) => push(err.message || 'Não foi possível enviar a ficha.', 'error'))
               }}
             >
               {character.approval === 'approved'
@@ -277,7 +284,7 @@ export default function CharacterHubPage() {
             <NavLink
               key={tab.id}
               to={`/user/characters/${characterId}?view=${tab.id}`}
-              className={tabClass}
+              className={() => tabClass(view === tab.id)}
               onClick={() => setSearchParams({ view: tab.id })}
             >
               {tab.label}

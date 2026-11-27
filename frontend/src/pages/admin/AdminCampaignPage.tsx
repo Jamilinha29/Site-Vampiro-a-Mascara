@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/api'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 
 const kinds = [
   { id: 'mystery', label: 'Mistério' },
@@ -11,6 +11,136 @@ const kinds = [
   { id: 'pending', label: 'Pendência' },
 ] as const
 
+function CampaignRulesCard({
+  rules,
+  onAffected,
+}: {
+  rules?: {
+    version: number
+    maxLevel: number
+    subclassLevel: number
+    secondarySubclassLevel?: number
+    startingXp: number
+    shopBudgetCopper: number
+  }
+  onAffected: (rows: Array<{ name: string; reason: string }>) => void
+}) {
+  const { push } = useToast()
+  const queryClient = useQueryClient()
+  const [maxLevel, setMaxLevel] = useState(rules?.maxLevel ?? 10)
+  const [subclassLevel, setSubclassLevel] = useState(rules?.subclassLevel ?? 5)
+  const [secondarySubclassLevel, setSecondarySubclassLevel] = useState(rules?.secondarySubclassLevel ?? 7)
+  const [startingXp, setStartingXp] = useState(rules?.startingXp ?? 0)
+  const [shopBudgetCopper, setShopBudgetCopper] = useState(rules?.shopBudgetCopper ?? 0)
+
+  const saveRules = useMutation({
+    mutationFn: (decision: 'keep-existing' | 'mark-review') => {
+      const safeMax = Math.min(10, Math.max(1, Number.isFinite(maxLevel) ? maxLevel : 10))
+      const safeSub1 = Math.min(safeMax, Math.max(1, Number.isFinite(subclassLevel) ? subclassLevel : 5))
+      const safeSub2 = Math.min(safeMax, Math.max(safeSub1, Number.isFinite(secondarySubclassLevel) ? secondarySubclassLevel : 7))
+      return api.adminSaveRules({
+        maxLevel: safeMax,
+        subclassLevel: safeSub1,
+        secondarySubclassLevel: safeSub2,
+        startingXp: Math.max(0, Number.isFinite(startingXp) ? startingXp : 0),
+        shopBudgetCopper: Math.max(0, Number.isFinite(shopBudgetCopper) ? shopBudgetCopper : 0),
+        decision,
+      })
+    },
+    onSuccess: async (result) => {
+      onAffected(result.affected)
+      await queryClient.invalidateQueries({ queryKey: ['campaign-rules'] })
+      push('Regra gravada. As fichas existentes não tiveram nível nem XP alterados.', 'success')
+    },
+    onError: (error: Error) => push(error.message, 'error'),
+  })
+
+  return (
+    <section className="card-surface flex h-full flex-col space-y-3 p-5">
+      <h2 className="text-xs uppercase tracking-wide text-secondary">Regras da campanha</h2>
+      <p className="text-sm text-on-surface-variant">
+        Versão atual: {rules?.version ?? 1}. Nível máximo {rules?.maxLevel ?? 10}. Subclasse I no nível{' '}
+        {rules?.subclassLevel ?? 5}. Subclasse II no nível {rules?.secondarySubclassLevel ?? 7}.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-on-surface-variant">
+          Nível máximo
+          <input
+            className="input-feudal mt-1 w-full pl-3"
+            type="number"
+            min={1}
+            max={10}
+            value={maxLevel}
+            onChange={(event) => setMaxLevel(Number(event.target.value))}
+          />
+        </label>
+        <label className="text-xs text-on-surface-variant">
+          Subclasse I (nível)
+          <input
+            className="input-feudal mt-1 w-full pl-3"
+            type="number"
+            min={1}
+            max={10}
+            value={subclassLevel}
+            onChange={(event) => setSubclassLevel(Number(event.target.value))}
+          />
+        </label>
+        <label className="text-xs text-on-surface-variant">
+          Subclasse II (nível)
+          <input
+            className="input-feudal mt-1 w-full pl-3"
+            type="number"
+            min={1}
+            max={10}
+            value={secondarySubclassLevel}
+            onChange={(event) => setSecondarySubclassLevel(Number(event.target.value))}
+          />
+        </label>
+        <label className="text-xs text-on-surface-variant">
+          XP inicial (novas fichas)
+          <input
+            className="input-feudal mt-1 w-full pl-3"
+            type="number"
+            min={0}
+            max={10000}
+            value={startingXp}
+            onChange={(event) => setStartingXp(Number(event.target.value))}
+          />
+        </label>
+        <label className="text-xs text-on-surface-variant sm:col-span-2">
+          Teto de bronze (loja)
+          <input
+            className="input-feudal mt-1 w-full pl-3"
+            type="number"
+            min={0}
+            max={1000000}
+            value={shopBudgetCopper}
+            onChange={(event) => setShopBudgetCopper(Number(event.target.value))}
+          />
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-primary text-xs"
+          disabled={saveRules.isPending}
+          onClick={() => saveRules.mutate('keep-existing')}
+        >
+          Guardar e manter as fichas
+        </button>
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          disabled={saveRules.isPending}
+          onClick={() => saveRules.mutate('mark-review')}
+        >
+          Guardar e pedir revisão das afetadas
+        </button>
+      </div>
+    </section>
+  )
+}
+
 export default function AdminCampaignPage() {
   const { push } = useToast()
   const queryClient = useQueryClient()
@@ -18,11 +148,6 @@ export default function AdminCampaignPage() {
   const [detail, setDetail] = useState('')
   const [kind, setKind] = useState<(typeof kinds)[number]['id']>('mystery')
   const [status, setStatus] = useState<'confirmed' | 'proposed' | 'pending'>('pending')
-  const [maxLevel, setMaxLevel] = useState(10)
-  const [subclassLevel, setSubclassLevel] = useState(5)
-  const [secondarySubclassLevel, setSecondarySubclassLevel] = useState(7)
-  const [startingXp, setStartingXp] = useState(0)
-  const [shopBudgetCopper, setShopBudgetCopper] = useState(0)
   const [affected, setAffected] = useState<Array<{ name: string; reason: string }>>([])
   const [sessionId, setSessionId] = useState('')
   const [entityId, setEntityId] = useState('')
@@ -44,23 +169,6 @@ export default function AdminCampaignPage() {
       setDetail('')
       await queryClient.invalidateQueries({ queryKey: ['campaign-board'] })
       push('Cartão guardado.', 'success')
-    },
-    onError: (error: Error) => push(error.message, 'error'),
-  })
-  const saveRules = useMutation({
-    mutationFn: (decision: 'keep-existing' | 'mark-review') =>
-      api.adminSaveRules({
-        maxLevel,
-        subclassLevel,
-        secondarySubclassLevel,
-        startingXp,
-        shopBudgetCopper,
-        decision,
-      }),
-    onSuccess: async (result) => {
-      setAffected(result.affected)
-      await queryClient.invalidateQueries({ queryKey: ['campaign-rules'] })
-      push('Regra gravada. As fichas existentes não tiveram nível nem XP alterados.', 'success')
     },
     onError: (error: Error) => push(error.message, 'error'),
   })
@@ -125,7 +233,12 @@ export default function AdminCampaignPage() {
                   <button
                     type="button"
                     className="btn-secondary text-xs"
-                    onClick={() => void api.adminRemoveBoardCard(card.id).then(() => queryClient.invalidateQueries({ queryKey: ['campaign-board'] }))}
+                    onClick={() =>
+                      void api
+                        .adminRemoveBoardCard(card.id)
+                        .then(() => queryClient.invalidateQueries({ queryKey: ['campaign-board'] }))
+                        .catch((err: Error) => push(err.message || 'Erro ao remover cartão.', 'error'))
+                    }
                   >
                     Remover
                   </button>
@@ -139,54 +252,22 @@ export default function AdminCampaignPage() {
           )}
         </section>
 
-        <section className="card-surface flex h-full flex-col space-y-3 p-5">
-          <h2 className="text-xs uppercase tracking-wide text-secondary">Regras da campanha</h2>
-          <p className="text-sm text-on-surface-variant">
-            Versão atual: {rules.data?.version ?? 1}. Nível máximo {rules.data?.maxLevel ?? 10}. Subclasse I no nível{' '}
-            {rules.data?.subclassLevel ?? 5}. Subclasse II no nível 7.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-on-surface-variant">
-              Nível máximo
-              <input className="input-feudal mt-1 w-full pl-3" type="number" min={1} max={10} value={maxLevel} onChange={(event) => setMaxLevel(Number(event.target.value))} />
-            </label>
-            <label className="text-xs text-on-surface-variant">
-              Subclasse I (nível)
-              <input className="input-feudal mt-1 w-full pl-3" type="number" min={1} max={10} value={subclassLevel} onChange={(event) => setSubclassLevel(Number(event.target.value))} />
-            </label>
-            <label className="text-xs text-on-surface-variant">
-              Subclasse II (nível)
-              <input className="input-feudal mt-1 w-full pl-3" type="number" min={1} max={10} value={secondarySubclassLevel} onChange={(event) => setSecondarySubclassLevel(Number(event.target.value))} />
-            </label>
-            <label className="text-xs text-on-surface-variant">
-              XP inicial (novas fichas)
-              <input className="input-feudal mt-1 w-full pl-3" type="number" min={0} max={10000} value={startingXp} onChange={(event) => setStartingXp(Number(event.target.value))} />
-            </label>
-            <label className="text-xs text-on-surface-variant sm:col-span-2">
-              Teto de bronze (loja)
-              <input className="input-feudal mt-1 w-full pl-3" type="number" min={0} max={1000000} value={shopBudgetCopper} onChange={(event) => setShopBudgetCopper(Number(event.target.value))} />
-            </label>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-primary text-xs" onClick={() => saveRules.mutate('keep-existing')}>
-              Guardar e manter as fichas
-            </button>
-            <button type="button" className="btn-secondary text-xs" onClick={() => saveRules.mutate('mark-review')}>
-              Guardar e pedir revisão das afetadas
-            </button>
-          </div>
+        <div className="flex h-full flex-col">
+          <CampaignRulesCard
+            key={rules.data ? `${rules.data.version}:${rules.data.updatedAt}` : 'loading'}
+            rules={rules.data}
+            onAffected={setAffected}
+          />
           {affected.length > 0 ? (
-            <ul className="max-h-36 overflow-y-auto text-sm text-on-surface-variant">
+            <ul className="mt-2 max-h-36 overflow-y-auto rounded border border-white/10 p-3 text-sm text-on-surface-variant">
               {affected.map((row) => (
                 <li key={`${row.name}${row.reason}`}>
                   {row.name}: {row.reason}
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="mt-auto text-xs text-on-surface-variant">Nenhuma ficha foi reescrita. A lista acima aparece quando alguma ficaria fora da regra nova.</p>
-          )}
-        </section>
+          ) : null}
+        </div>
 
         <section className="card-surface flex h-full flex-col space-y-3 p-5">
           <h2 className="text-xs uppercase tracking-wide text-secondary">Segredo por mesa</h2>
@@ -234,7 +315,10 @@ export default function AdminCampaignPage() {
               className="btn-secondary text-xs"
               disabled={!sessionId}
               onClick={() =>
-                void api.adminAdvanceTurn(sessionId).then((result) => push(`Turno avançado. ${result.changed} efeito(s) contado(s).`, 'success'))
+                void api
+                  .adminAdvanceTurn(sessionId)
+                  .then((result) => push(`Turno avançado. ${result.changed} efeito(s) contado(s).`, 'success'))
+                  .catch((error: Error) => push(error.message || 'Erro ao avançar turno.', 'error'))
               }
             >
               Avançar um turno nesta mesa

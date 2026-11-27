@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/api'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 
 type Props = {
   open: boolean

@@ -1,5 +1,6 @@
 export const PROFILE_IMAGE_MAX_BYTES = 900_000
 export const PROFILE_IMAGE_INPUT_MAX_BYTES = 20 * 1024 * 1024
+export const DOWNLOAD_PDF_MAX_BYTES = 2 * 1024 * 1024
 
 export type ProfileImagePreset = 'avatar' | 'banner' | 'default'
 
@@ -118,4 +119,18 @@ export async function readProfileImageFile(
     }
     throw err instanceof Error ? err : new Error('Imagem muito grande (máx. ~900 KB).')
   }
+}
+
+export async function readDownloadFile(file: File): Promise<string> {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+  if (isPdf) {
+    if (file.size > DOWNLOAD_PDF_MAX_BYTES) {
+      throw new Error('PDF muito grande (máx. 2 MB).')
+    }
+    return readFileAsDataUrl(file)
+  }
+  if (file.type.startsWith('image/')) {
+    return readProfileImageFile(file)
+  }
+  throw new Error('Formato não suportado. Envie um arquivo PDF ou imagem (PNG, JPG, WebP, GIF).')
 }

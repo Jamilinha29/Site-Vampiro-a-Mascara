@@ -70,6 +70,16 @@ function profileRow(profile: UserProfile) {
   }
 }
 
+function safeInt(n: number | null | undefined, fallback = 0): number {
+  if (n == null || !Number.isFinite(n)) return fallback
+  return Math.max(-2_000_000_000, Math.min(2_000_000_000, Math.round(n)))
+}
+
+function safeNullableInt(n: number | null | undefined): number | null {
+  if (n == null || !Number.isFinite(n)) return null
+  return Math.max(-2_000_000_000, Math.min(2_000_000_000, Math.round(n)))
+}
+
 function characterRow(profileId: string, character: ProfileCharacter) {
   return {
     id: asUuid(character.id),
@@ -77,27 +87,28 @@ function characterRow(profileId: string, character: ProfileCharacter) {
     name: character.name,
     species: character.species,
     clan: character.clan ?? null,
-    level: character.level,
+    // Mantém compatibilidade com CHECK (level between 0 and 10) em SQL enquanto sheet_payload preserva o nível legado exato
+    level: Math.min(10, Math.max(0, safeInt(character.level, 0))),
     is_primary: Boolean(character.isPrimary),
     show_on_home: Boolean(character.showOnHome),
     portrait_url: character.portraitUrl ?? null,
-    hp_current: character.hp.current,
-    hp_max: character.hp.max,
-    blood_current: character.blood?.current ?? null,
-    blood_max: character.blood?.max ?? null,
-    mana_current: character.mana?.current ?? null,
-    mana_max: character.mana?.max ?? null,
-    will_current: character.will?.current ?? null,
-    will_max: character.will?.max ?? null,
-    xp_current: character.xp?.current ?? 0,
-    xp_to_next: character.xp?.toNext ?? 0,
+    hp_current: safeInt(character.hp.current, 0),
+    hp_max: safeInt(character.hp.max, 0),
+    blood_current: safeNullableInt(character.blood?.current),
+    blood_max: safeNullableInt(character.blood?.max),
+    mana_current: safeNullableInt(character.mana?.current),
+    mana_max: safeNullableInt(character.mana?.max),
+    will_current: safeNullableInt(character.will?.current),
+    will_max: safeNullableInt(character.will?.max),
+    xp_current: safeInt(character.xp?.current, 0),
+    xp_to_next: safeInt(character.xp?.toNext, 0),
     subclass: character.subclass ?? null,
     secondary_subclass: character.secondarySubclass ?? null,
     character_class: character.characterClass ?? null,
-    sheet_revision: character.sheetRevision ?? 0,
+    sheet_revision: safeInt(character.sheetRevision, 0),
     needs_rule_review: Boolean(character.needsRuleReview),
     rule_review_note: character.ruleReviewNote ?? null,
-    carry_capacity_kg: character.carryCapacityKg ?? 0,
+    carry_capacity_kg: Number.isFinite(character.carryCapacityKg) ? character.carryCapacityKg : 0,
     identity: character.identity ?? {},
     vitals: character.vitals ?? null,
     balance_stats: character.balanceStats ?? null,
@@ -110,7 +121,9 @@ export async function mirrorProfileToSql(profile: UserProfile) {
   if (process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV !== 'true') return
   const profileId = await upsertOnFirstTable('profile', PROFILE_TABLES, profileRow(profile), 'email')
   if (!profileId) return
-  for (const character of profile.characters) {
+  // Espelha personagens não-principais antes do principal para evitar colisão temporária em characters_one_primary_per_profile
+  const ordered = [...profile.characters].sort((a, b) => Number(Boolean(a.isPrimary)) - Number(Boolean(b.isPrimary)))
+  for (const character of ordered) {
     await upsertOnFirstTable('character', CHARACTER_TABLES, characterRow(profileId, character), 'id')
   }
 }

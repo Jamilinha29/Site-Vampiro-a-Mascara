@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { SessionActInlinePanel } from '../../components/session/SessionActInlinePanel'
 import { api } from '../../services/api'
 import { playerQueryKeys } from '../../lib/queryKeys'
 import { useAuthStore } from '../../stores/authStore'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import type { ScheduledSession } from '../../types/chronicle'
 
 type PanelState = { sessionId: string; mode: 'summary' | 'canon' } | null
@@ -35,6 +36,7 @@ export default function SessionsPage() {
   const auth = useAuthStore((s) => s.session)
   const canConfirmPresence = auth?.role === 'player'
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { push } = useToast()
 
   const { data: scheduled = [], isLoading } = useQuery({
@@ -71,19 +73,27 @@ export default function SessionsPage() {
       setPublicJoin(false)
       setAccessCode('')
       void qc.invalidateQueries({ queryKey: playerQueryKeys.scheduledSessions })
-      if (id) window.location.assign(`/user/sessions/${id}/table`)
+      if (id) navigate(`/user/sessions/${id}/table`)
     },
     onError: (e: Error) => push(e.message, 'error'),
   })
 
-  const now = Date.now()
+  const [mountedAt] = useState(() => Date.now())
   const sorted = useMemo(
-    () => [...scheduled].filter((session) => session.status !== 'closed').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
+    () =>
+      [...scheduled].sort((a, b) => {
+        const rank = (st: ScheduledSession['status']) => (st === 'open' ? 0 : st === 'scheduled' ? 1 : 2)
+        const diff = rank(a.status) - rank(b.status)
+        if (diff !== 0) return diff
+        return a.status === 'closed'
+          ? b.scheduledAt.localeCompare(a.scheduledAt)
+          : a.scheduledAt.localeCompare(b.scheduledAt)
+      }),
     [scheduled],
   )
   const next =
     sorted.find((s) => s.status === 'open') ??
-    sorted.find((s) => s.status === 'scheduled' && new Date(s.scheduledAt).getTime() >= now) ??
+    sorted.find((s) => s.status === 'scheduled' && new Date(s.scheduledAt).getTime() >= mountedAt) ??
     sorted.find((s) => s.status !== 'closed') ??
     null
   const history = sorted.filter((s) => s.id !== next?.id)
@@ -170,6 +180,7 @@ export default function SessionsPage() {
                       className="btn-secondary mt-2 text-[10px]"
                       onClick={() => {
                         setPublicJoin(false)
+                        setAccessCode('')
                         setJoinSessionId(table.id)
                         setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
                       }}
@@ -253,6 +264,7 @@ export default function SessionsPage() {
                   className="btn-primary text-xs"
                   onClick={() => {
                     setPublicJoin((next.listing ?? 'private') === 'public')
+                    setAccessCode('')
                     setJoinSessionId(next.id)
                     setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
                   }}
@@ -300,6 +312,7 @@ export default function SessionsPage() {
                     className="btn-primary text-xs"
                     onClick={() => {
                       setPublicJoin((s.listing ?? 'private') === 'public')
+                      setAccessCode('')
                       setJoinSessionId(s.id)
                       setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
                     }}
@@ -311,6 +324,7 @@ export default function SessionsPage() {
                   <button
                     type="button"
                     className="btn-secondary text-xs"
+                    disabled={confirm.isPending}
                     onClick={() => confirm.mutate(s.id)}
                   >
                     Confirmar presença
@@ -334,7 +348,7 @@ export default function SessionsPage() {
               {panel?.sessionId === s.id ? <SessionActInlinePanel sessionId={s.id} mode={panel.mode} /> : null}
             </article>
           ))}
-          {!isLoading && scheduled.length === 0 ? (
+          {!isLoading && history.length === 0 ? (
             <p className="text-sm text-on-surface-variant">Participe de atos para registrar memórias da mesa.</p>
           ) : null}
         </div>

@@ -42,7 +42,7 @@ contentRouter.get('/archive', async (req, res, next) => {
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
     const rows = withTableSecrets(
-      listPublishedForArchive(category, req.user?.email, sessionId),
+      listPublishedForArchive(category, req.user?.email, sessionId, req.user?.role),
       req.user?.email,
     )
     res.json(await withReadableImages(rows))
@@ -58,7 +58,7 @@ contentRouter.get('/shop', async (req, res, next) => {
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
     const rows = withTableSecrets(
-      listPublishedForShop(category, req.user?.email, sessionId),
+      listPublishedForShop(category, req.user?.email, sessionId, req.user?.role),
       req.user?.email,
     )
     res.json(await withReadableImages(rows))
@@ -74,7 +74,7 @@ contentRouter.get('/bestiary', async (req, res, next) => {
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
     const rows = withTableSecrets(
-      listPublishedForBestiary(tier, req.user?.email, sessionId),
+      listPublishedForBestiary(tier, req.user?.email, sessionId, req.user?.role),
       req.user?.email,
     )
     res.json(await withReadableImages(rows))
@@ -89,7 +89,7 @@ contentRouter.get('/downloads', async (req, res, next) => {
     const category = z.enum(['rules', 'sheets', 'handouts']).parse(req.query.category ?? 'rules')
     const { sessionId } = optionalSession.parse(req.query)
     if (sessionId) requireSessionParticipant(sessionId, req.user!)
-    const pack = listPublishedDownloads(category, req.user?.email, sessionId)
+    const pack = listPublishedDownloads(category, req.user?.email, sessionId, req.user?.role)
     const handouts = pack.handouts.filter((handout) => {
       if (!handout.scheduledSessionId) return true
       return sessionAccess(handout.scheduledSessionId, req.user!).ok
@@ -110,15 +110,15 @@ contentRouter.get('/session-handouts', (req, res) => {
 })
 
 contentRouter.get('/scheduled-sessions', (req, res) => {
-  res.json(listPublishedSessionsForPlayers(req.user?.email))
+  res.json(listPublishedSessionsForPlayers(req.user?.email, { includeClosed: true }))
 })
 
-function denySession(res: import('express').Response, reason: 'not_found' | 'forbidden') {
+function denySession(res: import('express').Response, reason: 'not_found' | 'forbidden', requestId?: string) {
   if (reason === 'not_found') {
-    res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada'))
+    res.status(404).json(errorPayload('NOT_FOUND', 'Mesa não encontrada', { requestId }))
     return
   }
-  res.status(403).json(errorPayload('FORBIDDEN', 'Você não está nesta mesa.'))
+  res.status(403).json(errorPayload('FORBIDDEN', 'Você não está nesta mesa.', { requestId }))
 }
 
 contentRouter.get('/sessions/:sessionId/live-state', (req, res) => {

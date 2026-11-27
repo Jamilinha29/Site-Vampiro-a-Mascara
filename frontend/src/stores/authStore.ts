@@ -69,6 +69,13 @@ function clearAuthSideEffects() {
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(STORAGE_KEY)
     window.sessionStorage.removeItem(STORAGE_KEY)
+    window.localStorage.removeItem('beladona-character-wizard')
+    for (let i = window.sessionStorage.length - 1; i >= 0; i -= 1) {
+      const k = window.sessionStorage.key(i)
+      if (k && k.startsWith('session-dead:')) {
+        window.sessionStorage.removeItem(k)
+      }
+    }
   }
   queryClient.clear()
   const sb = getSupabaseBrowser()
@@ -121,6 +128,12 @@ export const useAuthStore = create<AuthState>()(
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     if (event.key !== STORAGE_KEY) return
+    if (event.newValue == null) {
+      window.sessionStorage.removeItem(STORAGE_KEY)
+      useAuthStore.setState({ session: null })
+      queryClient.clear()
+      return
+    }
     void useAuthStore.persist.rehydrate()
   })
 }

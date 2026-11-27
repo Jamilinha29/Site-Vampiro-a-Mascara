@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type CoinCode } from '../../services/api'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 
 type Props = { sessionId: string; live: boolean }
 
@@ -16,6 +16,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
   const [npcCoin, setNpcCoin] = useState<CoinCode>('silver')
   const [extraNpcByAuction, setExtraNpcByAuction] = useState<Record<string, string>>({})
   const [extraAmountByAuction, setExtraAmountByAuction] = useState<Record<string, number>>({})
+  const [extraCoinByAuction, setExtraCoinByAuction] = useState<Record<string, CoinCode>>({})
   const qc = useQueryClient()
   const { push } = useToast()
 
@@ -56,7 +57,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
       api.adminNpcBid(auctionId, {
         displayName: (extraNpcByAuction[auctionId] ?? '').trim(),
         amount: extraAmountByAuction[auctionId] ?? 8,
-        coin: npcCoin,
+        coin: extraCoinByAuction[auctionId] ?? 'silver',
       }),
     onSuccess: (_data, auctionId) => {
       setExtraNpcByAuction((prev) => ({ ...prev, [auctionId]: '' }))
@@ -191,18 +192,35 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
                   className="input-feudal w-20 py-1 pl-2 text-xs normal-case"
                   value={extraAmountByAuction[auction.id] ?? 8}
                   onChange={(e) =>
-                    setExtraAmountByAuction((prev) => ({ ...prev, [auction.id]: Number(e.target.value) || 1 }))
+                    setExtraAmountByAuction((prev) => ({ ...prev, [auction.id]: Math.max(1, Number(e.target.value) || 1) }))
                   }
                 />
+                <select
+                  className="input-feudal py-1 pl-2 text-xs normal-case"
+                  aria-label="Moeda do lance NPC"
+                  value={extraCoinByAuction[auction.id] ?? 'silver'}
+                  onChange={(e) =>
+                    setExtraCoinByAuction((prev) => ({ ...prev, [auction.id]: e.target.value as CoinCode }))
+                  }
+                >
+                  <option value="gold">Ouro</option>
+                  <option value="silver">Prata</option>
+                  <option value="copper">Bronze</option>
+                </select>
                 <button
                   type="button"
                   className="btn-secondary text-[10px]"
-                  disabled={!(extraNpcByAuction[auction.id] ?? '').trim()}
+                  disabled={npcBid.isPending || !(extraNpcByAuction[auction.id] ?? '').trim()}
                   onClick={() => npcBid.mutate(auction.id)}
                 >
                   Lance de NPC
                 </button>
-                <button type="button" className="btn-secondary text-[10px]" onClick={() => close.mutate(auction.id)}>
+                <button
+                  type="button"
+                  className="btn-secondary text-[10px]"
+                  disabled={close.isPending}
+                  onClick={() => close.mutate(auction.id)}
+                >
                   Encerrar agora
                 </button>
               </div>

@@ -56,7 +56,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? ''
 | Render (API separada) | URL do Render no build Vercel | `GET https://xxx.onrender.com/api/v1/catalog/clans` |
 | Local com proxy Vite | vazio **ou** omitir no `.env` | `GET /api/v1/...` → proxy em `frontend/vite.config.ts` aponta para `:4000` |
 | Local direto | `http://localhost:4000` no `.env` | Browser fala direto na API (sem passar pelo proxy) |
-| Docker prod | build com `http://localhost:4000` (`compose.prod.yaml`) | Browser na sua máquina: front `:8080`, API `:4000` (**nginx não faz proxy de `/api`** — ver `docker/nginx.conf`) |
+| Docker prod | vazio (ou `http://localhost:4000`) (`compose.prod.yaml`) | Browser na sua máquina: front `:8080`, API `:4000` (`docker/nginx.conf` faz proxy de `/api/`, `/health` e `/ready` para `http://api:4000`) |
 
 ### Rotas da API (sempre no Express `backend/src/index.ts`)
 
@@ -123,7 +123,7 @@ Usou Render blueprint render.yaml?
 5. **Authentication** → **Providers** → **Email**:
    - Deixe habilitado para login por e-mail/senha.
    - Se quiser login imediato sem confirmar e-mail em dev: desative **Confirm email** (em produção costuma deixar ligado).
-6. **Authentication** → **Users** → use depois para criar admins ou editar **User Metadata** (`role`: `admin` | `narrator` | `player`).
+6. **Authentication** → **Users** → crie as contas e defina papéis privilegiados via `ADMIN_EMAILS` / `NARRATOR_EMAILS` (env da API) ou **`app_metadata.role`** (`admin` | `narrator` | `player`) via SQL/Admin API — nunca `user_metadata`.
 
 ### 1.1) URLs de Auth (obrigatório em produção)
 
@@ -149,8 +149,9 @@ Após migrações, confira se existem (ou foram criados automaticamente):
 
 | Bucket | Uso |
 |--------|-----|
-| `perfil` | Fotos de jogador/narrador |
-| `loja-glossario` | Imagens de loja e glossário (pastas `loja/`, `glossario/`) |
+| `perfil` | Fotos de jogador/narrador (público) |
+| `loja-glossario` | Imagens de loja e glossário (público; pastas `loja/`, `glossario/`) |
+| `revelacoes` | Arquivos privados da central de downloads — imagens e PDFs até 2 MB liberados via URL assinada temporária |
 
 Se o catálogo salva mas a imagem falha: verifique **service role** na API e permissões do bucket no painel.
 
@@ -238,7 +239,7 @@ Crie **um secret por linha**:
 
 #### Passo 5 — Verificar
 
-**Onde:** GitHub → **Actions** → clique na execução → job **db-push** deve ficar verde.
+**Onde:** GitHub → **Actions** → clique na execução → job **supabase-migrate** deve ficar verde.
 
 **Onde (banco):** Supabase → **Database** → **Migrations** ou **Table Editor**.
 
@@ -269,7 +270,7 @@ Revise o SQL novo em `supabase/migrations/`, commite e volte ao fluxo **db push*
    > **Armadilha:** se você apontar Root só para `frontend/`, a Vercel **não** enxerga `vercel.json` nem `api/` na raiz. Resultado: site sobe, **API e `/health` não existem**. Para API serverless, a raiz **precisa** ser o monorepo.
 
 3. Framework deve detectar **Vite**; confira:
-   - Build: `npm run build`
+   - Build: `npm run build:vercel`
    - Output: `frontend/dist`
 4. **Deploy** (primeira vez pode falhar login até você colocar env vars — normal).
 
@@ -422,7 +423,7 @@ Se a API estiver só no Render: `HEALTH_URL=https://beladona-api.onrender.com/he
 
 ### 6.3) Efeito colateral útil (Render free)
 
-Ping a cada 5 min mantém a API Render **acordada** com mais frequência (mas consome minutos free). Na Vercel serverless isso só valida disponibilidade.
+Ping periódico a cada 6 horas (`0 */6 * * *`) valida saúde de API/site e evita pausa do Supabase free. Na Vercel serverless isso valida disponibilidade sem acordar containers.
 
 ---
 
@@ -437,20 +438,20 @@ Fluxo: browser → `POST /api/v1/auth/login` → Supabase Auth → JWT no `Autho
 
 ### 7.2) Dar papel de narrador ou admin
 
-**Onde:** Supabase → **Authentication** → **Users** → clique no usuário → **Raw User Meta Data** (ou editar via SQL/API)
+Por segurança, a API **ignora `user_metadata.role`** (pois o próprio usuário poderia alterá-lo). Defina papéis privilegiados por uma das duas vias confiáveis:
 
-Exemplo JSON:
+1. **Variáveis de ambiente da API (recomendado):** configure `ADMIN_EMAILS=adm@seudominio.com` e `NARRATOR_EMAILS=mestre@seudominio.com` (separados por vírgula) na Vercel/Render.
+2. **`app_metadata.role` no Supabase Auth** (via SQL Editor com `auth.users.raw_app_meta_data` ou Admin API com `service_role`):
 
-```json
-{
-  "display_name": "Mestre",
-  "role": "narrator"
-}
+```sql
+update auth.users
+set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role": "narrator"}'::jsonb
+where email = 'mestre@seudominio.com';
 ```
 
 Valores aceitos pela API: `admin`, `narrator`, `player`.
 
-**Alternativa temporária (dev):** e-mails `narrador@...`, `mestre@...`, `admin@...` com `ALLOW_DEV_AUTH=true` local — **não use em produção**.
+**Alternativa temporária (dev):** e-mails `narrador@...`, `mestre@...`, `admin@...` com `ALLOW_DEV_AUTH=true` local — **nunca use em produção**.
 
 ### 7.2.1) Contas ADM e de teste da mesa (Beladona)
 
@@ -465,19 +466,11 @@ Valores aceitos pela API: `admin`, `narrator`, `player`.
 
 1. Supabase → **Authentication** → **Users** → **Add user** → **Create new user**.
 2. E-mail: um da tabela acima → senha: a que você definiu (mín. 8 caracteres no app).
-3. No mesmo usuário, em **Raw User Meta Data**, inclua:
+3. Cadastre os e-mails em `ADMIN_EMAILS` na Vercel/Render (ou atualize `raw_app_meta_data` para `{"role": "admin"}` via SQL Editor).
+4. Para a conta de **teste**, use também papel `admin` para validar painel ADM; o fluxo de **jogador** continua em `/user` com a mesma sessão.
+5. Na app: `/auth/login` (jogador) ou entrada ADM — a API lê o `role` exclusivamente de `ADMIN_EMAILS`, `NARRATOR_EMAILS` ou `app_metadata.role` (`backend/src/services/supabaseAuth.ts`).
 
-```json
-{
-  "display_name": "Mestre Beladona",
-  "role": "admin"
-}
-```
-
-4. Para a conta de **teste**, use também `"role": "admin"` para validar painel ADM; o fluxo de **jogador** continua em `/user` com a mesma sessão.
-5. Na app: `/auth/login` (jogador) ou entrada ADM — a API lê o `role` do JWT/metadata (`backend/src/services/supabaseAuth.ts`).
-
-**Local sem Supabase** (`ALLOW_DEV_AUTH=true`, sem `SUPABASE_ANON_KEY`): o login **não valida senha**; o papel vem de `devRoleForEmail` — `Adm@…` e `testeuserAdm@…` já tratados como `admin` em `backend/src/services/devAuth.ts`.
+**Local sem Supabase** (`ALLOW_DEV_AUTH=true`, sem `SUPABASE_ANON_KEY`): o login **não valida senha**; o papel vem de `devRoleForEmail` (`backend/src/services/devAuth.ts`).
 
 **Segurança:** se estas senhas foram expostas em chat ou issue, **troque-as** no Supabase (**Users** → reset password) e não as reutilize em outros serviços.
 
@@ -486,9 +479,9 @@ Valores aceitos pela API: `admin`, `narrator`, `player`.
 | Recurso | Supabase | API |
 |---------|----------|-----|
 | E-mail/senha, JWT | Auth | Rotas `/api/v1/auth/*` |
-| Tabelas de catálogo, crônica, subclasses | Postgres | Regras e imports |
-| Storage (imagens) | Buckets | Upload pela API |
-| Estado de mesa / personagens em memória | — | API (hoje) |
+| Entidades, catálogos, perfis, fichas, mesas, carteira, auditoria | Postgres (`DocumentosCampanha`, `EntidadesCronica`, tabelas relacionais) | Regras de negócio, CAS, idempotência e imports |
+| Storage (imagens e PDFs privados) | Buckets (`perfil`, `loja-glossario`, `revelacoes`) | Upload, validação *magic bytes* e URLs assinadas |
+| Cache de leitura / fallback dev | — | API (cache curto sincronizado por revisão; fallback JSON só em dev local) |
 
 ---
 
@@ -516,7 +509,7 @@ Sem `RESEND_API_KEY`, a API simplesmente não envia esses e-mails (não quebra l
 |----------|--------|----------|-----------|
 | **CI** (`ci.yml`) | Push/PR em `main` | Só p/ `supabase-migrate` | `verify`, `frontend`, `backend`, `docker-test` e `supabase-migrate` |
 | **Ops & Keepalive** (`ops.yml`) | Cron 6h | `SUPABASE_*`, `HEALTH_URL`, `READY_URL`, `SITE_URL` opcionais | Saúde + anti-pausa |
-| **Disaster Backup** (`disaster-backup.yml`) | Cron diário | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BELADONA_BACKUP_KEY` | Exportação criptografada |
+| **Disaster Backup** (`disaster-backup.yml`) | Cron diário | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BELADONA_BACKUP_KEY` | Exportação criptografada (`BLD2` scrypt + AES-256-GCM; apenas o manifesto sobe como artifact) |
 
 **Vercel:** deploy do site/API ao conectar o repo (automático via integração Git da Vercel).
 
@@ -557,22 +550,23 @@ Variáveis vêm do `.env` na raiz ou do `compose` — mesmas chaves `SUPABASE_*`
 | Cadastro “confirme o e-mail” | Confirm email ligado | Supabase Auth ou desligar confirmação em dev |
 | CORS no browser | `CORS_ORIGIN` não inclui URL do site | Vercel env (URL exata, com `https`) |
 | Migração CI falha | Secrets errados ou senha DB | GitHub Secrets + `supabase link` manual |
-| Personagens somem após restart API | Estado ainda em memória na API | Esperado hoje — ver seção 12 |
+| Personagens somem após restart API | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` ausentes ou inválidos | Conferir env vars da API e `/ready` |
 | Render API lenta no 1º acesso | Plano free dorme | Monitor/keepalive ou Vercel serverless |
 
 ---
 
-## 12) Limitações atuais (não esquecer no deploy)
+## 12) Notas operacionais importantes (não esquecer no deploy)
 
-- **JWT:** o front guarda o `accessToken` no `localStorage` (`beladona-auth`); não há refresh automático — sessão expira conforme Supabase (religar conta).
-- **Mesa / personagens / sessões:** grande parte ainda é **memória** na instância da API; restart (deploy, cold start) pode zerar estado até persistir tudo no Postgres.
-- **Dev auth:** tokens `dev-*` só com `ALLOW_DEV_AUTH=true` ou sem chaves Supabase — **proibido em produção**.
+- **JWT & Refresh:** o front renova automaticamente o `accessToken` via `POST /api/v1/auth/refresh` ao receber `401`, preservando a escolha de armazenamento (`localStorage` ou `sessionStorage`) e sincronizando logout entre abas.
+- **Persistência no Postgres:** com `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` configurados, entidades, perfis, fichas, mesas, carteira, estoque e auditoria persistem no Supabase (`DocumentosCampanha`, `EntidadesCronica` e tabelas relacionais) com controle de revisão otimista (CAS). Apenas em modo dev local sem Supabase o estado fica em `backend/data/`.
+- **Descriptografia de backup:** utilize `npm run backup:decrypt -- backups/<arquivo>.json.gz.enc backups/saida.json` com `BELADONA_BACKUP_KEY` para inspecionar ou executar *drill*/restauração manual.
+- **Dev auth:** tokens `dev-*` só com `ALLOW_DEV_AUTH=true` local sem produção/Vercel — **bloqueado automaticamente em produção**.
 ---
 
 ## 13) Checklist final (ordem sugerida)
 
 1. **Supabase:** projeto + chaves + URLs Auth (1.1) + migrações (SQL ou CI).
-2. **Storage:** buckets `perfil` e `loja-glossario` (1.2).
+2. **Storage:** buckets `perfil`, `loja-glossario` e `revelacoes` (1.2).
 3. **GitHub Secrets:** migrate + keepalive + (opcional) monitor.
 4. **Vercel:** raiz do repo + env vars + redeploy.
 5. **Testes:** `/health`, login, catálogo `/api/v1/catalog/clans`.

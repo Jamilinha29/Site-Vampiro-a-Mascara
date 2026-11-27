@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { commitDocument, documentWeight, loadDocument } from './campaignDocuments.js'
+import {
+  checkRemoteDocumentRevision,
+  commitDocument,
+  documentWeight,
+  getLoadedDocumentRevision,
+  loadDocument,
+  runExclusive,
+} from './campaignDocuments.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
 
 export type OperationEntry = {
@@ -26,6 +33,13 @@ export async function hydrateOperations() {
   const doc = await loadDocument<OperationEntry[]>('operations')
   if (!doc || documentWeight(doc.body) === 0) return
   entries.splice(0, entries.length, ...doc.body.slice(-MAX_MEM_ENTRIES))
+}
+
+export async function syncOperationsIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('operations')
+  if (remoteRev > getLoadedDocumentRevision('operations')) {
+    await hydrateOperations()
+  }
 }
 
 export function resetOperationsForTests() {
@@ -67,25 +81,11 @@ export async function persistOperationsLog(entry: OperationEntry): Promise<void>
 }
 
 export function recordOperation(input: Omit<OperationEntry, 'id' | 'at'> & { at?: string }): Promise<void> {
-  const row: OperationEntry = {
-    id: randomUUID(),
-    at: input.at ?? new Date().toISOString(),
-    email: input.email,
-    actorEmail: input.actorEmail,
-    kind: input.kind,
-    summary: input.summary,
-    sessionId: input.sessionId,
-    characterId: input.characterId,
-    entityId: input.entityId,
-    operationId: input.operationId,
-    before: input.before,
-    after: input.after,
-  }
-  entries.push(row)
-  if (entries.length > MAX_MEM_ENTRIES) entries.splice(0, entries.length - MAX_MEM_ENTRIES)
-  return persistOperationsLog(row).catch((err) => {
-    console.warn('[audit] Erro ao persistir trilha:', err instanceof Error ? err.message : err)
-  })
+  return recordOperationStrict(input)
+    .then(() => undefined)
+    .catch((err) => {
+      console.warn('[audit] Erro ao persistir trilha:', err instanceof Error ? err.message : err)
+    })
 }
 
 export async function recordOperationStrict(
@@ -105,16 +105,19 @@ export async function recordOperationStrict(
     before: input.before,
     after: input.after,
   }
-  const previous = [...entries]
-  entries.push(row)
-  if (entries.length > MAX_MEM_ENTRIES) entries.splice(0, entries.length - MAX_MEM_ENTRIES)
-  try {
-    await persistOperationsLog(row)
-    return row
-  } catch (err) {
-    entries.splice(0, entries.length, ...previous)
-    throw err
-  }
+  return runExclusive('store:operations', async () => {
+    await syncOperationsIfStale()
+    const previous = [...entries]
+    entries.push(row)
+    if (entries.length > MAX_MEM_ENTRIES) entries.splice(0, entries.length - MAX_MEM_ENTRIES)
+    try {
+      await persistOperationsLog(row)
+      return row
+    } catch (err) {
+      entries.splice(0, entries.length, ...previous)
+      throw err
+    }
+  })
 }
 
 export function listOperationsFor(

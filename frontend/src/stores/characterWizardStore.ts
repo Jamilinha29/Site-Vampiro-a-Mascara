@@ -214,7 +214,6 @@ export const useCharacterWizardStore = create<WizardState>()(
           faithPath: null,
           cathedralId: null,
           cathedralName: null,
-          concept: '',
         })
       },
       setFaithPath: (faithPath) =>

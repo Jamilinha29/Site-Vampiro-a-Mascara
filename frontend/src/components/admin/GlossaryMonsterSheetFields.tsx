@@ -1,4 +1,5 @@
 import type { ChronicleEntity } from '../../types/chronicle'
+import { defaultCreatureStats } from '../../lib/glossaryCatalog'
 
 const STAT_KEYS = [
   { key: 'for' as const, label: 'FOR' },
@@ -24,15 +25,6 @@ export type MonsterSheetForm = Pick<
   | 'creatureStats'
   | 'passiveTraits'
 >
-
-export const defaultCreatureStats = (): NonNullable<ChronicleEntity['creatureStats']> => ({
-  for: 3,
-  des: 2,
-  vig: 3,
-  int: 2,
-  sab: 2,
-  car: 1,
-})
 
 type Props = MonsterSheetForm & {
   passiveText: string

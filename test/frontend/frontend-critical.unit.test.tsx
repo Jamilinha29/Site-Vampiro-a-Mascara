@@ -6,7 +6,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '../../frontend/src/lib/queryClient'
 import { useAuthStore } from '../../frontend/src/stores/authStore'
-import { ApiError } from '../../frontend/src/services/api'
+import { api, ApiError } from '../../frontend/src/services/api'
+import { parseStatsLabel } from '../../frontend/src/lib/equipmentMods'
 import {
   MAX_CHARACTER_LEVEL,
   MIN_CHARACTER_LEVEL,
@@ -145,5 +146,86 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('parseStatsLabel uses word boundaries so furtividade does not match vida/HP and strips duration notes', () => {
+    const parsed = parseStatsLabel('+10 mana, +2 defesa (3 turnos), +1 furtividade')
+    expect(parsed.hp).toBe(0)
+    expect(parsed.mana).toBe(10)
+    expect(parsed.defense).toBe(2)
+    expect(parsed.skills.furtividade).toBe(1)
+  })
+
+  it('authStore clears in-memory session when another tab removes beladona-auth from localStorage', () => {
+    useAuthStore.getState().setSession(
+      {
+        accessToken: 'tok-tab',
+        refreshToken: 'ref-tab',
+        userId: 'u-tab',
+        email: 'tab@ci.local',
+        displayName: 'Tab',
+        role: 'player',
+      },
+      true,
+    )
+    expect(useAuthStore.getState().session?.userId).toBe('u-tab')
+
+    window.localStorage.removeItem('beladona-auth')
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'beladona-auth',
+        oldValue: '{}',
+        newValue: null,
+        storageArea: window.localStorage,
+      }),
+    )
+    expect(useAuthStore.getState().session).toBeNull()
+  })
+
+  it('api.register throws ApiError(202) when backend replies with PENDING_CONFIRMATION', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: { code: 'PENDING_CONFIRMATION', message: 'Confirme o e-mail antes de entrar.' },
+        }),
+        { status: 202, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    await expect(
+      api.register({ email: 'novo@ci.local', password: 'Password123!', displayName: 'Novo' }),
+    ).rejects.toMatchObject({
+      status: 202,
+      code: 'PENDING_CONFIRMATION',
+    })
+  })
+
+  it('CharacterInventoryPanel handles items with missing weightKg gracefully without crashing', () => {
+    render(
+      <MemoryRouter>
+        <CharacterInventoryPanel
+          character={{
+            id: 'c2',
+            name: 'Selene',
+            species: 'Mortal',
+            level: 1,
+            hp: { current: 10, max: 10 },
+            inventory: [
+              {
+                id: 'i-no-weight',
+                name: 'Anel Antigo',
+                description: 'Peso legado ausente.',
+                category: 'trinket',
+                rarity: 'incomum',
+                weightKg: undefined as unknown as number,
+              },
+            ],
+          }}
+          onChangeInventory={async () => {}}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Anel Antigo')).toBeInTheDocument()
+    expect(screen.getByText('0.0 kg')).toBeInTheDocument()
   })
 })

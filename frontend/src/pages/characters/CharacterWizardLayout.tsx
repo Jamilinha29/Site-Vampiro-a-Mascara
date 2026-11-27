@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import { STARTING_CHARACTER_XP } from '../../lib/characterAbilityRules'
 import {
   classArmorDie,
@@ -150,6 +150,7 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
   const reset = useCharacterWizardStore((s) => s.reset)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const createdIdRef = useRef<string | null>(null)
 
   const speciesLabels: Record<string, string> = {
     vampiro: 'Vampiros',
@@ -161,14 +162,27 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
   const manaValue = useCharacterWizardStore((s) => s.manaValue)
   const caValue = useCharacterWizardStore((s) => s.caValue)
   const characterClass = useCharacterWizardStore((s) => s.characterClass)
+  const socialRank = useCharacterWizardStore((s) => s.socialRank)
+  const sire = useCharacterWizardStore((s) => s.sire)
+  const otherSpeciesKind = useCharacterWizardStore((s) => s.otherSpeciesKind)
+  const otherSpeciesType = useCharacterWizardStore((s) => s.otherSpeciesType)
 
-  const resources = resolveResourceProfile(
-    species === 'vampiro' ? 'Vampiro' : species === 'mortal' ? 'Mortal' : 'Outras espécies',
-  )
+  const otherLabelForProfile = OTHER_SPECIES_OPTIONS.find((o) => o.id === otherSpeciesKind)?.label
+  const previewSpeciesFinal =
+    species === 'vampiro'
+      ? 'Vampiro'
+      : species === 'mortal'
+        ? 'Mortal'
+        : otherLabelForProfile
+          ? `Outras espécies · ${otherLabelForProfile}${otherSpeciesType ? ` (${otherSpeciesType})` : ''}`
+          : 'Outras espécies'
+
+  const resources = resolveResourceProfile(previewSpeciesFinal)
 
   const missing: string[] = []
   if (!species) missing.push('escolha a espécie')
   if (!name.trim()) missing.push('informe o nome')
+  if (socialRank === 'Nobre' && !sire.trim()) missing.push('informe o senhor/sire (etapa 02)')
   if (hpValue == null || hpValue < 1) missing.push('informe o HP rolado (etapa 04)')
   if (resources.showMana && (manaValue == null || manaValue < 1)) {
     missing.push('informe a Mana rolada (etapa 04)')
@@ -177,10 +191,7 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
   else if (caValue == null || caValue < 1) missing.push('informe a CA rolada (etapa 04)')
   if (!oathAccepted) missing.push('aceite as Seis Tradições')
 
-  useEffect(() => {
-    if (missing.length) return
-    setError(null)
-  }, [missing.length])
+  const displayedError = missing.length === 0 ? null : error
 
   const onFinish = async () => {
     if (missing.length) {
@@ -200,40 +211,46 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
         species === 'outros' && otherLabel
           ? `${speciesLabel} · ${otherLabel}${state.otherSpeciesType ? ` (${state.otherSpeciesType})` : ''}`
           : speciesLabel
+      const finalResources = resolveResourceProfile(speciesFinal)
 
       const willValue = Math.max(0, state.virtues.courage)
       const hp = Math.max(1, state.hpValue ?? 1)
       const mana = Math.max(1, state.manaValue ?? 1)
-      const created = await api.createCharacter({
-        name: name.trim(),
-        species: speciesFinal,
-        clan: state.clanName ?? undefined,
-        level: 1,
-        isPrimary: true,
-        hp: { current: hp, max: hp },
-        blood: species === 'vampiro' ? { current: 10, max: 10 } : undefined,
-        mana: resources.showMana ? { current: mana, max: mana } : undefined,
-        will:
-          species === 'mortal'
-            ? undefined
-            : { current: willValue || 0, max: Math.max(5, willValue || 5) },
-        startingXp: STARTING_CHARACTER_XP,
-        characterClass: state.characterClass,
-        vitals: {
-          hpDie: state.hpDie,
-          manaDie: resources.showMana ? state.manaDie : undefined,
-          caDie: classArmorDie(state.characterClass) ?? undefined,
-          caValue: state.caValue ?? undefined,
-          locked: true,
-        },
-        balanceStats: {
-          ...state.attributes,
-          ...state.abilities,
-          consciencia: state.virtues.conscience,
-          autocontrole: state.virtues.selfControl,
-          coragem: state.virtues.courage,
-        },
-      })
+      const createdId =
+        createdIdRef.current ??
+        (
+          await api.createCharacter({
+            name: name.trim(),
+            species: speciesFinal,
+            clan: state.clanName ?? undefined,
+            level: 1,
+            isPrimary: true,
+            hp: { current: hp, max: hp },
+            blood: finalResources.showBlood ? { current: 10, max: 10 } : undefined,
+            mana: finalResources.showMana ? { current: mana, max: mana } : undefined,
+            will:
+              finalResources.showWill
+                ? { current: willValue || 0, max: Math.max(5, willValue || 5) }
+                : undefined,
+            startingXp: STARTING_CHARACTER_XP,
+            characterClass: state.characterClass,
+            vitals: {
+              hpDie: state.hpDie,
+              manaDie: finalResources.showMana ? state.manaDie : undefined,
+              caDie: classArmorDie(state.characterClass) ?? undefined,
+              caValue: state.caValue ?? undefined,
+              locked: true,
+            },
+            balanceStats: {
+              ...state.attributes,
+              ...state.abilities,
+              consciencia: state.virtues.conscience,
+              autocontrole: state.virtues.selfControl,
+              coragem: state.virtues.courage,
+            },
+          })
+        ).id
+      createdIdRef.current = createdId
 
       let faith: string | null = null
       if (state.faithPath === 'luz' || state.faithPath === 'trevas') {
@@ -245,7 +262,7 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
         }
       }
 
-      await api.patchMeCharacter(created.id, {
+      await api.patchMeCharacter(createdId, {
         faith,
         identityPatch: {
           concept: state.concept.trim() || null,
@@ -253,17 +270,22 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
           demeanor: state.demeanor,
           house: [state.title, state.socialRank, state.characterClass].filter(Boolean).join(' · ') || null,
           residence: state.origin.trim() || null,
+          sire: state.sire.trim() || null,
+          ambition: state.ambition.trim() || null,
+          secretWeakness: state.secretWeakness.trim() || null,
+          sireRelation: state.sireRelation.trim() || null,
         },
         createdSkills: state.createdSkills,
         characterClass: state.characterClass,
         subclass: null,
       })
 
+      createdIdRef.current = null
       reset()
       void queryClient.invalidateQueries({ queryKey: ['me-profile'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       push('Personagem forjado com sucesso.', 'success')
-      navigate(`/user/characters/${created.id}`)
+      navigate(`/user/characters/${createdId}`)
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Não foi possível criar o personagem.'
       setError(message)
@@ -300,8 +322,10 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
           </button>
         )}
       </div>
-      {current?.stepId === 'review' && error ? <p className="text-right text-sm text-primary">{error}</p> : null}
-      {current?.stepId === 'review' && !error && missing.length ? (
+      {current?.stepId === 'review' && (displayedError || error) ? (
+        <p className="text-right text-sm text-primary">{displayedError ?? error}</p>
+      ) : null}
+      {current?.stepId === 'review' && !displayedError && !error && missing.length ? (
         <p className="text-right text-xs text-on-surface-variant">Para criar: {missing.join('; ')}.</p>
       ) : null}
     </div>

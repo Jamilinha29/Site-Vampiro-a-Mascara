@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ProfileMediaSettings } from '../../components/profile/ProfileMediaSettings'
 import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
+import type { UserProfile } from '../../types/profile'
 
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -13,76 +14,59 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   )
 }
 
-export default function AdminSettingsPage() {
+function AdminSettingsForm({ profile }: { profile: UserProfile }) {
   const qc = useQueryClient()
   const session = useAuthStore((s) => s.session)
   const setSession = useAuthStore((s) => s.setSession)
 
-  const { data: profile, isLoading } = useQuery({
-    queryKey: ['me-profile'],
-    queryFn: () => api.getMeProfile(),
-    enabled: !!session,
-  })
-
-  const [displayName, setDisplayName] = useState('')
-  const [handle, setHandle] = useState('')
-  const [courtTitle, setCourtTitle] = useState('')
-  const [chronicleSlogan, setChronicleSlogan] = useState('')
-  const [archiveFocus, setArchiveFocus] = useState('')
-  const [bio, setBio] = useState('')
-  const [notifySessions, setNotifySessions] = useState(true)
-  const [notifyChronicle, setNotifyChronicle] = useState(true)
-  const [message, setMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!profile) return
-    setDisplayName(profile.displayName)
-    setHandle(profile.handle)
-    const p = profile.preferences
-    setCourtTitle(p.courtTitle ?? '')
-    setChronicleSlogan(p.chronicleSlogan ?? '')
-    setArchiveFocus(p.archiveFocus ?? '')
-    setBio(p.bio ?? '')
-    setNotifySessions(p.notifySessions ?? true)
-    setNotifyChronicle(p.notifyChronicle ?? true)
-  }, [profile])
+  const p = profile.preferences
+  const [displayName, setDisplayName] = useState(profile.displayName)
+  const [handle, setHandle] = useState(profile.handle)
+  const [courtTitle, setCourtTitle] = useState(p.courtTitle ?? '')
+  const [chronicleSlogan, setChronicleSlogan] = useState(p.chronicleSlogan ?? '')
+  const [archiveFocus, setArchiveFocus] = useState(p.archiveFocus ?? '')
+  const [defaultRpgTitle, setDefaultRpgTitle] = useState(p.defaultRpgTitle ?? '')
+  const [bio, setBio] = useState(p.bio ?? '')
+  const [notifySessions, setNotifySessions] = useState(p.notifySessions ?? true)
+  const [notifyChronicle, setNotifyChronicle] = useState(p.notifyChronicle ?? true)
+  const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null)
 
   const save = useMutation({
     mutationFn: async () => {
       const accountPatch: { displayName?: string; handle?: string } = {}
-      if (displayName.trim() !== profile?.displayName) {
+      if (displayName.trim() !== profile.displayName) {
         accountPatch.displayName = displayName.trim()
       }
-      if (handle.trim() !== profile?.handle) {
+      if (handle.trim() !== profile.handle) {
         accountPatch.handle = handle.trim()
       }
       if (accountPatch.displayName !== undefined || accountPatch.handle !== undefined) {
         const updatedAccount = await api.patchMeAccount(accountPatch)
         setDisplayName(updatedAccount.displayName)
         setHandle(updatedAccount.handle)
+        if (session && updatedAccount.displayName) {
+          setSession({ ...session, displayName: updatedAccount.displayName })
+        }
       }
       await api.patchMePreferences({
         courtTitle: courtTitle.trim() || null,
         chronicleSlogan: chronicleSlogan.trim() || null,
         archiveFocus: archiveFocus.trim() || null,
+        defaultRpgTitle: defaultRpgTitle.trim() || null,
         bio: bio.trim() || null,
         notifySessions,
         notifyChronicle,
       })
     },
     onSuccess: () => {
-      setMessage('Configurações salvas.')
+      setFeedback({ text: 'Configurações salvas.', isError: false })
       void qc.invalidateQueries({ queryKey: ['me-profile'] })
-      if (session && displayName.trim()) {
-        setSession({ ...session, displayName: displayName.trim() })
-      }
     },
-    onError: (e: Error) => setMessage(e.message),
+    onError: (e: Error) => {
+      void qc.invalidateQueries({ queryKey: ['me-profile'] })
+      setFeedback({ text: e.message, isError: true })
+    },
   })
-
-  if (isLoading || !profile) {
-    return <p className="text-sm text-on-surface-variant">Carregando…</p>
-  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-10">
@@ -132,13 +116,22 @@ export default function AdminSettingsPage() {
               placeholder="Ex.: O véu entre mundos exige testemunhas."
             />
           </label>
-          <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
+          <label className="block text-xs uppercase text-on-surface-variant">
             Foco do glossário e bestiário
             <input
               className="input-feudal mt-1 pl-4"
               value={archiveFocus}
               onChange={(e) => setArchiveFocus(e.target.value)}
               placeholder="Ex.: Linhagem Toreador, cultos de sangue…"
+            />
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            RPG padrão das mesas
+            <input
+              className="input-feudal mt-1 pl-4"
+              value={defaultRpgTitle}
+              onChange={(e) => setDefaultRpgTitle(e.target.value)}
+              placeholder="Ex.: Vampiro: A Máscara — Idade das Trevas"
             />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant sm:col-span-2">
@@ -174,13 +167,45 @@ export default function AdminSettingsPage() {
         <button
           type="button"
           className="btn-primary text-xs"
-          disabled={save.isPending || displayName.trim().length < 2}
+          disabled={save.isPending || displayName.trim().length < 2 || handle.trim().length < 3}
           onClick={() => save.mutate()}
         >
           {save.isPending ? 'Salvando…' : 'Salvar configurações'}
         </button>
-        {message ? <span className="text-xs text-secondary">{message}</span> : null}
+        {feedback ? (
+          <span className={`text-xs ${feedback.isError ? 'text-primary' : 'text-secondary'}`}>{feedback.text}</span>
+        ) : null}
       </div>
     </div>
+  )
+}
+
+export default function AdminSettingsPage() {
+  const session = useAuthStore((s) => s.session)
+  const { data: profile, isLoading, isError, refetch } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api.getMeProfile(),
+    enabled: !!session,
+  })
+
+  if (isLoading) {
+    return <p className="text-sm text-on-surface-variant">Carregando…</p>
+  }
+  if (isError || !profile) {
+    return (
+      <div className="card-surface mx-auto max-w-md space-y-3 p-5">
+        <p className="text-sm text-primary">Não foi possível carregar as configurações do narrador.</p>
+        <button type="button" className="btn-secondary text-xs" onClick={() => void refetch()}>
+          Tentar novamente
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <AdminSettingsForm
+      key={`${profile.userId}:${profile.displayName}:${profile.handle}:${profile.preferences.courtTitle ?? ''}`}
+      profile={profile}
+    />
   )
 }

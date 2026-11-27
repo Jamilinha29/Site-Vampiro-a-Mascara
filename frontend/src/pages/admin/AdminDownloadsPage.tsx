@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { readProfileImageFile } from '../../lib/profileMedia'
+import { readDownloadFile } from '../../lib/profileMedia'
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { ChronicleEntity, CreateEntityPayload } from '../../types/chronicle'
 import { api } from '../../services/api'
@@ -70,17 +70,22 @@ export default function AdminDownloadsPage() {
   const publish = useMutation({
     mutationFn: (id: string) => api.adminPublishEntity(id),
     onSuccess: () => {
+      setError(null)
       void qc.invalidateQueries({ queryKey: ['admin-entities', 'download'] })
       invalidatePlayerPublishedContent(qc)
     },
+    onError: (e: Error) => setError(e.message),
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => api.adminDeleteEntity(id),
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
+      setError(null)
       void qc.invalidateQueries({ queryKey: ['admin-entities', 'download'] })
       invalidatePlayerPublishedContent(qc)
+      if (editingId === deletedId) reset()
     },
+    onError: (e: Error) => setError(e.message),
   })
 
   function submit() {
@@ -152,20 +157,24 @@ export default function AdminDownloadsPage() {
             />
           </label>
           <label className="block text-xs uppercase text-on-surface-variant">
-            Arquivo
+            Arquivo (PDF até 2 MB ou imagem)
             <input
               type="file"
+              accept="application/pdf,image/*"
               className="mt-2 block text-sm"
               onChange={async (e) => {
-                const file = e.target.files?.[0]
+                const input = e.currentTarget
+                const file = input.files?.[0]
                 if (!file) return
                 try {
-                  const dataUrl = await readProfileImageFile(file)
+                  const dataUrl = await readDownloadFile(file)
                   setFileUrl(dataUrl)
                   setFileName(file.name)
                   setError(null)
                 } catch (err) {
                   setError(err instanceof Error ? err.message : 'Falha no upload')
+                } finally {
+                  input.value = ''
                 }
               }}
             />
@@ -210,6 +219,7 @@ export default function AdminDownloadsPage() {
                       <button
                         type="button"
                         className="btn-secondary px-2 py-1 text-[10px]"
+                        disabled={publish.isPending}
                         onClick={() => publish.mutate(file.id)}
                       >
                         Publicar
@@ -218,7 +228,12 @@ export default function AdminDownloadsPage() {
                     <button
                       type="button"
                       className="text-[10px] text-on-surface-variant underline"
-                      onClick={() => remove.mutate(file.id)}
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Excluir o arquivo "${file.name}"?`)) {
+                          remove.mutate(file.id)
+                        }
+                      }}
                     >
                       Excluir
                     </button>

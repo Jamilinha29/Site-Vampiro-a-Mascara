@@ -16,26 +16,33 @@ export function parseStatsLabel(statsLabel?: string | null): EquipmentBonuses {
   const out = emptyBonuses()
   if (!statsLabel?.trim()) return out
 
-  const re = /([+-]?\d+)\s*([a-zà-úA-ZÀ-Ú_/.\s]+?)(?=,|$)/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(statsLabel)) !== null) {
-    const value = Number(m[1])
+  const cleaned = statsLabel.replace(/\([^)]*\)/g, '')
+  const segments = cleaned.split(/[,;·|]+/)
+  for (const segment of segments) {
+    const match = /^\s*([+-]?\d+)\s*([a-zà-úA-ZÀ-Ú_/.\s]+?)\s*$/i.exec(segment)
+    if (!match) continue
+    const value = Number(match[1])
     if (!Number.isFinite(value)) continue
-    const raw = m[2].trim().toLowerCase()
-    if (/^(mana|pe|energia|glamour)$/.test(raw) || raw.includes('mana')) {
+    const raw = match[2].trim().toLowerCase().replace(/\s+/g, ' ')
+    if (/^(mana|pe|energia|glamour)$/.test(raw) || /(?:^|\s)mana(?:\s|$)/.test(raw)) {
       out.mana += value
       continue
     }
-    if (/^(defesa|ca|armadura|armor|classe de armadura)$/.test(raw) || raw.includes('defesa') || raw === 'ca') {
+    if (
+      /^(defesa|ca|armadura|armor|classe de armadura)$/.test(raw) ||
+      /(?:^|\s)(defesa|ca|armadura)(?:\s|$)/.test(raw)
+    ) {
       out.defense += value
       continue
     }
-    if (/^(hp|vida|vitalidade|pv)$/.test(raw) || raw.includes('vitalidade') || raw.includes('vida')) {
+    if (
+      /^(hp|vida|vitalidade|pv)$/.test(raw) ||
+      /(?:^|\s)(hp|vida|vitalidade|pv)(?:\s|$)/.test(raw)
+    ) {
       out.hp += value
       continue
     }
-    const skillKey = raw.replace(/\s+/g, ' ').trim()
-    if (skillKey) out.skills[skillKey] = (out.skills[skillKey] ?? 0) + value
+    if (raw) out.skills[raw] = (out.skills[raw] ?? 0) + value
   }
   return out
 }

@@ -258,8 +258,8 @@
   }
 
   .auth-portal-shell {
-    min-height: 100dvh;
     min-height: 100svh;
+    min-height: 100dvh;
   }
 
   .auth-portal-compact {

@@ -42,6 +42,7 @@ type CampaignRules = {
   version: number
   maxLevel: number
   subclassLevel: number
+  secondarySubclassLevel?: number
   startingXp: number
   shopBudgetCopper: number
   updatedAt: string
@@ -77,36 +78,44 @@ type BackupReport = {
   storageNote: string
 }
 
-let refreshInFlight: Promise<string | null> | null = null
+type RefreshResult = { token: string | null; unauthorized: boolean }
+let refreshInFlight: Promise<RefreshResult> | null = null
 
-async function refreshAccessToken() {
+async function refreshAccessToken(): Promise<RefreshResult> {
   if (refreshInFlight) return refreshInFlight
-  refreshInFlight = (async () => {
+  refreshInFlight = (async (): Promise<RefreshResult> => {
     const store = useAuthStore.getState()
     const refreshToken = store.session?.refreshToken
-    if (!refreshToken || !store.session) return null
+    if (!refreshToken || !store.session) return { token: null, unauthorized: true }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
+        signal: controller.signal,
       })
       if (!res.ok) {
-        store.clearSession()
-        queryClient.clear()
-        return null
+        const unauthorized = res.status === 401 || res.status === 403
+        if (unauthorized) {
+          store.clearSession()
+          queryClient.clear()
+        }
+        return { token: null, unauthorized }
       }
       const body = (await res.json()) as { accessToken?: string; refreshToken?: string; expiresAt?: number }
-      if (!body.accessToken) return null
+      if (!body.accessToken) return { token: null, unauthorized: true }
       useAuthStore.getState().updateSession({
         accessToken: body.accessToken,
         refreshToken: body.refreshToken ?? refreshToken,
         expiresAt: body.expiresAt,
       })
-      return body.accessToken
+      return { token: body.accessToken, unauthorized: false }
     } catch {
-      return null
+      return { token: null, unauthorized: false }
     } finally {
+      clearTimeout(timeout)
       refreshInFlight = null
     }
   })()
@@ -128,7 +137,12 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   const upstreamSignal = init?.signal
   const onAbort = () => controller.abort()
-  upstreamSignal?.addEventListener('abort', onAbort, { once: true })
+  if (upstreamSignal?.aborted) {
+    clearTimeout(timeout)
+    controller.abort()
+  } else {
+    upstreamSignal?.addEventListener('abort', onAbort, { once: true })
+  }
 
   let res: Response
   try {
@@ -153,9 +167,15 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
   }
 
   if (res.status === 401 && !retried && !path.startsWith('/api/v1/auth/')) {
+    const latestAccess = useAuthStore.getState().session?.accessToken
+    if (latestAccess && latestAccess !== access) {
+      return request<T>(path, init, true)
+    }
     const renewed = await refreshAccessToken()
-    if (renewed) return request<T>(path, init, true)
-    useAuthStore.getState().clearSession()
+    if (renewed.token) return request<T>(path, init, true)
+    if (renewed.unauthorized) {
+      useAuthStore.getState().clearSession()
+    }
   }
 
   if (!res.ok) {
@@ -187,7 +207,16 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
   if (!contentType.includes('application/json')) {
     throw new ApiError(502, 'Resposta inesperada do servidor.', { code: 'INVALID_RESPONSE' })
   }
-  return res.json() as Promise<T>
+  const parsed = (await res.json()) as T & {
+    error?: { code?: string; message?: string; details?: unknown }
+  }
+  if (res.status === 202 && parsed && typeof parsed === 'object' && 'error' in parsed && parsed.error?.message) {
+    throw new ApiError(202, parsed.error.message, {
+      code: parsed.error.code,
+      details: parsed.error.details,
+    })
+  }
+  return parsed
 }
 
 export const api = {
@@ -292,7 +321,18 @@ export const api = {
       }>
     >('/api/v1/admin/chronicle/character-reviews'),
   adminListCharacterRevisions: (email: string, characterId: string) =>
-    request<Array<{ id: string; reason: string; createdAt: string; level: number; sheetRevision: number }>>(
+    request<
+      Array<{
+        id: string
+        characterId: string
+        profileEmail: string
+        revision: number
+        reason: string
+        actorEmail: string
+        createdAt: string
+        snapshot: { level?: number; name?: string; sheetRevision?: number }
+      }>
+    >(
       `/api/v1/admin/chronicle/characters/${encodeURIComponent(email)}/${encodeURIComponent(characterId)}/revisions`,
     ),
   adminRestoreCharacterRevision: (
@@ -450,6 +490,10 @@ export const api = {
         demeanor: string | null
         concept: string | null
         residence: string | null
+        sire: string | null
+        ambition: string | null
+        secretWeakness: string | null
+        sireRelation: string | null
       }>
       inventory?: import('../types/profile').CharacterInventoryItem[]
       createdSkills?: import('../types/profile').CreatedSkill[]
@@ -537,56 +581,56 @@ export const api = {
   getNews: () => request<NewsPost[]>('/api/v1/news'),
 
   adminListEntities: (kind: import('../types/chronicle').EntityKind) =>
-    request<import('../types/chronicle').ChronicleEntity[]>(`/api/v1/admin/chronicle/entities?kind=${kind}`),
+    request<import('../types/chronicle').ChronicleEntity[]>(`/api/v1/admin/chronicle/entities?kind=${encodeURIComponent(kind)}`),
   adminCreateEntity: (body: import('../types/chronicle').CreateEntityPayload) =>
     request<import('../types/chronicle').ChronicleEntity>('/api/v1/admin/chronicle/entities', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
   adminUpdateEntity: (id: string, body: Partial<import('../types/chronicle').CreateEntityPayload>) =>
-    request<import('../types/chronicle').ChronicleEntity>(`/api/v1/admin/chronicle/entities/${id}`, {
+    request<import('../types/chronicle').ChronicleEntity>(`/api/v1/admin/chronicle/entities/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
   adminPublishEntity: (id: string) =>
-    request<import('../types/chronicle').ChronicleEntity>(`/api/v1/admin/chronicle/entities/${id}/publish`, {
+    request<import('../types/chronicle').ChronicleEntity>(`/api/v1/admin/chronicle/entities/${encodeURIComponent(id)}/publish`, {
       method: 'POST',
     }),
   adminDeleteEntity: (id: string) =>
-    request<void>(`/api/v1/admin/chronicle/entities/${id}`, { method: 'DELETE' }),
+    request<void>(`/api/v1/admin/chronicle/entities/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   adminOpenScheduledSession: (sessionId: string) =>
     request<import('../types/chronicle').ScheduledSession>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/open`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/open`,
       { method: 'POST' },
     ),
   adminCloseScheduledSession: (sessionId: string) =>
     request<import('../types/chronicle').ScheduledSession>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/close`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/close`,
       { method: 'POST' },
     ),
   adminDeleteScheduledSession: (sessionId: string) =>
-    request<void>(`/api/v1/admin/chronicle/scheduled-sessions/${sessionId}`, { method: 'DELETE' }),
+    request<void>(`/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
   adminRescheduleScheduledSession: (sessionId: string) =>
     request<import('../types/chronicle').ScheduledSession>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/reschedule`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/reschedule`,
       { method: 'POST' },
     ),
   confirmSessionPresence: (sessionId: string) =>
-    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${sessionId}/presence`, {
+    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}/presence`, {
       method: 'POST',
     }),
   joinSessionWithCode: (sessionId: string, body: { accessCode: string; characterId: string }) =>
-    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${sessionId}/join`, {
+    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}/join`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
   leaveSession: (sessionId: string) =>
-    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${sessionId}/leave`, {
+    request<import('../types/chronicle').ScheduledSession>(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}/leave`, {
       method: 'POST',
     }),
   replaceSessionCharacter: (sessionId: string, characterId: string) =>
     request<import('../types/chronicle').ScheduledSession>(
-      `/api/v1/me/sessions/${sessionId}/replace-character`,
+      `/api/v1/me/sessions/${encodeURIComponent(sessionId)}/replace-character`,
       { method: 'POST', body: JSON.stringify({ characterId }) },
     ),
   adminListHandouts: () => request<import('../types/chronicle').SessionHandout[]>('/api/v1/admin/chronicle/handouts'),
@@ -596,7 +640,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   adminPatchHandout: (id: string, body: Partial<import('../types/chronicle').SessionHandout>) =>
-    request<import('../types/chronicle').SessionHandout>(`/api/v1/admin/chronicle/handouts/${id}`, {
+    request<import('../types/chronicle').SessionHandout>(`/api/v1/admin/chronicle/handouts/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
@@ -632,21 +676,21 @@ export const api = {
     }>,
   ) =>
     request<import('../types/chronicle').ScheduledSession>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}`,
       { method: 'PATCH', body: JSON.stringify(body) },
     ),
   adminGetMesaHandout: (sessionId: string) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/handout`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/handout`,
     ),
   adminPatchMesaHandoutNarrative: (sessionId: string, narrativeSummary: string) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/handout/narrative`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/handout/narrative`,
       { method: 'PATCH', body: JSON.stringify({ narrativeSummary }) },
     ),
   adminAddSceneThreat: (sessionId: string, entityId: string) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/scene-threats`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/scene-threats`,
       { method: 'POST', body: JSON.stringify({ entityId }) },
     ),
   adminApplySceneThreatDelta: (
@@ -655,22 +699,22 @@ export const api = {
     body: { hpDelta?: number; manaDelta?: number },
   ) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/scene-threats/${threatId}`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/scene-threats/${encodeURIComponent(threatId)}`,
       { method: 'PATCH', body: JSON.stringify(body) },
     ),
   adminRemoveSceneThreat: (sessionId: string, threatId: string) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/scene-threats/${threatId}`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/scene-threats/${encodeURIComponent(threatId)}`,
       { method: 'DELETE' },
     ),
   adminAddSceneNpc: (sessionId: string, entityId: string) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/scene-npcs`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/scene-npcs`,
       { method: 'POST', body: JSON.stringify({ entityId }) },
     ),
   adminRemoveSceneNpc: (sessionId: string, npcId: string) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/scene-npcs/${npcId}`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/scene-npcs/${encodeURIComponent(npcId)}`,
       { method: 'DELETE' },
     ),
   adminPatchMesaAmbience: (
@@ -678,12 +722,12 @@ export const api = {
     body: Partial<import('../types/chronicle').ChronicleAmbience>,
   ) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/handout/ambience`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/handout/ambience`,
       { method: 'PATCH', body: JSON.stringify(body) },
     ),
   adminSetMesaRestMode: (sessionId: string, restMode: boolean) =>
     request<import('../types/chronicle').SessionHandout>(
-      `/api/v1/admin/chronicle/scheduled-sessions/${sessionId}/handout/rest-mode`,
+      `/api/v1/admin/chronicle/scheduled-sessions/${encodeURIComponent(sessionId)}/handout/rest-mode`,
       { method: 'PATCH', body: JSON.stringify({ restMode }) },
     ),
   adminSessionLineSeries: () => request<{ label: string; count: number }[]>('/api/v1/admin/chronicle/analytics/session-line'),
@@ -727,17 +771,17 @@ export const api = {
       rolls: Array<{ id: string; at: string; characterName: string; formula: string; total: number; secret: boolean }>
     }>(`/api/v1/content/sessions/${encodeURIComponent(sessionId)}/live-state`),
   getSessionSceneThreats: (sessionId: string) =>
-    request<import('../types/chronicle').SceneThreat[]>(`/api/v1/content/sessions/${sessionId}/scene-threats`),
+    request<import('../types/chronicle').SceneThreat[]>(`/api/v1/content/sessions/${encodeURIComponent(sessionId)}/scene-threats`),
   getSessionLiveBrief: (sessionId: string) =>
     request<{
       narrativeSummary: string
       restMode: boolean
       chronicleAmbience: import('../types/chronicle').ChronicleAmbience
       sceneNpcs: Array<{ id: string; name: string; description: string }>
-    }>(`/api/v1/content/sessions/${sessionId}/live-brief`),
+    }>(`/api/v1/content/sessions/${encodeURIComponent(sessionId)}/live-brief`),
   getSessionMyBag: (sessionId: string) =>
     request<{ rewards: import('../types/chronicle').HandoutReward[] }>(
-      `/api/v1/content/sessions/${sessionId}/my-bag`,
+      `/api/v1/content/sessions/${encodeURIComponent(sessionId)}/my-bag`,
     ),
   getSessionActSummary: (sessionId: string) =>
     request<{
@@ -746,7 +790,7 @@ export const api = {
       narrativeSummary: string
       closedAt?: string
       published: boolean
-    }>(`/api/v1/content/sessions/${sessionId}/act-summary`),
+    }>(`/api/v1/content/sessions/${encodeURIComponent(sessionId)}/act-summary`),
   getSessionActCanon: (sessionId: string) =>
     request<{
       sessionId: string
@@ -757,7 +801,7 @@ export const api = {
       missions: import('../types/chronicle').SessionHandout['missions']
       monstersSlain: import('../types/chronicle').SessionHandout['monstersSlain']
       participants: Array<{ displayName: string; characterName: string }>
-    }>(`/api/v1/content/sessions/${sessionId}/act-canon`),
+    }>(`/api/v1/content/sessions/${encodeURIComponent(sessionId)}/act-canon`),
 
   getAchievementMural: () =>
     request<

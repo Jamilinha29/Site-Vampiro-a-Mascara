@@ -61,44 +61,52 @@ export function CreatedSkillsPanel({ skills, onChange, busy, onUse, compact }: P
   async function save() {
     if (!draft.name.trim()) return
     const manaCost = Math.max(0, Math.floor(Number(draft.manaCost) || 0))
-    if (creating) {
-      const next: CreatedSkill = {
-        id: crypto.randomUUID(),
-        name: draft.name.trim(),
-        die: draft.die,
-        attribute: draft.attribute,
-        attributeMod: draft.attributeMod,
-        howItWorks: draft.howItWorks.trim(),
-        manaCost,
+    try {
+      if (creating) {
+        const next: CreatedSkill = {
+          id: crypto.randomUUID(),
+          name: draft.name.trim(),
+          die: draft.die,
+          attribute: draft.attribute,
+          attributeMod: draft.attributeMod,
+          howItWorks: draft.howItWorks.trim(),
+          manaCost,
+        }
+        await onChange([...skills, next])
+      } else if (editingId) {
+        await onChange(
+          skills.map((s) =>
+            s.id === editingId
+              ? {
+                  ...s,
+                  name: draft.name.trim(),
+                  die: draft.die,
+                  attribute: draft.attribute,
+                  attributeMod: draft.attributeMod,
+                  howItWorks: draft.howItWorks.trim(),
+                  manaCost,
+                }
+              : s,
+          ),
+        )
       }
-      await onChange([...skills, next])
-    } else if (editingId) {
-      await onChange(
-        skills.map((s) =>
-          s.id === editingId
-            ? {
-                ...s,
-                name: draft.name.trim(),
-                die: draft.die,
-                attribute: draft.attribute,
-                attributeMod: draft.attributeMod,
-                howItWorks: draft.howItWorks.trim(),
-                manaCost,
-              }
-            : s,
-        ),
-      )
+      setCreating(false)
+      setEditingId(null)
+      setDraft(emptyDraft())
+    } catch {
+      // Mantém rascunho aberto para o jogador não perder o que digitou; o chamador exibe o erro.
     }
-    setCreating(false)
-    setEditingId(null)
-    setDraft(emptyDraft())
   }
 
   async function remove(id: string) {
-    await onChange(skills.filter((s) => s.id !== id))
-    if (editingId === id) {
-      setEditingId(null)
-      setDraft(emptyDraft())
+    try {
+      await onChange(skills.filter((s) => s.id !== id))
+      if (editingId === id) {
+        setEditingId(null)
+        setDraft(emptyDraft())
+      }
+    } catch {
+      // O chamador exibe o erro.
     }
   }
 

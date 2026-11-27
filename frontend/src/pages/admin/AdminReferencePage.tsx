@@ -22,55 +22,69 @@ type Draft = {
 const emptyDraft = (): Draft => ({ name: '', description: '', className: '', faithPath: '' })
 
 function parseCsv(text: string): string[][] {
-  return text
+  const lines = text
     .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      const cells: string[] = []
-      let current = ''
-      let quoted = false
-      for (const char of line) {
-        if (char === '"') {
-          quoted = !quoted
+  if (!lines.length) return []
+  const sample = lines[0]
+  const delimiter = (sample.match(/;/g)?.length ?? 0) > (sample.match(/,/g)?.length ?? 0) ? ';' : ','
+  return lines.map((line) => {
+    const cells: string[] = []
+    let current = ''
+    let quoted = false
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i]
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') {
+          current += '"'
+          i += 1
           continue
         }
-        if (char === ',' && !quoted) {
-          cells.push(current.trim())
-          current = ''
-          continue
-        }
-        current += char
+        quoted = !quoted
+        continue
       }
-      cells.push(current.trim())
-      return cells
-    })
+      if (char === delimiter && !quoted) {
+        cells.push(current.trim())
+        current = ''
+        continue
+      }
+      current += char
+    }
+    cells.push(current.trim())
+    return cells
+  })
 }
 
 function rowsFromCsv(kindExtra: 'faith' | 'class' | 'none', text: string): Draft[] {
   const table = parseCsv(text)
   if (!table.length) return []
   const header = table[0].map((cell) => cell.toLowerCase())
-  const start = header.some((cell) => cell === 'name' || cell === 'tipo' || cell === 'nome') ? 1 : 0
+  const start = header.some((cell) => ['name', 'tipo', 'nome', 'class_name', 'classe'].includes(cell)) ? 1 : 0
   const index = (labels: string[]) => header.findIndex((cell) => labels.includes(cell))
-  const nameAt = start === 0 ? 0 : index(['name', 'nome', 'tipo'])
-  const descriptionAt = start === 0 ? 1 : index(['description', 'descricao', 'descrição'])
-  const classAt = index(['class_name', 'classe'])
+  const nameAt =
+    start === 0 ? (kindExtra === 'class' ? 1 : 0) : index(['name', 'nome', 'tipo'])
+  const descriptionAt =
+    start === 0 ? (kindExtra === 'class' ? 2 : 1) : index(['description', 'descricao', 'descrição'])
+  const classAt = start === 0 ? (kindExtra === 'class' ? 0 : -1) : index(['class_name', 'classe'])
   const pathAt = index(['faith_path', 'caminho', 'path'])
-  return table.slice(start).flatMap((cells) => {
-    const name = cells[nameAt] ?? ''
-    if (!name) return []
-    const path = (cells[pathAt] ?? '').toLowerCase()
-    return [
-      {
-        name,
-        description: cells[descriptionAt] ?? '',
-        className: cells[classAt] ?? '',
-        faithPath: path === 'luz' || path === 'trevas' ? path : '',
-      } satisfies Draft,
-    ]
-  }).filter((row) => (kindExtra === 'class' ? row.className : true))
+  return table
+    .slice(start)
+    .flatMap((cells) => {
+      const name = (nameAt >= 0 ? cells[nameAt] : '') ?? ''
+      if (!name) return []
+      const path = (pathAt >= 0 ? cells[pathAt] : '').toLowerCase()
+      return [
+        {
+          name,
+          description: (descriptionAt >= 0 ? cells[descriptionAt] : '') ?? '',
+          className: (classAt >= 0 ? cells[classAt] : '') ?? '',
+          faithPath: path === 'luz' || path === 'trevas' ? path : '',
+        } satisfies Draft,
+      ]
+    })
+    .filter((row) => (kindExtra === 'class' ? row.className : true))
 }
 
 export default function AdminReferencePage() {
@@ -455,7 +469,11 @@ export default function AdminReferencePage() {
                         <button
                           type="button"
                           className="btn-primary text-xs"
-                          disabled={saveSaved.isPending || !savedDraft.name.trim()}
+                          disabled={
+                            saveSaved.isPending ||
+                            !savedDraft.name.trim() ||
+                            (meta.extra === 'class' && !savedDraft.className.trim())
+                          }
                           onClick={() => saveSaved.mutate(row)}
                         >
                           Salvar

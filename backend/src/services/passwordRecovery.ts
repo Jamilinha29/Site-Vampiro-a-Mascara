@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-import { isSupabaseAuthConfigured } from './supabaseAuth.js'
+import { getSupabaseAnonClient, isSupabaseAuthConfigured } from './supabaseAuth.js'
 import { getSupabaseAdmin } from './supabaseClient.js'
 
 export const RECOVERY_PUBLIC_MESSAGE =
@@ -10,6 +9,23 @@ function appOrigin() {
   if (explicit) return explicit.replace(/\/$/, '')
   const cors = process.env.CORS_ORIGIN?.split(',')[0]?.trim()
   return (cors || 'http://localhost:5173').replace(/\/$/, '')
+}
+
+/** Verifica se o JWT possui método de autenticação `recovery` em `amr` (impede uso de access_token comum). */
+export function hasRecoveryAmrClaim(jwt: string): boolean {
+  const parts = jwt.split('.')
+  if (parts.length !== 3) return false
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
+      amr?: Array<string | { method?: string }>
+    }
+    if (!Array.isArray(payload.amr)) return false
+    return payload.amr.some((entry) =>
+      typeof entry === 'string' ? entry === 'recovery' : entry?.method === 'recovery',
+    )
+  } catch {
+    return false
+  }
 }
 
 export function getRecoveryCapabilities() {
@@ -30,10 +46,8 @@ export function getRecoveryCapabilities() {
  */
 export async function requestPasswordRecovery(email: string) {
   if (process.env.NODE_ENV === 'test') return
-  if (!isSupabaseAuthConfigured()) return
-  const url = process.env.SUPABASE_URL!.trim()
-  const anon = process.env.SUPABASE_ANON_KEY!.trim()
-  const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } })
+  const sb = getSupabaseAnonClient()
+  if (!sb) return
   const redirectTo = `${appOrigin()}/auth/recover`
   const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo })
   if (error) {
@@ -42,7 +56,7 @@ export async function requestPasswordRecovery(email: string) {
 }
 
 /**
- * Conclui a redefinição validando o token de recuperação emitido pelo Supabase Auth.
+ * Conclui a redefinição validando estritamente um token de recuperação emitido pelo Supabase Auth.
  * Sobrevive a reinícios do servidor e múltiplas instâncias (sem Map local).
  */
 export async function confirmPasswordRecovery(
@@ -50,15 +64,13 @@ export async function confirmPasswordRecovery(
   password: string,
   options?: { type?: 'token' | 'token_hash' },
 ) {
-  if (!isSupabaseAuthConfigured()) {
+  const sb = getSupabaseAnonClient()
+  if (!sb || !isSupabaseAuthConfigured()) {
     return {
       ok: false as const,
       message: 'A troca de selo exige Supabase Auth configurado neste servidor.',
     }
   }
-  const url = process.env.SUPABASE_URL!.trim()
-  const anon = process.env.SUPABASE_ANON_KEY!.trim()
-  const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } })
 
   if (options?.type === 'token_hash') {
     const { data, error } = await sb.auth.verifyOtp({
@@ -79,7 +91,10 @@ export async function confirmPasswordRecovery(
     return { ok: true as const }
   }
 
-  // Valida access token da sessão de recuperação emitida pelo Supabase Auth
+  // Aceita apenas JWT de sessão originada em fluxo de recuperação (amr inclui "recovery")
+  if (!hasRecoveryAmrClaim(tokenOrHash)) {
+    return { ok: false as const, message: 'Este caminho expirou ou já foi usado. Peça outro corvo.' }
+  }
   const { data, error } = await sb.auth.getUser(tokenOrHash)
   if (error || !data.user?.id) {
     return { ok: false as const, message: 'Este caminho expirou ou já foi usado. Peça outro corvo.' }

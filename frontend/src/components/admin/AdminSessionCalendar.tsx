@@ -17,9 +17,18 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
-export function AdminSessionCalendar({ sessions, month: initialMonth = new Date() }: Props) {
-  const [viewMonth, setViewMonth] = useState(() => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1))
-  const today = useMemo(() => new Date(), [])
+function dayBadgeClass(isToday: boolean, hasSessions: boolean) {
+  if (isToday) return 'bg-success text-white shadow-sm'
+  if (hasSessions) return 'text-on-surface ring-1 ring-secondary/45 ring-inset'
+  return 'text-on-surface hover:bg-surface-container/80'
+}
+
+export function AdminSessionCalendar({ sessions, month: initialMonth }: Props) {
+  const [today] = useState(() => new Date())
+  const [viewMonth, setViewMonth] = useState(() => {
+    const base = initialMonth ?? new Date()
+    return new Date(base.getFullYear(), base.getMonth(), 1)
+  })
 
   const year = viewMonth.getFullYear()
   const monthIndex = viewMonth.getMonth()
@@ -39,9 +48,15 @@ export function AdminSessionCalendar({ sessions, month: initialMonth = new Date(
     return map
   }, [sessions, year, monthIndex])
 
-  const cells: (number | null)[] = [
-    ...Array.from({ length: startPad }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  const cells: Array<{ key: string; day: number | null }> = [
+    ...Array.from({ length: startPad }, (_, offset) => ({
+      key: `empty-${year}-${monthIndex}-${offset}`,
+      day: null,
+    })),
+    ...Array.from({ length: daysInMonth }, (_, offset) => ({
+      key: `day-${year}-${monthIndex}-${offset + 1}`,
+      day: offset + 1,
+    })),
   ]
 
   const monthTitle = viewMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
@@ -82,9 +97,9 @@ export function AdminSessionCalendar({ sessions, month: initialMonth = new Date(
           </span>
         ))}
 
-        {cells.map((day, i) => {
+        {cells.map(({ key, day }) => {
           if (day === null) {
-            return <span key={`empty-${i}`} className="aspect-square" aria-hidden />
+            return <span key={key} className="aspect-square" aria-hidden="true" />
           }
 
           const list = byDay.get(day) ?? []
@@ -93,23 +108,22 @@ export function AdminSessionCalendar({ sessions, month: initialMonth = new Date(
           const titles = list.map((s) => s.title).join(' · ')
 
           return (
-            <div key={day} className="flex aspect-square items-center justify-center">
+            <div key={key} className="flex aspect-square items-center justify-center">
               <span
-                className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium tabular-nums transition ${
-                  isToday
-                    ? 'bg-success text-white shadow-sm'
-                    : list.length
-                      ? 'text-on-surface ring-1 ring-secondary/45 ring-inset'
-                      : 'text-on-surface hover:bg-surface-container/80'
-                }`}
+                className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium tabular-nums transition ${dayBadgeClass(isToday, list.length > 0)}`}
                 title={titles || undefined}
               >
                 {day}
                 {list.length > 0 && !isToday ? (
-                  <span
-                    className="absolute bottom-1 h-1 w-1 rounded-full bg-secondary"
-                    aria-label={`${list.length} sessão(ões)`}
-                  />
+                  <>
+                    <span
+                      className="absolute bottom-1 h-1 w-1 rounded-full bg-secondary"
+                      aria-hidden="true"
+                    />
+                    <span className="sr-only">
+                      {` — ${list.length} ${list.length === 1 ? 'sessão' : 'sessões'}`}
+                    </span>
+                  </>
                 ) : null}
               </span>
             </div>
@@ -117,7 +131,7 @@ export function AdminSessionCalendar({ sessions, month: initialMonth = new Date(
         })}
       </div>
 
-      {sessions.length === 0 ? (
+      {byDay.size === 0 ? (
         <p className="mt-3 border-t border-outline-variant/30 pt-2 text-[10px] leading-snug text-on-surface-variant">
           Nenhuma sessão marcada neste mês.
         </p>

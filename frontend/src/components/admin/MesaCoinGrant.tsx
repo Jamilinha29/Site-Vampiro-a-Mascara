@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type CoinCode } from '../../services/api'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 
 const COINS: { id: CoinCode; label: string }[] = [
   { id: 'gold', label: 'Ouro' },

@@ -5,15 +5,16 @@
 - Por isso, a resiliência de dados combina:
   1. **Versionamento transacional no banco:** colunas `revision` em `DocumentosCampanha` (optimistic locking via `beladona_upsert_campaign_document`) e `sheet_revision` em `Personagens`.
   2. **Histórico de revisões por personagem:** snapshots automáticos gravados em `RevisoesPersonagem` antes de alterações e restauração segura com modo prévia (`dryRun`) e confirmação explícita em `/api/v1/admin/chronicle/characters/:email/:characterId/restore-revision`.
-  3. **Exportação externa criptografada:** `scripts/backup-disaster.mjs` (AES-256-GCM + gzip + SHA-256) e workflow diário `.github/workflows/disaster-backup.yml`.
+  3. **Exportação externa criptografada:** `scripts/backup-disaster.mjs` (`BLD2`: `scrypt` + salt aleatório + `AES-256-GCM` + gzip + `SHA-256`) e workflow diário `.github/workflows/disaster-backup.yml` (que publica apenas o manifesto como artifact, sem expor o dump criptografado).
 
-## Procedimento de Exportação Manual
+## Procedimento de Exportação e Descriptografia Manual
 ```bash
 SUPABASE_URL=... SUPABASE_SECRET_KEY=... BELADONA_BACKUP_KEY=... npm run backup:export
 npm run backup:check
+BELADONA_BACKUP_KEY=... npm run backup:decrypt -- backups/<arquivo>.json.gz.enc backups/saida.json
 ```
 - Nunca comite backups descriptografados ou chaves (`.env`, `backups/`, `*.dump`, `*.sql.gz`, `*.enc`) — bloqueado por `.gitignore` e `scripts/verify-git-clean.js`.
-- Para habilitar envio off-site completo no GitHub Actions, configure os segredos `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BELADONA_BACKUP_KEY` e `BELADONA_EXTERNAL_BACKUP_TARGET`. Enquanto não configurados, o status permanece `pending_external_destination`.
+- Para habilitar a exportação diária no GitHub Actions (`.github/workflows/disaster-backup.yml`), configure os segredos `SUPABASE_URL`, `SUPABASE_SECRET_KEY` e `BELADONA_BACKUP_KEY`. Quando um destino externo (ex.: S3/R2/B2) for adicionado ao workflow, defina também `BELADONA_EXTERNAL_BACKUP_TARGET`; enquanto não houver envio externo, o status no manifesto permanece `pending_external_destination`.
 
 ## Procedimento de Restore Drill (Trimestral)
 1. Validar integridade estrutural sem sobrescrever a campanha via endpoint `POST /api/v1/admin/chronicle/backup/drill`.

@@ -74,7 +74,7 @@ export default function DashboardPage() {
           </h1>
           <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-on-surface-variant">
             <span>
-              Narrador · <span className="text-on-surface">{session?.displayName ?? '—'}</span>
+              Jogador · <span className="text-on-surface">{session?.displayName ?? '—'}</span>
             </span>
             {data.nextSession ? (
               <span>

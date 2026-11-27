@@ -13,9 +13,16 @@ import {
 import { runIdempotent } from './idempotencyStore.js'
 import { grantEntityToCharacter } from './itemGrant.js'
 import { recordOperationStrict } from './operationLog.js'
-import { getCharacter, getProfile, replaceProfiles } from './profileStore.js'
+import { getCharacter, getProfile, restoreSingleProfile } from './profileStore.js'
 import { readRules } from './rulesState.js'
-import { purchaseItem, remainingStock, restoreShopSnapshot, snapshotShopState, syncShopIfStale } from './shopStore.js'
+import {
+  purchaseItem,
+  remainingStock,
+  restoreShopSnapshot,
+  restoreShopSnapshotDurable,
+  snapshotShopState,
+  syncShopIfStale,
+} from './shopStore.js'
 
 export type PurchaseBody = {
   remaining: number | null
@@ -116,6 +123,8 @@ async function executeAtomicBuy(input: {
   const courtBackup = snapshotCourtState()
   const shopBackup = snapshotShopState()
   const profileBackup = getProfile(email) ? (JSON.parse(JSON.stringify(getProfile(email))) as NonNullable<ReturnType<typeof getProfile>>) : null
+  let shopCommitted = false
+  let profileDelivered = false
 
   try {
     // 1) Pré-valida e debita moedas em memória
@@ -134,13 +143,15 @@ async function executeAtomicBuy(input: {
       restoreShopSnapshot(shopBackup)
       return fail(409, 'OUT_OF_STOCK', result.error)
     }
+    shopCommitted = true
 
     const delivered = await grantEntityToCharacter(email, seat.characterId, result.entity, quantity)
     if (!delivered) {
       restoreCourtSnapshot(courtBackup)
-      restoreShopSnapshot(shopBackup)
+      await restoreShopSnapshotDurable(shopBackup).catch(() => restoreShopSnapshot(shopBackup))
       return fail(500, 'DELIVERY_FAILED', 'Não foi possível entregar o item. Nada foi cobrado.')
     }
+    profileDelivered = true
 
     // 3) Consolida carteira/extrato e trilha de auditoria no banco
     if (totalCopper > 0) {
@@ -167,9 +178,13 @@ async function executeAtomicBuy(input: {
     }
   } catch (err) {
     restoreCourtSnapshot(courtBackup)
-    restoreShopSnapshot(shopBackup)
-    if (profileBackup) {
-      await replaceProfiles([profileBackup]).catch(() => undefined)
+    if (shopCommitted) {
+      await restoreShopSnapshotDurable(shopBackup).catch(() => restoreShopSnapshot(shopBackup))
+    } else {
+      restoreShopSnapshot(shopBackup)
+    }
+    if (profileDelivered && profileBackup) {
+      await restoreSingleProfile(profileBackup).catch(() => undefined)
     }
     throw err
   }

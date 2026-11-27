@@ -219,7 +219,7 @@ export type CreateEntityPayload = {
   threatLevel?: ChronicleEntity['threatLevel']
   rarity?: ChronicleEntity['rarity']
   weightKg?: number
-  imageUrl?: string
+  imageUrl?: string | null
   hpMax?: number
   manaMax?: number
   location?: string

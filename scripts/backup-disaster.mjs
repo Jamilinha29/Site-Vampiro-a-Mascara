@@ -38,6 +38,7 @@ const TABLES = [
 ]
 
 const BUCKETS = ['perfil', 'loja-glossario', 'revelacoes']
+const PAGE_SIZE = 1000
 
 function resolveBackupDir() {
   return path.resolve(process.env.BELADONA_BACKUP_DIR || path.join(process.cwd(), 'backups'))
@@ -50,13 +51,95 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
 }
 
+/** BLD2: cabeçalho + salt (16B) + IV (12B) + authTag (16B) + ciphertext (chave derivada via scrypt). */
 function encryptPayload(plainGz, secret) {
-  const key = crypto.createHash('sha256').update(secret).digest()
+  const salt = crypto.randomBytes(16)
+  const key = crypto.scryptSync(secret, salt, 32, { N: 16384, r: 8, p: 1 })
   const iv = crypto.randomBytes(12)
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
   const enc = Buffer.concat([cipher.update(plainGz), cipher.final()])
   const tag = cipher.getAuthTag()
-  return Buffer.concat([Buffer.from('BLD1'), iv, tag, enc])
+  return Buffer.concat([Buffer.from('BLD2'), salt, iv, tag, enc])
+}
+
+/** Descriptografa tanto BLD2 (scrypt + salt) quanto legado BLD1 (sha256). */
+function decryptPayload(raw, secret) {
+  const magic = raw.subarray(0, 4).toString('ascii')
+  if (magic === 'BLD2') {
+    const salt = raw.subarray(4, 20)
+    const iv = raw.subarray(20, 32)
+    const tag = raw.subarray(32, 48)
+    const enc = raw.subarray(48)
+    const key = crypto.scryptSync(secret, salt, 32, { N: 16384, r: 8, p: 1 })
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    return Buffer.concat([decipher.update(enc), decipher.final()])
+  }
+  if (magic === 'BLD1') {
+    const iv = raw.subarray(4, 16)
+    const tag = raw.subarray(16, 32)
+    const enc = raw.subarray(32)
+    const key = crypto.createHash('sha256').update(secret).digest()
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    return Buffer.concat([decipher.update(enc), decipher.final()])
+  }
+  throw new Error(`Cabeçalho de backup não reconhecido: ${magic}`)
+}
+
+async function fetchAllRows(sb, table) {
+  const rows = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await sb.from(table).select('*').range(from, from + PAGE_SIZE - 1)
+    if (error) {
+      if (/does not exist|schema cache/i.test(error.message)) {
+        console.warn(`[backup] Tabela ausente/ignorada: ${table}`)
+        return []
+      }
+      throw new Error(`Falha ao exportar tabela ${table}: ${error.message}`)
+    }
+    const batch = data ?? []
+    rows.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+  }
+  return rows
+}
+
+async function listStorageRecursive(sb, bucket, prefix = '', depth = 0) {
+  if (depth > 4) return []
+  const files = []
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb.storage.from(bucket).list(prefix, { limit: PAGE_SIZE, offset })
+    if (error || !data?.length) break
+    for (const entry of data) {
+      const fullPath = prefix ? `${prefix}/${entry.name}` : entry.name
+      const isFolder = entry.id == null && entry.metadata == null
+      if (isFolder) {
+        files.push(...(await listStorageRecursive(sb, bucket, fullPath, depth + 1)))
+      } else {
+        files.push(fullPath)
+      }
+    }
+    if (data.length < PAGE_SIZE) break
+  }
+  return files
+}
+
+function buildLogicalRestoreBundle(tables, exportedAt) {
+  const docs = new Map()
+  for (const row of tables.DocumentosCampanha ?? []) {
+    if (row?.id && row?.payload) docs.set(row.id, row.payload.body ?? row.payload)
+  }
+  const sessionsDoc = docs.get('sessions') ?? {}
+  const courtDoc = docs.get('court') ?? {}
+  return {
+    schemaVersion: '2026-11-24',
+    exportedAt,
+    profiles: Array.isArray(docs.get('profiles')) ? docs.get('profiles') : [],
+    sessions: Array.isArray(sessionsDoc.sessions) ? sessionsDoc.sessions : [],
+    handouts: Array.isArray(sessionsDoc.handouts) ? sessionsDoc.handouts : [],
+    wallets: courtDoc.wallets && typeof courtDoc.wallets === 'object' ? courtDoc.wallets : {},
+  }
 }
 
 async function runExport() {
@@ -70,36 +153,30 @@ async function runExport() {
   const tables = {}
   const counts = {}
   for (const table of TABLES) {
-    const { data, error } = await sb.from(table).select('*')
-    if (error) {
-      if (!/does not exist|schema cache/i.test(error.message)) {
-        throw new Error(`Falha ao exportar tabela ${table}: ${error.message}`)
-      }
-      tables[table] = []
-      counts[table] = 0
-      continue
-    }
-    tables[table] = data ?? []
-    counts[table] = tables[table].length
+    const rows = await fetchAllRows(sb, table)
+    tables[table] = rows
+    counts[table] = rows.length
   }
 
   const storageManifest = {}
   for (const bucket of BUCKETS) {
-    const { data, error } = await sb.storage.from(bucket).list('', { limit: 1000 })
-    if (error) {
-      storageManifest[bucket] = []
-      continue
-    }
-    storageManifest[bucket] = (data ?? []).map((entry) => entry.name)
+    storageManifest[bucket] = await listStorageRecursive(sb, bucket)
   }
 
+  const exportedAt = new Date().toISOString()
+  const restoreBundle = buildLogicalRestoreBundle(tables, exportedAt)
   const bundle = {
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
+    schemaVersion: '2026-11-24',
+    exportedAt,
     source: 'supabase-api-export',
     counts,
     storageManifest,
     tables,
+    // Campos no topo para compatibilidade direta com /api/v1/admin/chronicle/backup/drill e /restore
+    profiles: restoreBundle.profiles,
+    sessions: restoreBundle.sessions,
+    handouts: restoreBundle.handouts,
+    wallets: restoreBundle.wallets,
   }
 
   const json = Buffer.from(JSON.stringify(bundle), 'utf8')
@@ -107,7 +184,7 @@ async function runExport() {
   const sha256 = crypto.createHash('sha256').update(json).digest('hex')
   const dir = resolveBackupDir()
   fs.mkdirSync(dir, { recursive: true })
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const stamp = exportedAt.replace(/[:.]/g, '-')
   const backupKey = process.env.BELADONA_BACKUP_KEY?.trim()
 
   if (!backupKey) {
@@ -124,7 +201,8 @@ async function runExport() {
   const externalTarget = process.env.BELADONA_EXTERNAL_BACKUP_TARGET?.trim() || ''
   const manifest = {
     fileName,
-    exportedAt: bundle.exportedAt,
+    exportedAt,
+    format: 'BLD2',
     sha256,
     bytesEncrypted: ciphered.length,
     counts,
@@ -136,7 +214,7 @@ async function runExport() {
   const storageTotal = Object.values(storageManifest).reduce((s, list) => s + list.length, 0)
   const { error: metaErr } = await sb.from('MetadadosBackup').insert({
     scope: externalTarget ? 'external_encrypted_export' : 'local_encrypted_export',
-    schema_version: '1',
+    schema_version: '2026-11-24',
     status: externalTarget ? 'completed_unverified' : 'pending_external_destination',
     record_counts: { ...counts, storageObjects: storageTotal },
     checksum_sha256: sha256,
@@ -144,13 +222,33 @@ async function runExport() {
     operator_email: 'backup-script',
     notes: externalTarget
       ? `Destino configurado: ${externalTarget}`
-      : 'Exportação criptografada gerada; configurar BELADONA_EXTERNAL_BACKUP_TARGET no CI/destino off-site.',
+      : 'Exportação criptografada gerada (BLD2); configurar BELADONA_EXTERNAL_BACKUP_TARGET no destino off-site privado.',
   })
   if (metaErr) {
     console.warn('[backup] Aviso ao gravar MetadadosBackup:', metaErr.message)
   }
 
   console.log(JSON.stringify(manifest, null, 2))
+}
+
+function runDecrypt(inputFile, outputFile) {
+  const backupKey = process.env.BELADONA_BACKUP_KEY?.trim()
+  if (!backupKey) {
+    console.error('[backup] BELADONA_BACKUP_KEY é obrigatória para descriptografar.')
+    process.exitCode = 2
+    return
+  }
+  if (!inputFile || !fs.existsSync(inputFile)) {
+    console.error('[backup] Informe o caminho do arquivo .json.gz.enc existente.')
+    process.exitCode = 1
+    return
+  }
+  const raw = fs.readFileSync(inputFile)
+  const gz = decryptPayload(raw, backupKey)
+  const json = zlib.gunzipSync(gz)
+  const out = outputFile || inputFile.replace(/\.json\.gz\.enc$/i, '.json')
+  fs.writeFileSync(out, json, { mode: 0o600 })
+  console.log(`[backup] Descriptografado em ${out} (${json.length} bytes).`)
 }
 
 async function runCheck() {
@@ -190,6 +288,13 @@ if (cmd === 'export') {
     console.error('[backup] erro:', err instanceof Error ? err.message : err)
     process.exitCode = 1
   })
+} else if (cmd === 'decrypt') {
+  try {
+    runDecrypt(process.argv[3], process.argv[4])
+  } catch (err) {
+    console.error('[backup] falha ao descriptografar:', err instanceof Error ? err.message : err)
+    process.exitCode = 1
+  }
 } else {
   void runCheck()
 }

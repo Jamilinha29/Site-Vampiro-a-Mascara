@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AdminHandoutSummaryEditor } from '../../components/admin/AdminHandoutSummaryEditor'
 import { SessionTableMetaForm } from '../../components/session/SessionTableInfoPanel'
+import { useToast } from '../../components/ui/useToast'
 import { api } from '../../services/api'
 import { adminQueryKeys, invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import { mesaDisplayName } from '../../lib/mesaSession'
@@ -15,29 +16,39 @@ import {
 } from '../../lib/sessionTableMeta'
 import type { SessionTableMeta } from '../../types/chronicle'
 
+function defaultScheduledLocalValue() {
+  const d = new Date()
+  d.setHours(20, 0, 0, 0)
+  if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function initialTableMetaFromStorage(): SessionTableMeta {
+  const base = newSessionTableMetaDefaults()
+  try {
+    const raw = localStorage.getItem('beladona-admin-mesa-defaults')
+    const parsed = raw ? (JSON.parse(raw) as { playerGroup?: string; defaultRpgTitle?: string }) : null
+    if (!parsed) return base
+    return syncCampaignFields({
+      ...base,
+      rpgTitle: parsed.defaultRpgTitle ?? base.rpgTitle ?? DEFAULT_SESSION_RPG,
+      campaignName: parsed.defaultRpgTitle ?? base.campaignName ?? DEFAULT_SESSION_RPG,
+      playerGroup: parsed.playerGroup ?? base.playerGroup,
+    })
+  } catch {
+    return base
+  }
+}
+
 export default function AdminSessionsPage() {
   const [expandedHandoutId, setExpandedHandoutId] = useState<string | null>(null)
-  const [tableMeta, setTableMeta] = useState<SessionTableMeta>(() => newSessionTableMetaDefaults())
+  const [tableMeta, setTableMeta] = useState<SessionTableMeta>(initialTableMetaFromStorage)
+  const [scheduledLocal, setScheduledLocal] = useState(defaultScheduledLocalValue)
   const [listing, setListing] = useState<'public' | 'private'>('private')
   const qc = useQueryClient()
   const navigate = useNavigate()
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('beladona-admin-mesa-defaults')
-      const parsed = raw ? (JSON.parse(raw) as { playerGroup?: string; defaultRpgTitle?: string }) : null
-      setTableMeta((prev) =>
-        syncCampaignFields({
-          ...prev,
-          rpgTitle: parsed?.defaultRpgTitle ?? prev.rpgTitle ?? DEFAULT_SESSION_RPG,
-          campaignName: parsed?.defaultRpgTitle ?? prev.campaignName ?? DEFAULT_SESSION_RPG,
-          playerGroup: parsed?.playerGroup ?? prev.playerGroup,
-        }),
-      )
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  const { push } = useToast()
 
   const { data: scheduled = [] } = useQuery({
     queryKey: adminQueryKeys.scheduledSessions,
@@ -52,8 +63,8 @@ export default function AdminSessionsPage() {
     mutationFn: () => {
       const campaign = tableMeta.campaignName.trim()
       if (!campaign) throw new Error('Informe o nome da campanha.')
-      const start = new Date()
-      start.setHours(20, 0, 0, 0)
+      const parsedDate = new Date(scheduledLocal)
+      if (Number.isNaN(parsedDate.getTime())) throw new Error('Informe uma data e horário válidos.')
       const suggested = suggestSessionLabel(scheduled, campaign)
       const sessionLabel = tableMeta.sessionLabel.trim() || suggested.label
       const meta: SessionTableMeta = trimSessionTableMeta({
@@ -65,7 +76,7 @@ export default function AdminSessionsPage() {
       return api.adminCreateScheduledSession({
         title: sessionLabel,
         chronicleName: campaign,
-        scheduledAt: start.toISOString(),
+        scheduledAt: parsedDate.toISOString(),
         tableMeta: meta,
         listing,
       })
@@ -77,7 +88,8 @@ export default function AdminSessionsPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.sessionLine })
       void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaActivity })
       invalidatePlayerPublishedContent(qc)
-      setTableMeta(newSessionTableMetaDefaults())
+      setTableMeta(initialTableMetaFromStorage())
+      setScheduledLocal(defaultScheduledLocalValue())
       navigate(`/admin/mesa/${created.id}`)
     },
   })
@@ -89,6 +101,7 @@ export default function AdminSessionsPage() {
       void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       invalidatePlayerPublishedContent(qc)
     },
+    onError: (e: Error) => push(e.message || 'Não foi possível abrir a mesa.', 'error'),
   })
 
   const closeMesa = useMutation({
@@ -99,6 +112,7 @@ export default function AdminSessionsPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.handouts })
       invalidatePlayerPublishedContent(qc)
     },
+    onError: (e: Error) => push(e.message || 'Não foi possível encerrar a mesa.', 'error'),
   })
 
   const setListingOn = useMutation({
@@ -109,6 +123,7 @@ export default function AdminSessionsPage() {
       void qc.invalidateQueries({ queryKey: ['admin-live-mesas'] })
       invalidatePlayerPublishedContent(qc)
     },
+    onError: (e: Error) => push(e.message || 'Não foi possível alterar a visibilidade.', 'error'),
   })
 
   const deleteMesa = useMutation({
@@ -169,21 +184,31 @@ export default function AdminSessionsPage() {
       <section className="admin-form-panel">
         <p className="font-label-sm text-xs text-secondary uppercase">Criar outra mesa</p>
         <p className="text-xs text-on-surface-variant sm:text-sm">
-          Nova sessão agendada para hoje às 20h (horário local). Preencha a ficha da mesa — os jogadores veem a mesma
-          tabela na sala ao vivo.
+          Defina a data, o horário e a ficha da mesa — os jogadores veem a mesma tabela na sala ao vivo.
         </p>
         <SessionTableMetaForm columns="row" value={tableMeta} onChange={setTableMeta} />
-        <label className="mt-2 block text-xs uppercase text-on-surface-variant">
-          Acesso
-          <select
-            className="input-feudal mt-1 pl-3 normal-case"
-            value={listing}
-            onChange={(e) => setListing(e.target.value as 'public' | 'private')}
-          >
-            <option value="private">Privada — só com código de sala</option>
-            <option value="public">Aberta ao público</option>
-          </select>
-        </label>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Data e horário
+            <input
+              type="datetime-local"
+              className="input-feudal mt-1 pl-3 normal-case"
+              value={scheduledLocal}
+              onChange={(e) => setScheduledLocal(e.target.value)}
+            />
+          </label>
+          <label className="block text-xs uppercase text-on-surface-variant">
+            Acesso
+            <select
+              className="input-feudal mt-1 pl-3 normal-case"
+              value={listing}
+              onChange={(e) => setListing(e.target.value as 'public' | 'private')}
+            >
+              <option value="private">Privada — só com código de sala</option>
+              <option value="public">Aberta ao público</option>
+            </select>
+          </label>
+        </div>
         <button
           type="button"
           className="btn-primary mt-3 text-xs"

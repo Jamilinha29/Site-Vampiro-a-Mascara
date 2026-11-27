@@ -7,7 +7,7 @@ import {
   loadDocument,
   runExclusive,
 } from './campaignDocuments.js'
-import { recordOperation, recordOperationStrict } from './operationLog.js'
+import { recordOperationStrict } from './operationLog.js'
 import { computeCharacterBalanceFromSheet } from './characterBalance.js'
 import { readRules } from './rulesState.js'
 import { mirrorProfileToSql } from './profileSqlMirror.js'
@@ -55,6 +55,10 @@ export type CharacterIdentity = {
   demeanor?: string | null
   concept?: string | null
   residence?: string | null
+  sire?: string | null
+  ambition?: string | null
+  secretWeakness?: string | null
+  sireRelation?: string | null
   patrons: string[]
   chronicleName?: string | null
   editCounts: {
@@ -220,13 +224,24 @@ function revKey(email: string, characterId: string) {
   return `${email.trim().toLowerCase()}::${characterId}`
 }
 
+export type LegacyProfileCharacterInput = Omit<
+  ProfileCharacter,
+  'identity' | 'inventory' | 'createdSkills' | 'carryCapacityKg'
+> & {
+  identity?: Partial<CharacterIdentity>
+  inventory?: CharacterInventoryItem[]
+  createdSkills?: CreatedSkill[]
+  carryCapacityKg?: number
+}
+
 /** Migra ficha legada de forma não destrutiva e idempotente (C12). */
-export function migrateLegacyCharacter(ch: ProfileCharacter): ProfileCharacter {
+export function migrateLegacyCharacter(ch: LegacyProfileCharacterInput): ProfileCharacter {
   const next: ProfileCharacter = {
     ...ch,
-    identity: { ...defaultIdentity(), ...(ch.identity ?? {}) },
+    identity: { ...defaultIdentity(), ...ch.identity },
     inventory: ch.inventory ?? [],
     createdSkills: ch.createdSkills ?? [],
+    carryCapacityKg: ch.carryCapacityKg ?? 28,
     secondarySubclass: ch.secondarySubclass ?? null,
     sheetRevision: ch.sheetRevision ?? 0,
   }
@@ -332,7 +347,7 @@ export async function hydrateProfiles() {
           ...profile,
           publicId,
           handle,
-          preferences: { ...defaultPreferences(), ...(profile.preferences ?? {}) },
+          preferences: { ...defaultPreferences(), ...profile.preferences },
           characters: (profile.characters ?? []).map(migrateLegacyCharacter),
         }
         profiles.set(profile.email, normalized)
@@ -665,7 +680,12 @@ export async function patchCharacter(
   > & {
     faith?: string | null
     expectedRevision?: number
-    identityPatch?: Partial<Pick<CharacterIdentity, 'house' | 'nature' | 'demeanor' | 'concept' | 'residence'>>
+    identityPatch?: Partial<
+      Pick<
+        CharacterIdentity,
+        'house' | 'nature' | 'demeanor' | 'concept' | 'residence' | 'sire' | 'ambition' | 'secretWeakness' | 'sireRelation'
+      >
+    >
   },
 ) {
   return runProfileMutation(async () => {
@@ -682,7 +702,11 @@ export async function patchCharacter(
       })
     }
 
-    const identity = { ...defaultIdentity(), ...current.identity }
+    const identity: CharacterIdentity = {
+      ...defaultIdentity(),
+      ...current.identity,
+      editCounts: { ...defaultIdentity().editCounts, ...current.identity?.editCounts },
+    }
     if (patch.faith !== undefined) identity.faith = patch.faith
 
     if (patch.identityPatch) {
@@ -694,6 +718,10 @@ export async function patchCharacter(
         if ((identity[key] ?? '') === (next ?? '')) continue
         identity[key] = next
         identity.editCounts[key] = (identity.editCounts[key] ?? 0) + 1
+      }
+      for (const key of ['sire', 'ambition', 'secretWeakness', 'sireRelation'] as const) {
+        const next = patch.identityPatch[key]
+        if (next !== undefined) identity[key] = next
       }
     }
 
@@ -729,6 +757,18 @@ export async function patchCharacter(
       } else if (rest.mana && !current.mana) {
         delete (rest as { mana?: unknown }).mana
       }
+      if (rest.blood && current.blood) {
+        const nextCurrent = Math.max(0, Math.floor(rest.blood.current))
+        rest.blood = { current: Math.min(nextCurrent, current.blood.max), max: current.blood.max }
+      } else if (rest.blood && !current.blood) {
+        delete (rest as { blood?: unknown }).blood
+      }
+      if (rest.will && current.will) {
+        const nextCurrent = Math.max(0, Math.floor(rest.will.current))
+        rest.will = { current: Math.min(nextCurrent, current.will.max), max: current.will.max }
+      } else if (rest.will && !current.will) {
+        delete (rest as { will?: unknown }).will
+      }
     }
 
     const nextInventory = rest.inventory
@@ -749,7 +789,7 @@ export async function patchCharacter(
 
     p.characters[idx] = updatedChar
     await commitProfiles([p])
-    const prevRev = current.sheetRevision ?? 1
+    const prevRev = current.sheetRevision ?? 0
     const existingRevs = listCharacterRevisions(p.email, current.id)
     if (!existingRevs.some((r) => r.revision === prevRev)) {
       await persistRevisionRecord({
@@ -783,6 +823,7 @@ export async function applyCharacterXp(
   amount: number,
   meta?: { actorEmail?: string; sessionId?: string; operationId?: string },
 ) {
+  if (!Number.isFinite(amount)) return null
   return runProfileMutation(async () => {
     const p = getProfile(email)
     if (!p) return null
@@ -794,7 +835,7 @@ export async function applyCharacterXp(
     const rules = readRules()
     const levelCap = Math.min(MAX_CHARACTER_LEVEL, rules.maxLevel)
 
-    let current = (ch.xp?.current ?? 0) + Math.floor(amount)
+    let current = Math.max(0, (ch.xp?.current ?? 0) + Math.floor(amount))
     let toNext = ch.xp?.toNext ?? xpRequiredToAdvance(level)
 
     while (level < levelCap && toNext > 0 && current >= toNext) {
@@ -803,7 +844,8 @@ export async function applyCharacterXp(
       toNext = level >= levelCap ? 0 : xpRequiredToAdvance(level)
     }
     if (level >= levelCap) {
-      current = 0
+      // Preserva XP de fichas legadas que já ultrapassavam levelCap; zera excedente somente ao atingir o teto normalmente
+      if (previousLevel < levelCap) current = 0
       toNext = 0
     }
 
@@ -815,9 +857,9 @@ export async function applyCharacterXp(
     }
     const mana = ch.mana
       ? {
-          current: ch.mana.current + bonus,
-          max: ch.mana.max + bonus,
-        }
+        current: ch.mana.current + bonus,
+        max: ch.mana.max + bonus,
+      }
       : ch.mana
 
     const nextRevision = (ch.sheetRevision ?? 0) + 1
@@ -1136,12 +1178,12 @@ function mergeOwnedInventory(
         status: item.status ?? previous.status,
         durability: previous.durability
           ? {
-              current: Math.max(
-                0,
-                Math.min(previous.durability.max, item.durability?.current ?? previous.durability.current),
-              ),
-              max: previous.durability.max,
-            }
+            current: Math.max(
+              0,
+              Math.min(previous.durability.max, item.durability?.current ?? previous.durability.current),
+            ),
+            max: previous.durability.max,
+          }
           : undefined,
       },
     ]
@@ -1331,16 +1373,52 @@ export async function noteRuleChange(email: string, characterId: string, note: s
   })
 }
 
+function normalizeRestoredProfile(profile: UserProfile): UserProfile {
+  const publicId = resolveNumericPublicId(profile.email, profile.publicId)
+  const legacyEmailHandle = handleFromEmail(profile.email)
+  const handle =
+    !profile.handle || profile.handle === legacyEmailHandle
+      ? defaultHandleFor(profile.displayName || 'cainita', publicId)
+      : profile.handle
+  return {
+    ...profile,
+    publicId,
+    handle,
+    role: profile.role || 'player',
+    memberSince: profile.memberSince || new Date().toISOString(),
+    avatarUrl: profile.avatarUrl ?? null,
+    bannerUrl: profile.bannerUrl ?? null,
+    badges: Array.isArray(profile.badges) ? profile.badges : [],
+    preferences: { ...defaultPreferences(), ...profile.preferences },
+    accountMetrics: profile.accountMetrics ?? { characters: null, sessions: null, chronicles: null, totalXp: null },
+    lineageStats: profile.lineageStats ?? {
+      charactersCreated: null,
+      sessionsParticipated: null,
+      hoursPlayed: null,
+      chronicleWins: null,
+      xpAccumulated: null,
+      favoriteClass: null,
+    },
+    characters: (profile.characters ?? []).map(migrateLegacyCharacter),
+  }
+}
+
+export async function restoreSingleProfile(profile: UserProfile) {
+  if (!profile?.email) return
+  return runProfileMutation(async () => {
+    const normalized = normalizeRestoredProfile(clone(profile))
+    const key = findProfileKey(normalized.email) ?? normalized.email
+    profiles.set(key, normalized)
+    await commitProfiles([normalized])
+  })
+}
+
 export async function replaceProfiles(rows: UserProfile[]) {
   return runProfileMutation(async () => {
     profiles.clear()
     for (const profile of rows) {
       if (profile?.email) {
-        profiles.set(profile.email, {
-          ...profile,
-          publicId: resolveNumericPublicId(profile.email, profile.publicId),
-          characters: (profile.characters ?? []).map(migrateLegacyCharacter),
-        })
+        profiles.set(profile.email, normalizeRestoredProfile(profile))
       }
     }
     await commitProfiles([...profiles.values()])

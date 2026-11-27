@@ -4,7 +4,7 @@ import { CurrencyVault } from '../../components/domain/CurrencyVault'
 import { api } from '../../services/api'
 import type { ChronicleEntity } from '../../types/chronicle'
 import { playerQueryKeys } from '../../lib/queryKeys'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 
 const PAGE_SIZE = 6
 
@@ -35,6 +35,7 @@ export default function ShopPage() {
     void api.getSavedFilters().then((saved) => {
       if (saved.shopCategory) setCategory(saved.shopCategory)
       if (typeof saved.shopQuery === 'string') setQuery(saved.shopQuery)
+      setPage(1)
       filtersReady.current = true
     })
   }, [])
@@ -71,10 +72,6 @@ export default function ShopPage() {
     )
   }, [items, query])
 
-  useEffect(() => {
-    setPage(1)
-  }, [category, query])
-
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount)
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
@@ -106,8 +103,16 @@ export default function ShopPage() {
       void qc.invalidateQueries({ queryKey: playerQueryKeys.profile })
       void qc.invalidateQueries({ queryKey: ['shop-stock'] })
       void qc.invalidateQueries({ queryKey: ['wallet', 'active'] })
+      void qc.invalidateQueries({ queryKey: ['wallets', 'ledger'] })
     },
-    onError: (e: Error) => push(e.message, 'error'),
+    onError: (e: Error) => {
+      // Limpa operationId em erros 4xx de regra de negócio para não travar retentativa depois que o jogador corrigir
+      const status = 'status' in e ? Number((e as { status?: number }).status) : 0
+      if (status >= 400 && status < 500) {
+        opRef.current = null
+      }
+      push(e.message, 'error')
+    },
   })
 
   const costCopper = (selected?.priceGold ?? 0) * 100 + (selected?.priceSilver ?? 0) * 10 + (selected?.priceCopper ?? 0)
@@ -142,7 +147,10 @@ export default function ShopPage() {
             className="input-feudal w-full pl-10"
             placeholder="Buscar item…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+            }}
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -155,6 +163,7 @@ export default function ShopPage() {
               }`}
               onClick={() => {
                 setCategory(c.id)
+                setPage(1)
                 setSelectedId(null)
               }}
             >

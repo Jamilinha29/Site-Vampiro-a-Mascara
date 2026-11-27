@@ -51,7 +51,7 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
     return () => window.removeEventListener('keydown', onKey)
   }, [inspectItem])
 
-  const items = character.inventory ?? []
+  const items = useMemo(() => character.inventory ?? [], [character.inventory])
   const capacity = character.carryCapacityKg ?? 28
   const load = items.reduce((s, i) => s + (i.weightKg || 0), 0)
 
@@ -65,7 +65,7 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
     const rarityRank = { proibido: 0, ancestral: 1, raro: 2, incomum: 3, comum: 4 }
     list = [...list].sort((a, b) => {
       if (sort === 'name') return a.name.localeCompare(b.name)
-      if (sort === 'weight') return b.weightKg - a.weightKg
+      if (sort === 'weight') return (b.weightKg ?? 0) - (a.weightKg ?? 0)
       return rarityRank[a.rarity] - rarityRank[b.rarity]
     })
     return list
@@ -194,7 +194,7 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
             <h3 className="mt-3 font-serif text-base text-on-surface">{item.name}</h3>
             <p className="mt-1 line-clamp-2 text-xs text-on-surface-variant">{item.description || 'Sem descrição.'}</p>
             <p className="mt-2 text-[10px] text-secondary">
-              {item.weightKg.toFixed(1)} kg
+              {(item.weightKg ?? 0).toFixed(1)} kg
               {item.statsLabel ? ` · ${item.statsLabel}` : ''}
             </p>
             {item.durability ? (
@@ -267,7 +267,7 @@ export function CharacterInventoryPanel({ character, onChangeInventory, busy }: 
             <div className="grid grid-cols-2 gap-2 rounded border border-outline-variant/40 bg-surface-container-low p-3 text-xs">
               <div>
                 <span className="text-on-surface-variant">Peso:</span>{' '}
-                <strong className="text-on-surface">{inspectItem.weightKg.toFixed(1)} kg</strong>
+                <strong className="text-on-surface">{(inspectItem.weightKg ?? 0).toFixed(1)} kg</strong>
               </div>
               <div>
                 <span className="text-on-surface-variant">Estado:</span>{' '}

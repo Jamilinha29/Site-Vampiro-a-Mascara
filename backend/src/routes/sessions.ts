@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
-import { findScheduledSessionByAccessCode } from '../services/chronicleStore.js'
+import { findScheduledSessionByAccessCode, syncSessionsIfStale } from '../services/chronicleStore.js'
 import { errorPayload } from '../services/errors.js'
 import { checkSharedRateLimit, resetSharedRateLimit } from '../services/rateLimitStore.js'
 
@@ -35,6 +35,7 @@ sessionsRouter.post('/join-by-code', requireUser, async (req, res, next) => {
       return
     }
 
+    await syncSessionsIfStale()
     const session = findScheduledSessionByAccessCode(parsed.data.code)
     if (!session || session.status === 'closed') {
       res.status(404).json(

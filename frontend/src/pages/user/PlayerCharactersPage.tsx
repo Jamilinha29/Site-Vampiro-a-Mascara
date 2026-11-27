@@ -6,7 +6,7 @@ import { playerQueryKeys } from '../../lib/queryKeys'
 import { CharacterArmorClassBar } from '../../components/characters/CharacterArmorClassBar'
 import { resolveSheetKind } from '../../lib/characterSheetKind'
 import type { ProfileCharacterSummary } from '../../types/profile'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 
 type FilterId = 'all' | 'vampire' | 'mortal' | 'other'
 
@@ -101,7 +101,7 @@ export default function PlayerCharactersPage() {
     onError: (e: Error) => push(e.message || 'Não foi possível atualizar.', 'error'),
   })
 
-  const characters = profile?.characters ?? []
+  const characters = useMemo(() => profile?.characters ?? [], [profile?.characters])
   const needPickHome = characters.length > 10
   const homeCount = characters.filter((c) => c.showOnHome).length
 

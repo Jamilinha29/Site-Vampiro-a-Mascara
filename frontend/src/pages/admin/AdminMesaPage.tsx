@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AdminMesaWorkbench } from '../../components/admin/AdminMesaWorkbench'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import { api } from '../../services/api'
 import { adminQueryKeys, playerQueryKeys } from '../../lib/queryKeys'
 import { findTodayMesaSession, mesaDisplayName } from '../../lib/mesaSession'
@@ -93,6 +93,22 @@ export default function AdminMesaPage() {
         />
       )
     }
+    return (
+      <div className="card-surface space-y-3 p-6 text-center">
+        <h1 className="font-headline-md text-lg text-on-surface">Mesa não encontrada</h1>
+        <p className="text-sm text-on-surface-variant">
+          Esta sessão pode ter sido excluída ou não pertence à sua conta de narrador.
+        </p>
+        <div className="flex justify-center gap-2">
+          <Link to="/admin/mesa" className="btn-primary text-xs">
+            Ver mesas disponíveis
+          </Link>
+          <Link to="/admin/sessions" className="btn-secondary text-xs">
+            Ir para Sessões
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   // Se existe exatamente 1 mesa confirmada ao vivo que este narrador conduz/co-narra, abre direto sem precisar clicar em "Painel da mesa"

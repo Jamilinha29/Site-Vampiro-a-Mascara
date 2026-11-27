@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AdminAchievementsPanel } from '../../components/admin/AdminAchievementsPanel'
 import { AdminCharacterReviews } from '../../components/admin/AdminCharacterReviews'
 import { AdminNoticesPanel } from '../../components/admin/AdminNoticesPanel'
 import { api } from '../../services/api'
-import { useToast } from '../../components/ui/ToastProvider'
+import { useToast } from '../../components/ui/useToast'
 import { useAuthStore } from '../../stores/authStore'
 import { adminQueryKeys } from '../../lib/queryKeys'
 
@@ -18,10 +18,12 @@ function formatMemberSince(iso: string) {
 
 export default function AdminProfilePage() {
   const session = useAuthStore((s) => s.session)
+  const qc = useQueryClient()
   const { push } = useToast()
   const [backupFile, setBackupFile] = useState<Record<string, unknown> | null>(null)
+  const [restoring, setRestoring] = useState(false)
   const [drill, setDrill] = useState<string | null>(null)
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, isError, refetch } = useQuery({
     queryKey: ['me-profile'],
     queryFn: () => api.getMeProfile(),
     enabled: !!session,
@@ -34,8 +36,18 @@ export default function AdminProfilePage() {
     queryKey: adminQueryKeys.scheduledSessions,
     queryFn: () => api.adminListScheduledSessions(),
   })
-  if (isLoading || !profile) {
+  if (isLoading) {
     return <p className="text-sm text-on-surface-variant">Abrindo registro do mestre…</p>
+  }
+  if (isError || !profile) {
+    return (
+      <div className="card-surface space-y-3 p-5">
+        <p className="text-sm text-primary">Não foi possível carregar o perfil do mestre.</p>
+        <button type="button" className="btn-secondary text-xs" onClick={() => void refetch()}>
+          Tentar novamente
+        </button>
+      </div>
+    )
   }
 
   const prefs = profile.preferences
@@ -99,6 +111,7 @@ export default function AdminProfilePage() {
         </div>
       </section>
 
+      {profile.role === 'admin' ? (
       <section className="card-surface space-y-3 p-5">
         <h2 className="font-label-sm text-xs text-secondary uppercase">Cópia da campanha</h2>
         <div className="flex flex-wrap items-center gap-3">
@@ -106,15 +119,18 @@ export default function AdminProfilePage() {
             type="button"
             className="btn-secondary text-xs"
             onClick={() => {
-              void api.adminDownloadBackup().then((data) => {
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-                const url = URL.createObjectURL(blob)
-                const link = document.createElement('a')
-                link.href = url
-                link.download = 'beladona-backup.json'
-                link.click()
-                URL.revokeObjectURL(url)
-              })
+              void api
+                .adminDownloadBackup()
+                .then((data) => {
+                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const link = document.createElement('a')
+                  link.href = url
+                  link.download = 'beladona-backup.json'
+                  link.click()
+                  URL.revokeObjectURL(url)
+                })
+                .catch((err: Error) => push(err.message || 'Falha ao baixar cópia da campanha.', 'error'))
             }}
           >
             Baixar cópia da campanha
@@ -123,12 +139,15 @@ export default function AdminProfilePage() {
             type="button"
             className="btn-secondary text-xs"
             onClick={() => {
-              void api.adminValidateStorage().then((report) => {
-                push(
-                  `Storage: ${report.reachable} referências ok, ${report.needsManualCheck} para checar no painel. ${report.note}`,
-                  'success',
-                )
-              })
+              void api
+                .adminValidateStorage()
+                .then((report) => {
+                  push(
+                    `Storage: ${report.reachable} referências ok, ${report.needsManualCheck} para checar no painel. ${report.note}`,
+                    'success',
+                  )
+                })
+                .catch((err: Error) => push(err.message || 'Falha ao validar referências.', 'error'))
             }}
           >
             Validar referências de mídia
@@ -152,25 +171,36 @@ export default function AdminProfilePage() {
                     `${report.profiles} perfis, ${report.characters} fichas, ${report.inventoryItems} itens, ${report.sessions} mesas, ${report.gold} ouro, ${report.silver} prata, ${report.copper} bronze, ${report.imageReferences} imagens citadas. ${report.storageNote}`,
                   )
                 }).catch(() => push('A cópia não pôde ser lida.', 'error'))
+                event.target.value = ''
               }}
             />
           </label>
           <button
             type="button"
             className="btn-secondary text-xs"
-            disabled={!backupFile}
+            disabled={!backupFile || restoring}
             onClick={() => {
-              if (!backupFile) return
-              void api.adminRestoreBackup(backupFile).then((report) => {
-                push(`Cópia restaurada: ${report.characters} fichas e ${report.wallets} carteiras.`, 'success')
-              }).catch((error: Error) => push(error.message, 'error'))
+              if (!backupFile || restoring) return
+              if (!window.confirm('Restaurar esta cópia substituirá perfis, mesas e carteiras atuais. Deseja continuar?')) {
+                return
+              }
+              setRestoring(true)
+              void api
+                .adminRestoreBackup(backupFile)
+                .then((report) => {
+                  push(`Cópia restaurada: ${report.characters} fichas e ${report.wallets} carteiras.`, 'success')
+                  void qc.invalidateQueries()
+                })
+                .catch((error: Error) => push(error.message, 'error'))
+                .finally(() => setRestoring(false))
             }}
           >
-            Restaurar esta cópia
+            {restoring ? 'Restaurando…' : 'Restaurar esta cópia'}
           </button>
         </div>
         {drill ? <p className="text-sm text-on-surface">{drill}</p> : null}
       </section>
+      ) : null}
 
       <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {[

@@ -58,6 +58,12 @@ export function AdminShopEditor() {
     setDescription('')
     setImageUrl(undefined)
     setMods([])
+    setPriceAmount(0)
+    setPriceCoin('prata')
+    setStockTotal(10)
+    setRequiredLevel(1)
+    setChronicleScope('')
+    setNarratorScope('')
     setError(null)
   }
 
@@ -71,7 +77,8 @@ export function AdminShopEditor() {
       return row
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['admin-entities', kind] })
+      void qc.invalidateQueries({ queryKey: ['admin-entities'] })
+      void qc.invalidateQueries({ queryKey: ['admin-shop-levels'] })
       invalidatePlayerPublishedContent(qc)
       resetForm()
     },
@@ -89,6 +96,7 @@ export function AdminShopEditor() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['admin-entities'] })
+      void qc.invalidateQueries({ queryKey: ['admin-shop-levels'] })
       invalidatePlayerPublishedContent(qc)
       resetForm()
     },
@@ -101,11 +109,18 @@ export function AdminShopEditor() {
       void qc.invalidateQueries({ queryKey: ['admin-entities'] })
       invalidatePlayerPublishedContent(qc)
     },
+    onError: (e: Error) => setError(e.message),
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => api.adminDeleteEntity(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-entities'] }),
+    onSuccess: (_data, deletedId) => {
+      void qc.invalidateQueries({ queryKey: ['admin-entities'] })
+      void qc.invalidateQueries({ queryKey: ['admin-shop-levels'] })
+      invalidatePlayerPublishedContent(qc)
+      if (editingId === deletedId) resetForm()
+    },
+    onError: (e: Error) => setError(e.message),
   })
 
   function priceFieldsFromUi() {
@@ -219,7 +234,10 @@ export function AdminShopEditor() {
             type="button"
             className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wider uppercase ${tab === t.id ? 'bg-primary-container text-white' : 'border border-outline-variant/40 text-on-surface-variant'
               }`}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              setTab(t.id)
+              resetForm()
+            }}
           >
             {t.label}
           </button>

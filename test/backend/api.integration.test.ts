@@ -1,8 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import { app } from '../../backend/src/index.js'
-import { ensureProfile } from '../../backend/src/services/profileStore.js'
+import { resetEntitiesForTests, resetSessionsForTests } from '../../backend/src/services/chronicleStore.js'
+import { ensureProfile, resetProfilesForTests } from '../../backend/src/services/profileStore.js'
+import { resetRateLimitsForTests } from '../../backend/src/services/rateLimitStore.js'
 import { devRoleForEmail } from '../../backend/src/services/devAuth.js'
+
+beforeEach(() => {
+  resetProfilesForTests()
+  resetEntitiesForTests()
+  resetSessionsForTests()
+  resetRateLimitsForTests()
+})
 
 describe('health', () => {
   it('returns ok with uptime metadata', async () => {

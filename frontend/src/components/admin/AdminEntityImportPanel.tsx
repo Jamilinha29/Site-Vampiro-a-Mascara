@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useToast } from '../ui/ToastProvider'
+import { useToast } from '../ui/useToast'
 import { api } from '../../services/api'
 
 const DEFAULT_MAP: Record<string, string> = {
