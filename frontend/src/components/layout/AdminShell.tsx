@@ -12,6 +12,7 @@ const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [
       { to: '/admin/characters', label: 'Personagens', icon: 'badge' },
       { to: '/admin/sessions', label: 'Sessões', icon: 'calendar_month' },
       { to: '/admin/mesa', label: 'Mesa ao Vivo', icon: 'casino' },
+      { to: '/admin/shop', label: 'Mercado', icon: 'storefront' },
     ],
   },
   {
@@ -29,13 +30,6 @@ const ADMIN_NAV_GROUPS: readonly SidebarNavGroup[] = [
       { to: '/admin/rewards', label: 'Conquistas e Recompensas', icon: 'workspace_premium' },
     ],
   },
-  {
-    label: 'Recursos',
-    items: [
-      { to: '/admin/shop', label: 'Mercado', icon: 'storefront' },
-      { to: '/admin/settings', label: 'Configurações', icon: 'tune' },
-    ],
-  },
 ]
 
 export function AdminShell() {
@@ -48,6 +42,7 @@ export function AdminShell() {
         '/admin/achievements': 'Conquistas e Recompensas',
         '/admin/mesa': 'Mesa ao Vivo',
         '/admin/profile': 'Meu perfil',
+        '/admin/settings': 'Configurações',
       }}
     />
   )

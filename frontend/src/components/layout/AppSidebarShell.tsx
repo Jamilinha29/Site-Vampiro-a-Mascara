@@ -86,6 +86,7 @@ export function AppSidebarShell({
   const canSwitchToAdmin = session?.role === 'narrator' || session?.role === 'admin'
   const homePath = context === 'admin' ? '/admin' : '/user'
   const profilePath = context === 'admin' ? '/admin/profile' : '/user/profile'
+  const settingsPath = context === 'admin' ? '/admin/settings' : '/user/settings'
   const displayName = profile?.displayName ?? session?.displayName ?? 'Conta'
   const roleLabel = context === 'admin' ? 'Mestre de Mesa' : 'Jogador da Corte'
 
@@ -204,6 +205,29 @@ export function AppSidebarShell({
           <span className="material-symbols-outlined text-[17px] text-outline">help</span>
           <span>Ajuda &amp; Suporte</span>
         </Link>
+        <NavLink
+          to={settingsPath}
+          className={({ isActive }) =>
+            [
+              'flex items-center gap-2 rounded-md border px-2 py-1.5 transition',
+              isActive
+                ? 'border-primary-container/50 bg-primary-container/20 font-medium text-on-surface shadow-[inset_0_0_0_1px_rgba(255,179,179,0.08)]'
+                : 'border-transparent text-on-surface-variant hover:bg-surface-container-low/80 hover:text-on-surface',
+            ].join(' ')
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <span
+                className={`material-symbols-outlined text-[17px] ${isActive ? 'text-primary' : 'text-outline'}`}
+                aria-hidden
+              >
+                tune
+              </span>
+              <span className="truncate">Configurações</span>
+            </>
+          )}
+        </NavLink>
         <button
           type="button"
           onClick={() => {

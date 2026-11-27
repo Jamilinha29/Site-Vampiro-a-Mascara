@@ -294,7 +294,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(screen.getByText('Gestão da crônica')).toBeInTheDocument()
     expect(screen.getByText('Biblioteca')).toBeInTheDocument()
     expect(screen.getByText('Comunidade')).toBeInTheDocument()
-    expect(screen.getByText('Recursos')).toBeInTheDocument()
+    expect(screen.queryByText('Recursos')).toBeNull()
     expect(screen.getByText('Mestre de Mesa')).toBeInTheDocument()
     expect(screen.getByText('Compêndio')).toBeInTheDocument()
     expect(screen.getByText('Alianças')).toBeInTheDocument()
@@ -303,6 +303,12 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     const aside = shellContainer.querySelector('aside')
     expect(aside?.className).toContain('border-outline-variant/30')
     expect(shellContainer.querySelector('svg')).toBeNull()
+
+    const asideText = aside?.textContent ?? ''
+    expect(asideText.indexOf('Gestão da crônica')).toBeLessThan(asideText.indexOf('Mercado'))
+    expect(asideText.indexOf('Mercado')).toBeLessThan(asideText.indexOf('Biblioteca'))
+    expect(asideText.indexOf('Ajuda & Suporte')).toBeLessThan(asideText.indexOf('Configurações'))
+    expect(asideText.indexOf('Configurações')).toBeLessThan(asideText.indexOf('Sair'))
 
     cleanup()
 
