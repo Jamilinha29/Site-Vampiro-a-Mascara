@@ -10,6 +10,7 @@ import {
   VITALS_PER_LEVEL,
 } from '../services/progressionRules.js'
 import { listReference, REFERENCE_KINDS, refreshReferenceFromDatabase } from '../services/referenceCatalog.js'
+import { syncRulesIfStale } from '../services/campaignExtras.js'
 import { readRules } from '../services/rulesState.js'
 import { listSubclassesForClass } from '../services/subclassCatalog.js'
 import { getSupabaseAdmin } from '../services/supabaseClient.js'
@@ -39,16 +40,21 @@ const zKind = z.enum(REFERENCE_KINDS)
 
 export const catalogRouter = Router()
 
-catalogRouter.get('/progression', (_req, res) => {
-  res.json({
-    minLevel: MIN_CHARACTER_LEVEL,
-    maxLevel: MAX_CHARACTER_LEVEL,
-    subclassLevel: SUBCLASS_CHOICE_LEVEL,
-    secondarySubclassLevel: SECOND_SUBCLASS_CHOICE_LEVEL,
-    startingXp: STARTING_CHARACTER_XP,
-    vitalsPerLevel: VITALS_PER_LEVEL,
-    rules: readRules(),
-  })
+catalogRouter.get('/progression', async (_req, res, next) => {
+  try {
+    await syncRulesIfStale()
+    res.json({
+      minLevel: MIN_CHARACTER_LEVEL,
+      maxLevel: MAX_CHARACTER_LEVEL,
+      subclassLevel: SUBCLASS_CHOICE_LEVEL,
+      secondarySubclassLevel: SECOND_SUBCLASS_CHOICE_LEVEL,
+      startingXp: STARTING_CHARACTER_XP,
+      vitalsPerLevel: VITALS_PER_LEVEL,
+      rules: readRules(),
+    })
+  } catch (e) {
+    next(e)
+  }
 })
 
 catalogRouter.get('/reference/:kind', async (req, res, next) => {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
+import { PersistenceError } from './errors.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
-import { getSupabaseAdmin } from './supabaseClient.js'
+import { getSupabaseAdmin, isSharedDeploymentEnvironment } from './supabaseClient.js'
 
 export const REFERENCE_KINDS = [
   'faith',
@@ -26,9 +27,10 @@ export type ReferenceEntry = {
 }
 
 const FILE = 'reference-catalog.json'
-const REFRESH_TTL_MS = 30_000
+const REFRESH_TTL_MS = 10_000
 const entries = new Map<string, ReferenceEntry>()
 let lastRefreshedAt = 0
+let dbHasSyncedRows = false
 let refreshInFlight: Promise<void> | null = null
 
 function isKind(value: string): value is ReferenceKind {
@@ -121,13 +123,16 @@ export async function mergeReferenceKind(kind: ReferenceKind, rows: Array<Partia
 }
 
 export async function upsertReference(input: Partial<ReferenceEntry> & { kind: ReferenceKind; name: string }) {
-  const current = input.id ? entries.get(input.id) : undefined
+  const className = input.kind === 'subclass' ? input.className?.trim() ?? '' : ''
+  const current =
+    (input.id ? entries.get(input.id) : undefined) ??
+    findSameEntry(input.kind, input.name, className)
   const row: ReferenceEntry = {
     id: current?.id ?? input.id ?? randomUUID(),
     kind: input.kind,
     name: input.name.trim(),
     description: input.description?.trim() ?? current?.description ?? '',
-    className: input.kind === 'subclass' ? input.className?.trim() || current?.className || '' : '',
+    className: input.kind === 'subclass' ? className || current?.className || '' : '',
     faithPath:
       input.kind === 'faith' && (input.faithPath === 'luz' || input.faithPath === 'trevas')
         ? input.faithPath
@@ -146,12 +151,16 @@ export async function upsertReference(input: Partial<ReferenceEntry> & { kind: R
 export async function deleteReference(id: string) {
   const row = entries.get(id)
   if (!row) return false
-  const sb = process.env.NODE_ENV === 'test' ? null : getSupabaseAdmin()
+  const useEnvInTest = process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV === 'true'
+  const sb = process.env.NODE_ENV === 'test' && !useEnvInTest ? null : getSupabaseAdmin()
+  if (!sb && isSharedDeploymentEnvironment()) {
+    throw new PersistenceError('Banco durável não configurado neste ambiente publicado.')
+  }
   if (sb) {
     const { error } = await sb.from('CatalogoReferencia').delete().eq('id', id)
     if (error) {
       console.warn('[catálogo] Falha ao excluir:', error.message)
-      throw new Error('Não foi possível excluir no banco. O item continua no catálogo.')
+      throw new PersistenceError('Não foi possível excluir no banco. O item continua no catálogo.', error)
     }
   }
   entries.delete(id)
@@ -175,14 +184,21 @@ function dbRecord(row: ReferenceEntry) {
 
 async function upsertReferenceRows(rows: ReferenceEntry[]) {
   lastRefreshedAt = Date.now()
-  if (process.env.NODE_ENV === 'test') return
+  const useEnvInTest = process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV === 'true'
+  if (process.env.NODE_ENV === 'test' && !useEnvInTest) return
   const sb = getSupabaseAdmin()
-  if (!sb || !rows.length) return
+  if (!sb) {
+    if (isSharedDeploymentEnvironment()) {
+      throw new PersistenceError('Banco durável não configurado neste ambiente publicado.')
+    }
+    return
+  }
+  if (!rows.length) return
   const { error } = await sb.from('CatalogoReferencia').upsert(rows.map(dbRecord), { onConflict: 'id' })
   if (!error) return
   if (!/duplicate key/i.test(error.message)) {
     console.warn('[catálogo] Falha ao gravar:', error.message)
-    throw new Error('Não foi possível gravar o catálogo no banco. A lista anterior continua valendo.')
+    throw new PersistenceError('Não foi possível gravar o catálogo no banco. A lista anterior continua valendo.', error)
   }
   for (const row of rows) {
     const record = dbRecord(row)
@@ -196,7 +212,10 @@ async function upsertReferenceRows(rows: ReferenceEntry[]) {
       .select('id')
     if (updateError || !data?.length) {
       console.warn('[catálogo] Falha ao gravar:', updateError?.message ?? error.message)
-      throw new Error('Não foi possível gravar o catálogo no banco. A lista anterior continua valendo.')
+      throw new PersistenceError(
+        'Não foi possível gravar o catálogo no banco. A lista anterior continua valendo.',
+        updateError ?? error,
+      )
     }
   }
 }
@@ -211,9 +230,10 @@ function applyRows(rows: ReferenceEntry[]) {
 
 export async function hydrateReferenceCatalog() {
   const local = readJsonFile<ReferenceEntry[]>(FILE)
-  if (local?.length) applyRows(local)
+  if (local?.length && !dbHasSyncedRows && entries.size === 0) applyRows(local)
 
-  const sb = getSupabaseAdmin()
+  const useEnvInTest = process.env.NODE_ENV === 'test' && process.env.BELADONA_TEST_USE_ENV === 'true'
+  const sb = process.env.NODE_ENV === 'test' && !useEnvInTest ? null : getSupabaseAdmin()
   if (!sb) {
     if (entries.size) console.log(`[catálogo] ${entries.size} item(ns) da cópia local`)
     return
@@ -226,40 +246,43 @@ export async function hydrateReferenceCatalog() {
     console.warn('[catálogo] Supabase indisponível, mantendo cópia local:', error.message)
     return
   }
-  if (!data?.length) {
-    if (entries.size) console.log(`[catálogo] banco vazio — ${entries.size} item(ns) da cópia local`)
-    return
-  }
-  let added = 0
-  for (const raw of data) {
+  const nextRows: ReferenceEntry[] = []
+  for (const raw of data ?? []) {
     const kind = kindFromSheet(String(raw.kind))
     if (!kind || !textName(raw.name)) continue
-    const className = String(raw.class_name ?? '')
-    const description = String(raw.description ?? '')
-    const existing = findSameEntry(kind, String(raw.name), className)
-    if (existing) continue
-    entries.set(String(raw.id), {
+    nextRows.push({
       id: String(raw.id),
       kind,
       name: String(raw.name).trim(),
-      description,
-      className,
+      description: String(raw.description ?? ''),
+      className: String(raw.class_name ?? ''),
       faithPath: raw.faith_path === 'luz' || raw.faith_path === 'trevas' ? raw.faith_path : '',
       sortOrder: Number(raw.sort_order ?? 0),
       updatedAt: String(raw.updated_at ?? new Date().toISOString()),
     })
-    added += 1
   }
-  if (added) snapshot()
-  console.log(`[catálogo] ${entries.size} item(ns) disponíveis (${added} novos do banco)`)
+  if (nextRows.length > 0) {
+    dbHasSyncedRows = true
+    applyRows(nextRows)
+    snapshot()
+    lastRefreshedAt = Date.now()
+    console.log(`[catálogo] ${entries.size} item(ns) sincronizados do banco`)
+    return
+  }
+  if (dbHasSyncedRows || isSharedDeploymentEnvironment()) {
+    applyRows([])
+    snapshot()
+  }
+  lastRefreshedAt = Date.now()
+  if (entries.size) console.log(`[catálogo] banco vazio — ${entries.size} item(ns) da cópia local`)
 }
 
 function textName(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-export async function refreshReferenceFromDatabase() {
-  if (Date.now() - lastRefreshedAt < REFRESH_TTL_MS) return
+export async function refreshReferenceFromDatabase(force = false) {
+  if (!force && Date.now() - lastRefreshedAt < REFRESH_TTL_MS) return
   if (refreshInFlight) return refreshInFlight
   refreshInFlight = hydrateReferenceCatalog()
     .then(() => {
@@ -275,6 +298,7 @@ export async function refreshReferenceFromDatabase() {
 export function resetReferenceCatalogForTests() {
   entries.clear()
   lastRefreshedAt = 0
+  dbHasSyncedRows = false
   refreshInFlight = null
   writeJsonFile(FILE, [])
 }

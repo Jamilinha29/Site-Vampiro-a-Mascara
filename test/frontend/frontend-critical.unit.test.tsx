@@ -27,6 +27,9 @@ import AdminDownloadsPage from '../../frontend/src/pages/admin/AdminDownloadsPag
 import AdminCharactersPage from '../../frontend/src/pages/admin/AdminCharactersPage'
 import AdminCharactersNewPage from '../../frontend/src/pages/admin/AdminCharactersNewPage'
 import SessionsPage from '../../frontend/src/pages/user/SessionsPage'
+import RecoverPage from '../../frontend/src/features/auth/RecoverPage'
+import CodexHelpPage from '../../frontend/src/pages/public/CodexHelpPage'
+import AdminReferencePage from '../../frontend/src/pages/admin/AdminReferencePage'
 
 describe('frontend auth storage, progression, API error contract & modals (T21-T33)', () => {
   beforeEach(() => {
@@ -325,9 +328,27 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(homeContainer.innerHTML).not.toContain('max-w-6xl')
     const headerBanner = screen.getByRole('banner')
     expect(headerBanner).toBeInTheDocument()
-    expect(within(headerBanner).queryByText('Entrar')).toBeNull()
+    expect(within(headerBanner).getByRole('link', { name: /Entrar na crônica/i })).toHaveAttribute('href', '/auth/login')
+    const desktopNav = within(headerBanner).getByRole('navigation', { name: 'Seções iniciais' })
+    expect(within(desktopNav).getByRole('link', { name: 'Lore' })).toHaveAttribute('href', '#universo')
+    expect(within(desktopNav).getByRole('link', { name: 'Mesa' })).toHaveAttribute('href', '#plataforma')
+    expect(within(desktopNav).getByRole('link', { name: 'Ritual' })).toHaveAttribute('href', '#jornada')
+    expect(screen.queryByText('Criar minha conta')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Suporte de acesso' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Central de contato' })).toBeInTheDocument()
     expect(screen.queryByText(/Uma crônica em constante construção/i)).toBeNull()
     expect(screen.queryByText(/Menos informações dispersas/i)).toBeNull()
+
+    cleanup()
+
+    render(
+      <MemoryRouter>
+        <CodexHelpPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('heading', { name: 'Códice de Beladona' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '4. Moedas, Mercado e Ferreiro' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '6. Alianças, conquistas e suporte' })).toBeInTheDocument()
   })
 
   it('AdminDownloadsPage and DownloadsPage separate species sheets from clan book PDFs in list mode', async () => {
@@ -585,5 +606,120 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(screen.getAllByText('Defesa').length).toBe(2)
     expect(screen.getAllByText(/Habilidades/i).length).toBe(2)
     expect(screen.getAllByText(/Foto \/ ilustração/i).length).toBe(2)
+  })
+
+  it('RecoverPage renders the updated recovery block layout and handles email request and reset mode', async () => {
+    const reqSpy = vi
+      .spyOn(api, 'requestPasswordRecovery')
+      .mockResolvedValue({ message: 'Instruções enviadas.' })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/auth/recover']}>
+          <ToastProvider>
+            <RecoverPage />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Recuperação de senha' })).toBeInTheDocument()
+    expect(
+      screen.getByText('Informe seu e-mail para receber o link de redefinição de senha.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Se não encontrar o e-mail, verifique sua caixa de spam.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Voltar para o login' })).toHaveAttribute('href', '/auth/login')
+
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'valerius@corte.org' } })
+    const submitBtn = screen.getByRole('button', { name: 'Enviar link' })
+    fireEvent.submit(submitBtn.closest('form')!)
+
+    expect(await screen.findByRole('button', { name: 'Link enviado' })).toBeDisabled()
+    expect(reqSpy).toHaveBeenCalledWith('valerius@corte.org')
+
+    cleanup()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/auth/recover?token_hash=hash-123']}>
+          <ToastProvider>
+            <RecoverPage />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Redefinir senha' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Nova senha')).toBeInTheDocument()
+    expect(screen.getByLabelText('Confirmar nova senha')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvar nova senha' })).toBeInTheDocument()
+  })
+
+  it('AdminReferencePage renders Excluir beside Editar and keeps inline Editar working across catalog kinds', async () => {
+    const faithRows = [
+      {
+        id: 'faith-1',
+        kind: 'faith',
+        name: 'Catedral da Aurora',
+        description: 'Luz antiga.',
+        className: '',
+        faithPath: 'luz' as const,
+        sortOrder: 0,
+      },
+    ]
+    const magicRows = [
+      {
+        id: 'magic-1',
+        kind: 'magic',
+        name: 'Taumaturgia',
+        description: 'Magia do sangue.',
+        className: '',
+        faithPath: '' as const,
+        sortOrder: 0,
+      },
+    ]
+
+    vi.spyOn(api, 'adminListReference').mockImplementation(async (kind) =>
+      kind === 'faith' ? faithRows : magicRows,
+    )
+    const addSpy = vi.spyOn(api, 'adminAddReference').mockResolvedValue({
+      ...magicRows[0],
+      description: 'Magia do sangue atualizada.',
+    })
+    const deleteSpy = vi.spyOn(api, 'adminDeleteReference').mockResolvedValue(undefined)
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AdminReferencePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText('Catedral da Aurora')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Excluir' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Item excluído.')).toBeInTheDocument()
+    expect(deleteSpy).toHaveBeenCalledWith('faith', 'faith-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Magia' }))
+    expect(await screen.findByText('Taumaturgia')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(await screen.findByText('Item atualizado.')).toBeInTheDocument()
+    expect(addSpy).toHaveBeenCalledWith('magic', {
+      id: 'magic-1',
+      name: 'Taumaturgia',
+      description: 'Magia do sangue.',
+      className: '',
+      faithPath: '',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Item excluído.')).toBeInTheDocument()
+    expect(deleteSpy).toHaveBeenCalledWith('magic', 'magic-1')
   })
 })

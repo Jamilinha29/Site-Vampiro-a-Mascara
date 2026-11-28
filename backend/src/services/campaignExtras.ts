@@ -142,7 +142,7 @@ export function listBoard() {
   return [...board]
 }
 
-async function syncBoardIfStale() {
+export async function syncBoardIfStale() {
   const remoteRev = await checkRemoteDocumentRevision('campaign-board')
   if (remoteRev > getLoadedDocumentRevision('campaign-board')) {
     const doc = await loadDocument<BoardCard[]>('campaign-board')
@@ -150,7 +150,7 @@ async function syncBoardIfStale() {
   }
 }
 
-async function syncSecretsIfStale() {
+export async function syncSecretsIfStale() {
   const remoteRev = await checkRemoteDocumentRevision('mesa-secrets')
   if (remoteRev > getLoadedDocumentRevision('mesa-secrets')) {
     const doc = await loadDocument<TableSecret[]>('mesa-secrets')
@@ -158,7 +158,7 @@ async function syncSecretsIfStale() {
   }
 }
 
-async function syncRulesIfStale() {
+export async function syncRulesIfStale() {
   const remoteRev = await checkRemoteDocumentRevision('campaign-rules')
   if (remoteRev > getLoadedDocumentRevision('campaign-rules')) {
     const doc = await loadDocument<CampaignRules>('campaign-rules')
@@ -175,6 +175,17 @@ async function syncRulesIfStale() {
         startingXp: doc.body.startingXp ?? 0,
         shopBudgetCopper: doc.body.shopBudgetCopper ?? 0,
       })
+    }
+  }
+}
+
+export async function syncFiltersIfStale() {
+  const remoteRev = await checkRemoteDocumentRevision('player-filters')
+  if (remoteRev > getLoadedDocumentRevision('player-filters')) {
+    const doc = await loadDocument<Record<string, SavedFilter>>('player-filters')
+    if (doc && doc.body) {
+      filters.clear()
+      for (const [email, value] of Object.entries(doc.body)) filters.set(email, value)
     }
   }
 }
@@ -357,6 +368,7 @@ export function readSavedFilters(email: string) {
 
 export async function writeSavedFilters(email: string, patch: SavedFilter) {
   return runExclusive('store:filters', async () => {
+    await syncFiltersIfStale()
     const key = email.trim().toLowerCase()
     const prev = filters.get(key)
     const next = { ...prev, ...patch }

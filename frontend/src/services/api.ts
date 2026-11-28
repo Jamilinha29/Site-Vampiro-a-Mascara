@@ -391,6 +391,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(row),
     }),
+  adminDeleteReference: (kind: string, id: string) =>
+    request<void>(`/api/v1/admin/reference/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
   getCatalogSubclasses: (className: string) =>
     request<string[]>(`/api/v1/catalog/subclasses?class=${encodeURIComponent(className)}`),
   getCatalogCathedrals: (path?: 'luz' | 'trevas') =>

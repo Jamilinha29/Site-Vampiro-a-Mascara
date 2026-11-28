@@ -1,6 +1,6 @@
 import type { ChronicleEntity } from './chronicleStore.js'
 import { PersistenceError } from './errors.js'
-import { getSupabaseAdmin } from './supabaseClient.js'
+import { getSupabaseAdmin, isSharedDeploymentEnvironment } from './supabaseClient.js'
 
 const TABLE = 'EntidadesCronica'
 
@@ -144,7 +144,12 @@ export async function dbUpsertEntity(row: ChronicleEntity): Promise<{ ok: true }
     return { ok: true }
   }
   const sb = getSupabaseAdmin()
-  if (!sb) return { ok: true }
+  if (!sb) {
+    if (isSharedDeploymentEnvironment()) {
+      throw new PersistenceError('Banco durável não configurado neste ambiente publicado.')
+    }
+    return { ok: true }
+  }
   const record = {
     id: row.id,
     kind: row.kind,
@@ -166,7 +171,12 @@ export async function dbDeleteEntity(id: string): Promise<{ ok: true } | { ok: f
     return { ok: true }
   }
   const sb = getSupabaseAdmin()
-  if (!sb) return { ok: true }
+  if (!sb) {
+    if (isSharedDeploymentEnvironment()) {
+      throw new PersistenceError('Banco durável não configurado neste ambiente publicado.')
+    }
+    return { ok: true }
+  }
   const { error } = await sb.from(TABLE).delete().eq('id', id)
   if (error) {
     console.warn('[supabase] Falha ao excluir entidade:', id, error.message)

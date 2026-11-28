@@ -45,6 +45,7 @@ adminReferenceRouter.post('/:kind', async (req, res, next) => {
   try {
     const kind = kindSchema.parse(req.params.kind)
     const body = entrySchema.parse(req.body)
+    await refreshReferenceFromDatabase(true)
     res.status(201).json(await upsertReference({ ...body, kind }))
   } catch (error) {
     next(error)
@@ -55,6 +56,7 @@ adminReferenceRouter.put('/:kind', async (req, res, next) => {
   try {
     const kind = kindSchema.parse(req.params.kind) as ReferenceKind
     const rows = z.array(entrySchema).max(500).parse(req.body)
+    await refreshReferenceFromDatabase(true)
     res.json(await mergeReferenceKind(kind, rows))
   } catch (error) {
     next(error)
@@ -64,6 +66,7 @@ adminReferenceRouter.put('/:kind', async (req, res, next) => {
 adminReferenceRouter.delete('/:kind/:id', async (req, res, next) => {
   try {
     const kind = kindSchema.parse(req.params.kind)
+    await refreshReferenceFromDatabase(true)
     const belongs = listReference(kind).some((item) => item.id === req.params.id)
     if (!belongs) {
       res.status(404).json(errorPayload('NOT_FOUND', 'Item não encontrado', { requestId: req.requestId }))

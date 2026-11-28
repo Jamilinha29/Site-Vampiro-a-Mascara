@@ -103,15 +103,29 @@ export default function AdminReferencePage() {
     queryFn: () => api.adminListReference(kind),
   })
 
+  async function invalidateReferenceQueries() {
+    await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
+    await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
+    if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
+    if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
+  }
+
+  function startEditRow(row: ReferenceEntry) {
+    setEditingSavedId(row.id)
+    setSavedDraft({
+      name: row.name,
+      description: row.description,
+      className: row.className,
+      faithPath: row.faithPath,
+    })
+  }
+
   const saveOne = useMutation({
     mutationFn: () => api.adminAddReference(kind, draft),
     onSuccess: async () => {
       setDraft(emptyDraft())
       setMessage('Item salvo no sistema.')
-      await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
-      await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
-      if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
-      if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
+      await invalidateReferenceQueries()
     },
     onError: (error: Error) => setMessage(error.message),
   })
@@ -126,8 +140,7 @@ export default function AdminReferencePage() {
       }),
     onSuccess: async () => {
       setMessage('Catedral movida para o caminho escolhido.')
-      await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
-      await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
+      await invalidateReferenceQueries()
     },
     onError: (error: Error) => setMessage(error.message),
   })
@@ -139,10 +152,7 @@ export default function AdminReferencePage() {
       setMessage(
         `${result.added} novo(s), ${result.updated} descrição(ões) atualizada(s), ${result.skipped} duplicata(s) ignorada(s). O que já estava salvo continua.`,
       )
-      await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
-      await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
-      if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
-      if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
+      await invalidateReferenceQueries()
     },
     onError: (error: Error) => setMessage(error.message),
   })
@@ -160,10 +170,19 @@ export default function AdminReferencePage() {
     onSuccess: async () => {
       setEditingSavedId(null)
       setMessage('Item atualizado.')
-      await qc.invalidateQueries({ queryKey: ['admin-reference', kind] })
-      await qc.invalidateQueries({ queryKey: ['reference-catalog', kind] })
-      if (kind === 'faith') await qc.invalidateQueries({ queryKey: ['catalog-cathedrals'] })
-      if (kind === 'subclass') await qc.invalidateQueries({ queryKey: ['catalog-subclasses'] })
+      await invalidateReferenceQueries()
+    },
+    onError: (error: Error) => setMessage(error.message),
+  })
+
+  const deleteSaved = useMutation({
+    mutationFn: (row: ReferenceEntry) => api.adminDeleteReference(kind, row.id),
+    onSuccess: async (_data, deletedRow) => {
+      if (editingSavedId === deletedRow.id) {
+        setEditingSavedId(null)
+      }
+      setMessage('Item excluído.')
+      await invalidateReferenceQueries()
     },
     onError: (error: Error) => setMessage(error.message),
   })
@@ -355,42 +374,28 @@ export default function AdminReferencePage() {
                 title="Luz"
                 hint="Estas catedrais só aparecem no Caminho Iluminado."
                 rows={faithGroups.luz}
-                busy={moveFaith.isPending || saveSaved.isPending}
+                busy={moveFaith.isPending || saveSaved.isPending || deleteSaved.isPending}
                 editingId={editingSavedId}
                 draft={savedDraft}
-                onStartEdit={(row) => {
-                  setEditingSavedId(row.id)
-                  setSavedDraft({
-                    name: row.name,
-                    description: row.description,
-                    className: row.className,
-                    faithPath: row.faithPath,
-                  })
-                }}
+                onStartEdit={startEditRow}
                 onChangeDraft={setSavedDraft}
                 onCancelEdit={() => setEditingSavedId(null)}
                 onSaveEdit={(row) => saveSaved.mutate(row)}
+                onDelete={(row) => deleteSaved.mutate(row)}
                 onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
               />
               <FaithColumn
                 title="Trevas"
                 hint="Estas catedrais só aparecem no Caminho Negro."
                 rows={faithGroups.trevas}
-                busy={moveFaith.isPending || saveSaved.isPending}
+                busy={moveFaith.isPending || saveSaved.isPending || deleteSaved.isPending}
                 editingId={editingSavedId}
                 draft={savedDraft}
-                onStartEdit={(row) => {
-                  setEditingSavedId(row.id)
-                  setSavedDraft({
-                    name: row.name,
-                    description: row.description,
-                    className: row.className,
-                    faithPath: row.faithPath,
-                  })
-                }}
+                onStartEdit={startEditRow}
                 onChangeDraft={setSavedDraft}
                 onCancelEdit={() => setEditingSavedId(null)}
                 onSaveEdit={(row) => saveSaved.mutate(row)}
+                onDelete={(row) => deleteSaved.mutate(row)}
                 onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
               />
             </div>
@@ -399,21 +404,14 @@ export default function AdminReferencePage() {
                 title="Sem caminho"
                 hint="Escolha Luz ou Trevas. Enquanto estiverem aqui, não entram na ficha."
                 rows={faithGroups.none}
-                busy={moveFaith.isPending || saveSaved.isPending}
+                busy={moveFaith.isPending || saveSaved.isPending || deleteSaved.isPending}
                 editingId={editingSavedId}
                 draft={savedDraft}
-                onStartEdit={(row) => {
-                  setEditingSavedId(row.id)
-                  setSavedDraft({
-                    name: row.name,
-                    description: row.description,
-                    className: row.className,
-                    faithPath: row.faithPath,
-                  })
-                }}
+                onStartEdit={startEditRow}
                 onChangeDraft={setSavedDraft}
                 onCancelEdit={() => setEditingSavedId(null)}
                 onSaveEdit={(row) => saveSaved.mutate(row)}
+                onDelete={(row) => deleteSaved.mutate(row)}
                 onMove={(row, faithPath) => moveFaith.mutate({ ...row, faithPath })}
               />
             ) : null}
@@ -494,21 +492,23 @@ export default function AdminReferencePage() {
                           {row.description || 'Sem descrição.'}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-secondary text-xs"
-                        onClick={() => {
-                          setEditingSavedId(row.id)
-                          setSavedDraft({
-                            name: row.name,
-                            description: row.description,
-                            className: row.className,
-                            faithPath: row.faithPath,
-                          })
-                        }}
-                      >
-                        Editar
-                      </button>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          onClick={() => startEditRow(row)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-on-surface-variant underline transition hover:text-primary disabled:opacity-50"
+                          disabled={deleteSaved.isPending}
+                          onClick={() => deleteSaved.mutate(row)}
+                        >
+                          Excluir
+                        </button>
+                      </div>
                     </div>
                   )}
                 </li>
@@ -539,6 +539,7 @@ function FaithColumn({
   onChangeDraft,
   onCancelEdit,
   onSaveEdit,
+  onDelete,
   onMove,
 }: {
   title: string
@@ -551,6 +552,7 @@ function FaithColumn({
   onChangeDraft: (updater: (current: Draft) => Draft) => void
   onCancelEdit: () => void
   onSaveEdit: (row: ReferenceEntry) => void
+  onDelete: (row: ReferenceEntry) => void
   onMove: (row: ReferenceEntry, faithPath: 'luz' | 'trevas') => void
 }) {
   return (
@@ -602,6 +604,14 @@ function FaithColumn({
                     <div className="flex flex-wrap items-center gap-2">
                       <button type="button" className="btn-secondary text-xs" onClick={() => onStartEdit(row)}>
                         Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-on-surface-variant underline transition hover:text-primary disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => onDelete(row)}
+                      >
+                        Excluir
                       </button>
                       <select
                         className="input-feudal w-auto pl-3 text-xs"

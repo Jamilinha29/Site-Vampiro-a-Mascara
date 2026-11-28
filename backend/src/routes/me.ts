@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireUser } from '../middlewares/optionalUser.js'
-import { readSavedFilters, writeSavedFilters } from '../services/campaignExtras.js'
+import { readSavedFilters, syncFiltersIfStale, syncRulesIfStale, writeSavedFilters } from '../services/campaignExtras.js'
 import {
   confirmSessionPresence,
   getScheduledSession,
@@ -278,6 +278,7 @@ meRouter.patch('/characters/:characterId', async (req, res, next) => {
       res.status(404).json(errorPayload('NOT_FOUND', 'Personagem não encontrado', { requestId: req.requestId }))
       return
     }
+    await syncRulesIfStale()
     const rules = readRules()
     const resolvedClass = body.characterClass ?? current.characterClass ?? classFromHouse(current.identity?.house)
 
@@ -395,8 +396,13 @@ meRouter.get('/operations', (req, res) => {
   res.json(listOperationsFor(req.user!.email, req.user!))
 })
 
-meRouter.get('/filters', (req, res) => {
-  res.json(readSavedFilters(req.user!.email))
+meRouter.get('/filters', async (req, res, next) => {
+  try {
+    await syncFiltersIfStale()
+    res.json(readSavedFilters(req.user!.email))
+  } catch (e) {
+    next(e)
+  }
 })
 
 meRouter.put('/filters', async (req, res, next) => {

@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from './supabaseClient.js'
-import { listReference } from './referenceCatalog.js'
+import { listReference, refreshReferenceFromDatabase } from './referenceCatalog.js'
 
 export const CHARACTER_CLASSES = [
   'Guerreiro',
@@ -36,6 +36,7 @@ export function classFromHouse(house?: string | null) {
 export async function listSubclassesForClass(className: string) {
   const name = className.trim()
   if (!name) return []
+  await refreshReferenceFromDatabase()
   const imported = listReference('subclass')
     .filter((row) => row.className.toLowerCase() === name.toLowerCase())
     .map((row) => row.name)

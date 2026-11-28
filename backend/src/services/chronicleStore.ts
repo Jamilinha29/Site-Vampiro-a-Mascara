@@ -11,7 +11,7 @@ import {
 import { getProfile, pauseEffectsForSeats } from './profileStore.js'
 import { readJsonFile, writeJsonFile } from './localJson.js'
 import { ForbiddenError, NotFoundError } from './errors.js'
-import { getSupabaseAdmin } from './supabaseClient.js'
+import { getSupabaseAdmin, isSharedDeploymentEnvironment } from './supabaseClient.js'
 
 export type EntityKind = 'npc' | 'monster' | 'equipment' | 'consumable' | 'archive' | 'download'
 
@@ -260,6 +260,7 @@ const handouts = new Map<string, SessionHandout>()
 const scheduledSessions = new Map<string, ScheduledSession>()
 const sessionActions: SessionActionEntry[] = []
 let lastEntitiesRefreshAt = 0
+let dbHasLoadedEntities = false
 let entitiesRefreshInFlight: Promise<void> | null = null
 let acoesTableUnavailableUntil = 0
 
@@ -299,6 +300,7 @@ export function resetSessionsForTests() {
 export function resetEntitiesForTests() {
   entities.clear()
   lastEntitiesRefreshAt = 0
+  dbHasLoadedEntities = false
   entitiesRefreshInFlight = null
 }
 
@@ -399,13 +401,15 @@ export function toNarratorSessionDTO(row: ScheduledSession): NarratorSessionDTO 
   return clone(ensureSessionDefaults(row))
 }
 
-function mergeLoadedEntities(loaded: ChronicleEntity[], spells: ChronicleEntity[]) {
+function mergeLoadedEntities(loaded: ChronicleEntity[], spells: ChronicleEntity[], refreshStartedAt?: string) {
   const rows = [...loaded, ...spells]
   lastEntitiesRefreshAt = Date.now()
-  if (!rows.length) return
+  if (rows.length > 0) dbHasLoadedEntities = true
   let changed = false
+  const remoteIds = new Set<string>()
   for (const row of rows) {
     if (!row.name || !row.id) continue
+    remoteIds.add(row.id)
     const byId = entities.get(row.id)
     if (byId) {
       if (row.updatedAt >= byId.updatedAt) {
@@ -422,6 +426,7 @@ function mergeLoadedEntities(loaded: ChronicleEntity[], spells: ChronicleEntity[
       changed = true
       continue
     }
+    remoteIds.add(same.id)
     if (row.updatedAt >= same.updatedAt) {
       entities.set(same.id, {
         ...same,
@@ -432,18 +437,27 @@ function mergeLoadedEntities(loaded: ChronicleEntity[], spells: ChronicleEntity[
       changed = true
     }
   }
+  if (refreshStartedAt && (dbHasLoadedEntities || isSharedDeploymentEnvironment())) {
+    for (const [id, existing] of entities.entries()) {
+      if (!remoteIds.has(id) && existing.updatedAt < refreshStartedAt) {
+        entities.delete(id)
+        changed = true
+      }
+    }
+  }
   if (changed) writeEntityFile()
 }
 
-/** Junta o que o banco confirmou. Consulta falha ou tabela vazia não apaga o que já está na memória. */
+/** Junta o que o banco confirmou e remove registros excluídos remotamente. */
 export async function refreshEntitiesFromDatabase(force = false) {
   if (!force && Date.now() - lastEntitiesRefreshAt < ENTITIES_REFRESH_TTL_MS) return
   if (entitiesRefreshInFlight) return entitiesRefreshInFlight
   entitiesRefreshInFlight = (async () => {
+    const refreshStartedAt = new Date().toISOString()
     const loaded = await dbLoadEntities()
     if (loaded === null) return
     const spells = await dbLoadGrimoireSpells()
-    mergeLoadedEntities(loaded, spells)
+    mergeLoadedEntities(loaded, spells, refreshStartedAt)
   })().finally(() => {
     entitiesRefreshInFlight = null
   })
@@ -451,10 +465,11 @@ export async function refreshEntitiesFromDatabase(force = false) {
 }
 
 export async function hydrateEntitiesFromDatabase() {
+  const refreshStartedAt = new Date().toISOString()
   const rows = await dbLoadEntities()
   if (rows && rows.length > 0) {
     const spells = await dbLoadGrimoireSpells()
-    mergeLoadedEntities(rows, spells)
+    mergeLoadedEntities(rows, spells, refreshStartedAt)
     console.log(`[persistência] ${entities.size} entidade(s) após juntar o Supabase`)
     return
   }

@@ -17,6 +17,9 @@ import {
   removeBoardCard,
   removeSecret,
   restoreBackup,
+  syncBoardIfStale,
+  syncRulesIfStale,
+  syncSecretsIfStale,
   validateStorageManifest,
 } from '../../services/campaignExtras.js'
 import {
@@ -256,6 +259,7 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
 /** Importação em lote (planilha/JSON) — sempre rascunho até publicar no site. */
 adminChronicleRouter.post('/entities/import', async (req, res, next) => {
   try {
+    await refreshEntitiesFromDatabase()
     const envelope = z
       .union([
         z.array(z.unknown()).max(500),
@@ -1307,8 +1311,13 @@ adminChronicleRouter.post('/backup/restore', requireAdmin, async (req, res, next
   }
 })
 
-adminChronicleRouter.get('/board', (_req, res) => {
-  res.json(listBoard())
+adminChronicleRouter.get('/board', async (_req, res, next) => {
+  try {
+    await syncBoardIfStale()
+    res.json(listBoard())
+  } catch (e) {
+    next(e)
+  }
 })
 
 adminChronicleRouter.post('/board', async (req, res, next) => {
@@ -1350,8 +1359,13 @@ adminChronicleRouter.delete('/board/:id', async (req, res, next) => {
   }
 })
 
-adminChronicleRouter.get('/rules', (req, res) => {
-  res.json(campaignSnapshot(req.user!).rules)
+adminChronicleRouter.get('/rules', async (req, res, next) => {
+  try {
+    await syncRulesIfStale()
+    res.json(campaignSnapshot(req.user!).rules)
+  } catch (e) {
+    next(e)
+  }
 })
 
 adminChronicleRouter.post('/rules', requireAdmin, async (req, res, next) => {
@@ -1383,8 +1397,9 @@ adminChronicleRouter.post('/rules', requireAdmin, async (req, res, next) => {
   }
 })
 
-adminChronicleRouter.get('/secrets', (req, res, next) => {
+adminChronicleRouter.get('/secrets', async (req, res, next) => {
   try {
+    await syncSecretsIfStale()
     const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined
     if (sessionId) {
       requireSessionManager(sessionId, req.user!)
