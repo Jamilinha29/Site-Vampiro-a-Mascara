@@ -1,0 +1,98 @@
+name: Auto Update Dependencies
+
+on:
+  schedule:
+    # Toda segunda-feira às 06:00 (UTC-3 / 09:00 UTC)
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: beladona-auto-update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dependabot-automerge:
+    if: github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Ler metadados do Dependabot
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Aprovar e habilitar merge automático em minor/patch
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash "$PR_URL" || echo "Habilite 'Allow auto-merge' nas configurações do repositório para merge automático de PRs."
+
+  scheduled-npm-update:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Atualizar pacotes compatíveis nos workspaces
+        run: |
+          npm update --workspaces --include-workspace-root
+          npm audit fix --audit-level=high || true
+
+      - name: Verificar alterações em manifestos/lockfile
+        id: diff
+        run: |
+          if git diff --quiet -- package.json frontend/package.json backend/package.json package-lock.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nenhuma atualização pendente."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validar lint, build, segurança e testes antes de publicar
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          npm run lint
+          npm run build:vercel
+          npm run verify:git
+          npm run verify:bundle
+          npm run test:ci
+
+      - name: Publicar atualização automática
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json frontend/package.json backend/package.json package-lock.json
+          git commit -m "chore(deps): atualiza pacotes automaticamente"
+          if ! git push origin HEAD:main; then
+            BRANCH="chore/auto-update-$(date +%Y%m%d%H%M)"
+            git push origin "HEAD:$BRANCH"
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(deps): atualiza pacotes automaticamente" \
+              --body "Atualização automática validada por lint, build, verify e test:ci."
+            gh pr merge --auto --squash "$BRANCH" || true
+          fi

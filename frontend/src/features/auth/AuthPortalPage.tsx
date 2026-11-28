@@ -96,7 +96,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
       <main className="auth-portal-main">
         <div className="auth-portal-fit">
         <div className="auth-portal-card relative shrink-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/95 shadow-2xl backdrop-blur-md">
-          <div className="grid min-h-[34rem] w-full grid-cols-1 lg:min-h-[40rem] lg:grid-cols-2 lg:items-stretch">
+          <div className="grid w-full grid-cols-1 lg:grid-cols-2 lg:items-stretch">
             <LoginColumn
               mode={mode}
               setMode={setMode}
@@ -114,7 +114,7 @@ export default function AuthPortalPage({ mode: initialMode = 'login' }: Props) {
           </div>
 
           <div
-            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-between gap-6 overflow-hidden border-outline-variant/40 bg-surface-container p-8 shadow-2xl lg:flex lg:p-10"
+            className="slide-panel-transition absolute inset-y-0 right-0 z-30 hidden w-1/2 flex-col items-center justify-between gap-4 overflow-hidden border-outline-variant/40 bg-surface-container p-6 shadow-2xl lg:flex lg:p-7"
             style={{ transform: sliderTransform, borderRight: mode === 'register' ? '1px solid rgba(89,65,65,0.4)' : undefined, borderLeft: mode === 'login' ? '1px solid rgba(89,65,65,0.4)' : undefined }}
           >
             <SliderPanel mode={mode} />
@@ -378,7 +378,7 @@ function AdminMasterPanel({
   const [adminPassword, setAdminPassword] = useState('')
 
   return (
-    <div className={bare ? `space-y-4 ${className}` : `space-y-3 rounded-lg border border-secondary/35 bg-secondary/5 p-3 sm:p-4 ${className}`}>
+    <div className={bare ? `space-y-3 ${className}` : `space-y-2.5 rounded-lg border border-secondary/35 bg-secondary/5 p-3 sm:p-4 ${className}`}>
       {bare ? null : (
         <div className="flex items-center gap-2 border-b border-secondary/20 pb-2">
           <span className="material-symbols-outlined text-secondary">military_tech</span>
@@ -389,7 +389,7 @@ function AdminMasterPanel({
         </div>
       )}
       <form
-        className="space-y-4 [&_.input-feudal]:py-2.5 [&_.input-feudal]:pl-11 [&_.input-feudal]:text-sm"
+        className="space-y-3 [&_.input-feudal]:py-2.5 [&_.input-feudal]:pl-11 [&_.input-feudal]:text-sm"
         onSubmit={(e) => {
           e.preventDefault()
           onAdminSubmit(adminEmail, adminPassword)
@@ -615,17 +615,17 @@ function SliderPanel({ mode }: { mode: Mode }) {
         </span>
         <span className="text-outline">Beladona</span>
       </div>
-      <div className="relative z-10 flex w-full flex-col items-center py-4">
+      <div className="relative z-10 flex w-full flex-col items-center py-2">
         <Link
           to="/"
-          className="relative flex aspect-square w-full max-w-[14rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary xl:max-w-[16rem]"
+          className="relative flex aspect-square w-full max-w-[11rem] items-center justify-center rounded-full transition hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-secondary xl:max-w-[12.5rem]"
           aria-label="Voltar à página inicial"
         >
           <div className="pointer-events-none absolute inset-0 animate-pulse rounded-full border border-dashed border-outline-variant/40" />
-          <div className="pointer-events-none absolute inset-4 rounded-full border border-secondary/25" />
-          <BrandLogo size="hero" withGlow className="relative z-10 h-36 sm:h-40 xl:h-44" />
+          <div className="pointer-events-none absolute inset-3 rounded-full border border-secondary/25" />
+          <BrandLogo size="hero" withGlow className="relative z-10 h-28 sm:h-32 xl:h-36" />
         </Link>
-        <p className="mt-5 max-w-sm px-2 text-center font-serif text-sm leading-relaxed text-on-surface-variant italic sm:text-base">{quote}</p>
+        <p className="mt-3.5 max-w-xs px-2 text-center font-serif text-sm leading-relaxed text-on-surface-variant italic">{quote}</p>
       </div>
       <div className="relative z-10 flex w-full items-center justify-between border-t border-outline-variant/30 pt-3 text-xs text-outline">
         <span className="flex items-center gap-1.5 text-on-surface-variant">

@@ -45,7 +45,7 @@ const CODEX_SECTIONS = [
     items: [
       'O Glossário reúne grimórios, amuletos, relíquias e o Bestiário publicados pelo narrador.',
       'Na Loja da sessão e no Ferreiro você adquire equipamentos e participa de leilões usando ouro, prata e bronze.',
-      'Em Downloads ficam fichas imprimíveis, mapas/tratados e o histórico de atos encerrados.',
+      'Em Arquivos ficam as fichas oficiais imprimíveis por clã, o Compêndio e os Acontecimentos Passados.',
     ],
   },
 ] as const

@@ -22,6 +22,11 @@ import { ToastProvider } from '../../frontend/src/components/ui/ToastProvider'
 import { evaluateClientLiveGate } from '../../frontend/src/lib/mesaSession'
 import { AdminShell } from '../../frontend/src/components/layout/AdminShell'
 import HomePage from '../../frontend/src/pages/public/HomePage'
+import DownloadsPage from '../../frontend/src/pages/user/DownloadsPage'
+import AdminDownloadsPage from '../../frontend/src/pages/admin/AdminDownloadsPage'
+import AdminCharactersPage from '../../frontend/src/pages/admin/AdminCharactersPage'
+import AdminCharactersNewPage from '../../frontend/src/pages/admin/AdminCharactersNewPage'
+import SessionsPage from '../../frontend/src/pages/user/SessionsPage'
 
 describe('frontend auth storage, progression, API error contract & modals (T21-T33)', () => {
   beforeEach(() => {
@@ -318,6 +323,225 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
       </MemoryRouter>,
     )
     expect(homeContainer.innerHTML).not.toContain('max-w-6xl')
-    expect(screen.getByRole('banner')).toBeInTheDocument()
+    const headerBanner = screen.getByRole('banner')
+    expect(headerBanner).toBeInTheDocument()
+    expect(within(headerBanner).queryByText('Entrar')).toBeNull()
+    expect(screen.queryByText(/Uma crônica em constante construção/i)).toBeNull()
+    expect(screen.queryByText(/Menos informações dispersas/i)).toBeNull()
+  })
+
+  it('AdminDownloadsPage and DownloadsPage use renamed sections and group multiple clan PDFs in list mode', async () => {
+    vi.spyOn(api, 'adminListEntities').mockResolvedValue([])
+    vi.spyOn(api, 'getCatalogClans').mockResolvedValue([
+      { id: 'c-ravnos', name: 'Ravnos', slug: 'ravnos' },
+      { id: 'c-brujah', name: 'Brujah', slug: 'brujah' },
+    ])
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AdminDownloadsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Acontecimentos Passados' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fichas oficiais imprimíveis' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compêndio' })).toBeInTheDocument()
+
+    cleanup()
+
+    vi.spyOn(api, 'getDownloadsContent').mockImplementation(async (category) => {
+      if (category === 'sheets') {
+        return {
+          handouts: [],
+          files: [
+            {
+              id: 's1',
+              kind: 'download',
+              name: 'Ficha Ravnos Clássica',
+              description: 'Versão padrão',
+              visibility: 'published',
+              downloadCategory: 'sheets',
+              clan: 'Ravnos',
+              fileName: 'ravnos-1.pdf',
+              fileUrl: 'https://cdn.example.org/ravnos-1.pdf',
+              createdAt: '2026-11-27T00:00:00Z',
+              updatedAt: '2026-11-27T00:00:00Z',
+            },
+            {
+              id: 's2',
+              kind: 'download',
+              name: 'Ficha Ravnos Antiga',
+              description: 'Idade das Trevas',
+              visibility: 'published',
+              downloadCategory: 'sheets',
+              clan: 'Ravnos',
+              fileName: 'ravnos-2.pdf',
+              fileUrl: 'https://cdn.example.org/ravnos-2.pdf',
+              createdAt: '2026-11-27T00:00:00Z',
+              updatedAt: '2026-11-27T00:00:00Z',
+            },
+            {
+              id: 's3',
+              kind: 'download',
+              name: 'Ficha Ravnos Disciplinas',
+              description: 'Quimerismo',
+              visibility: 'published',
+              downloadCategory: 'sheets',
+              clan: 'Ravnos',
+              fileName: 'ravnos-3.pdf',
+              fileUrl: 'https://cdn.example.org/ravnos-3.pdf',
+              createdAt: '2026-11-27T00:00:00Z',
+              updatedAt: '2026-11-27T00:00:00Z',
+            },
+          ],
+        }
+      }
+      return { files: [], handouts: [] }
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DownloadsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Acontecimentos Passados' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Fichas oficiais imprimíveis' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Compêndio' })).toBeInTheDocument()
+
+    const ravnosHeading = await screen.findByRole('heading', { name: 'Ravnos' })
+    const ravnosBlock = ravnosHeading.closest('article')!
+    expect(within(ravnosBlock).getByText('3 arquivos')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('Ficha Ravnos Clássica')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('Ficha Ravnos Antiga')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('Ficha Ravnos Disciplinas')).toBeInTheDocument()
+    expect(within(ravnosBlock).getAllByRole('link', { name: /Baixar PDF/i })).toHaveLength(3)
+  })
+
+  it('SessionsPage places private table code input below session search and above public/friend tables', () => {
+    vi.spyOn(api, 'getScheduledSessions').mockResolvedValue([])
+    vi.spyOn(api, 'getMeProfile').mockResolvedValue({
+      id: 'p1',
+      email: 'jog@ci.local',
+      displayName: 'Jog',
+      handle: '@jog',
+      role: 'player',
+      memberSince: '2026-01-01T00:00:00Z',
+      avatarUrl: null,
+      bannerUrl: null,
+      badges: [],
+      preferences: {},
+      accountMetrics: { characters: 0, sessions: 0, chronicles: 0, totalXp: 0 },
+      lineageStats: {},
+      characters: [],
+    } as never)
+    vi.spyOn(api, 'getSessionBoard').mockResolvedValue({ publicTables: [], friendTables: [] })
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ToastProvider>
+            <SessionsPage />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const text = container.textContent ?? ''
+    const searchIdx = text.indexOf('Procurar sessão')
+    const privateIdx = text.indexOf('Mesa privada · código')
+    const publicIdx = text.indexOf('Abertas ao público')
+    expect(searchIdx).toBeGreaterThanOrEqual(0)
+    expect(privateIdx).toBeGreaterThan(searchIdx)
+    expect(publicIdx).toBeGreaterThan(privateIdx)
+  })
+
+  it('AdminCharactersPage renders user-character-style cards with stats, abilities, classification and alive/dead status, and AdminCharactersNewPage has image + edit inputs', async () => {
+    vi.spyOn(api, 'adminListHandouts').mockResolvedValue([])
+    vi.spyOn(api, 'adminListEntities').mockImplementation(async (kind) => {
+      if (kind === 'npc') {
+        return [
+          {
+            id: 'npc-1',
+            kind: 'npc',
+            name: 'Lady Carmilla',
+            description: 'Conselheira da corte.',
+            visibility: 'published',
+            creatureType: 'Vampiro',
+            threatLevel: 'perigoso',
+            lifeStatus: 'alive',
+            hpMax: 50,
+            manaMax: 30,
+            defense: 15,
+            abilities: ['Dominação', 'Presença'],
+            createdAt: '2026-11-28T00:00:00Z',
+            updatedAt: '2026-11-28T00:00:00Z',
+          },
+        ]
+      }
+      if (kind === 'monster') {
+        return [
+          {
+            id: 'mon-1',
+            kind: 'monster',
+            name: 'Cão Sombrio',
+            description: 'Fera noturna.',
+            visibility: 'published',
+            creatureType: 'Bestas da noite',
+            threatLevel: 'letal',
+            lifeStatus: 'dead',
+            hpMax: 80,
+            manaMax: 10,
+            defense: 14,
+            abilities: ['Mordida Sombria'],
+            createdAt: '2026-11-28T00:00:00Z',
+            updatedAt: '2026-11-28T00:00:00Z',
+          },
+        ]
+      }
+      return []
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ToastProvider>
+            <AdminCharactersPage />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText('Lady Carmilla')).toBeInTheDocument()
+    expect(screen.getByText('Vivo · aguardando sessão')).toBeInTheDocument()
+    expect(screen.getByText(/Classificação: Perigoso/i)).toBeInTheDocument()
+    expect(screen.getByText('Dominação')).toBeInTheDocument()
+    expect(screen.getByText('Presença')).toBeInTheDocument()
+    expect(screen.getAllByText('Defesa').length).toBeGreaterThanOrEqual(1)
+
+    expect(screen.getByText('Cão Sombrio')).toBeInTheDocument()
+    expect(screen.getByText('Morto')).toBeInTheDocument()
+    expect(screen.getByText(/Classificação: Letal/i)).toBeInTheDocument()
+    expect(screen.getByText('Mordida Sombria')).toBeInTheDocument()
+
+    cleanup()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AdminCharactersNewPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getAllByText('Classificação').length).toBe(2)
+    expect(screen.getAllByText('Estado na crônica').length).toBe(2)
+    expect(screen.getAllByText('Defesa').length).toBe(2)
+    expect(screen.getAllByText(/Habilidades/i).length).toBe(2)
+    expect(screen.getAllByText(/Foto \/ ilustração/i).length).toBe(2)
   })
 })

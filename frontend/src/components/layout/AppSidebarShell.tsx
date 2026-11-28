@@ -92,9 +92,9 @@ export function AppSidebarShell({
 
   const sidebarContent = (
     <div className="flex h-full min-h-0 flex-col bg-surface-container-lowest">
-      <div className="border-b border-outline-variant/30 px-3.5 py-2.5">
-        <Link to={homePath} className="flex items-center gap-2 transition hover:opacity-90">
-          <BrandLogo size="xs" withGlow className="h-8 w-8 shrink-0" />
+      <div className="flex h-12 shrink-0 items-center border-b border-outline-variant/30 px-3">
+        <Link to={homePath} className="flex min-w-0 items-center gap-2 transition hover:opacity-90">
+          <BrandLogo size="xs" withGlow className="h-7 w-7 shrink-0" />
           <div className="min-w-0 leading-tight">
             <p className="truncate font-label-sm text-[9px] font-semibold tracking-[0.16em] text-secondary uppercase">
               As Crônicas de
@@ -104,42 +104,40 @@ export function AppSidebarShell({
         </Link>
       </div>
 
-      {/* Modelo centralizado compacto de perfil (banner, foto e nome) mantendo as cores originais */}
-      <div className="border-b border-outline-variant/25 px-2.5 py-2">
+      {/* Cartão compacto de perfil (banner de fundo, foto e nome) alinhado com a navegação */}
+      <div className="border-b border-outline-variant/25 px-2 py-1.5">
         <Link
           to={profilePath}
-          className="group relative block overflow-hidden rounded-lg border border-outline-variant/35 bg-surface-container-low/80 pb-2 text-center transition hover:border-secondary/50"
+          className="group relative flex min-h-[3.1rem] items-center gap-2.5 overflow-hidden rounded-md border border-outline-variant/35 bg-surface-container-low/85 px-2.5 py-1.5 transition hover:border-secondary/50"
         >
-          <div className="relative h-9 w-full overflow-hidden">
-            {profile?.bannerUrl ? (
-              <img
-                src={profile.bannerUrl}
-                alt=""
-                className="h-full w-full object-cover opacity-75 transition duration-300 group-hover:scale-105"
-              />
-            ) : (
-              <div className="h-full w-full bg-gradient-to-br from-primary-container/40 via-[#1f1318] to-surface-container-lowest" />
-            )}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/15 via-surface-container-low/35 to-surface-container-low" />
+          {profile?.bannerUrl ? (
+            <img
+              src={profile.bannerUrl}
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-45 transition duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-container/35 via-[#1f1318] to-surface-container-lowest" />
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-surface-container-lowest/90 via-surface-container-lowest/70 to-surface-container-lowest/45" />
+
+          <div className="relative z-10 h-8 w-8 shrink-0">
+            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-secondary/75 bg-surface-container-high shadow-sm">
+              {profile?.avatarUrl ? (
+                <img src={profile.avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+              ) : (
+                <span className="material-symbols-outlined text-base text-secondary">person</span>
+              )}
+            </div>
+            <span
+              className="absolute right-0 bottom-0 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
+              title="Online"
+            />
           </div>
 
-          <div className="relative z-10 -mt-5 flex flex-col items-center px-2">
-            <div className="relative h-11 w-11 shrink-0">
-              <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-secondary/75 bg-surface-container-high shadow-md">
-                {profile?.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="material-symbols-outlined text-xl text-secondary">person</span>
-                )}
-              </div>
-              <span
-                className="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
-                title="Online"
-              />
-            </div>
-
-            <p className="mt-1 max-w-full truncate text-xs font-semibold leading-tight text-on-surface">{displayName}</p>
-            <p className="mt-0.5 max-w-full truncate font-label-sm text-[9px] leading-tight tracking-[0.14em] text-secondary uppercase">
+          <div className="relative z-10 min-w-0 flex-1 text-left">
+            <p className="truncate text-xs font-semibold leading-tight text-on-surface">{displayName}</p>
+            <p className="mt-0.5 truncate font-label-sm text-[8.5px] leading-tight tracking-[0.12em] text-secondary uppercase">
               {roleLabel}
             </p>
           </div>
@@ -147,13 +145,13 @@ export function AppSidebarShell({
       </div>
 
       {/* Navegação organizada por seções nas cores originais */}
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2" aria-label={`Navegação ${breadcrumbRoot}`}>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5" aria-label={`Navegação ${breadcrumbRoot}`}>
         {resolvedGroups.map((group, groupIndex) => (
           <div
             key={group.label}
-            className={groupIndex > 0 ? 'mt-2.5 border-t border-outline-variant/25 pt-2.5' : ''}
+            className={groupIndex > 0 ? 'mt-1.5 border-t border-outline-variant/25 pt-1.5' : ''}
           >
-            <p className="mb-1 px-2 font-label-sm text-[9px] font-semibold tracking-[0.16em] text-outline uppercase">
+            <p className="mb-0.5 px-2 font-label-sm text-[8.5px] font-semibold tracking-[0.14em] text-outline uppercase">
               {group.label}
             </p>
             <ul className="space-y-0.5">
@@ -164,7 +162,7 @@ export function AppSidebarShell({
                     end={item.end}
                     className={({ isActive }) =>
                       [
-                        'flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs transition',
+                        'flex items-center gap-2 rounded-md border px-2 py-1 text-[11.5px] leading-tight transition',
                         isActive
                           ? 'border-primary-container/50 bg-primary-container/20 font-medium text-on-surface shadow-[inset_0_0_0_1px_rgba(255,179,179,0.08)]'
                           : 'border-transparent text-on-surface-variant hover:bg-surface-container-low/80 hover:text-on-surface',
@@ -174,7 +172,7 @@ export function AppSidebarShell({
                     {({ isActive }) => (
                       <>
                         <span
-                          className={`material-symbols-outlined text-[17px] ${isActive ? 'text-primary' : 'text-outline'}`}
+                          className={`material-symbols-outlined text-[16px] ${isActive ? 'text-primary' : 'text-outline'}`}
                           aria-hidden
                         >
                           {item.icon}
@@ -190,28 +188,28 @@ export function AppSidebarShell({
         ))}
       </nav>
 
-      <div className="space-y-0.5 border-t border-outline-variant/25 px-2.5 py-2 text-xs">
+      <div className="space-y-0.5 border-t border-outline-variant/25 px-2 py-1.5 text-[11.5px]">
         {context === 'player' && canSwitchToAdmin ? (
           <Link
             to="/admin"
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-secondary transition hover:bg-surface-container-low"
+            className="flex items-center gap-2 rounded-md px-2 py-1 text-secondary transition hover:bg-surface-container-low"
           >
-            <span className="material-symbols-outlined text-[17px]">shield_person</span>
+            <span className="material-symbols-outlined text-[16px]">shield_person</span>
             <span className="truncate">Painel do narrador</span>
           </Link>
         ) : null}
         <Link
           to="/ajuda/codice"
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
+          className="flex items-center gap-2 rounded-md px-2 py-1 text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
         >
-          <span className="material-symbols-outlined text-[17px] text-outline">help</span>
+          <span className="material-symbols-outlined text-[16px] text-outline">help</span>
           <span>Ajuda &amp; Suporte</span>
         </Link>
         <NavLink
           to={settingsPath}
           className={({ isActive }) =>
             [
-              'flex items-center gap-2 rounded-md border px-2 py-1.5 transition',
+              'flex items-center gap-2 rounded-md border px-2 py-1 transition',
               isActive
                 ? 'border-primary-container/50 bg-primary-container/20 font-medium text-on-surface shadow-[inset_0_0_0_1px_rgba(255,179,179,0.08)]'
                 : 'border-transparent text-on-surface-variant hover:bg-surface-container-low/80 hover:text-on-surface',
@@ -221,7 +219,7 @@ export function AppSidebarShell({
           {({ isActive }) => (
             <>
               <span
-                className={`material-symbols-outlined text-[17px] ${isActive ? 'text-primary' : 'text-outline'}`}
+                className={`material-symbols-outlined text-[16px] ${isActive ? 'text-primary' : 'text-outline'}`}
                 aria-hidden
               >
                 tune
@@ -236,9 +234,9 @@ export function AppSidebarShell({
             logout()
             navigate('/auth/login')
           }}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary"
         >
-          <span className="material-symbols-outlined text-[17px] text-outline">logout</span>
+          <span className="material-symbols-outlined text-[16px] text-outline">logout</span>
           <span>Sair</span>
         </button>
       </div>
@@ -247,7 +245,7 @@ export function AppSidebarShell({
 
   return (
     <div className="flex min-h-svh min-h-dvh w-full min-w-0 bg-surface-container-lowest text-on-surface">
-      <aside className="sticky top-0 hidden h-dvh w-52 shrink-0 border-r border-outline-variant/30 lg:block xl:w-56">
+      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 border-r border-outline-variant/30 lg:block xl:w-60">
         {sidebarContent}
       </aside>
 
@@ -273,7 +271,7 @@ export function AppSidebarShell({
         ) : null}
 
         <header className="sticky top-0 z-30 border-b border-outline-variant/30 bg-surface-container-lowest/90 backdrop-blur-md">
-          <div className="flex min-h-[3.75rem] w-full items-center justify-between gap-3 px-[clamp(1rem,2.5vw,2.5rem)] py-2 sm:min-h-[4.25rem]">
+          <div className="flex h-12 w-full items-center justify-between gap-3 px-[clamp(1rem,2.5vw,2.5rem)]">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"

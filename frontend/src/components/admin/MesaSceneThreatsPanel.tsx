@@ -82,6 +82,7 @@ export function MesaSceneThreatsPanel({ sessionId, live, threats }: Props) {
               {publishedMonsters.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
+                  {m.lifeStatus === 'dead' ? ' (Morto)' : ''}
                 </option>
               ))}
             </select>

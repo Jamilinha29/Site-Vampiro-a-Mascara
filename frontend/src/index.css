@@ -263,18 +263,18 @@
   }
 
   .auth-portal-compact {
-    --auth-field-gap: clamp(0.85rem, 1.8vh, 1.15rem);
-    --auth-section-gap: clamp(1rem, 2.2vh, 1.5rem);
-    --auth-pad: clamp(1.5rem, 3vw, 2.75rem);
+    --auth-field-gap: clamp(0.6rem, 1.3vh, 0.85rem);
+    --auth-section-gap: clamp(0.75rem, 1.6vh, 1rem);
+    --auth-pad: clamp(1.15rem, 2vw, 1.65rem);
   }
 
   .auth-portal-main {
-    @apply relative z-10 flex w-full min-h-0 flex-1 flex-col items-center justify-center overflow-x-clip overflow-y-auto px-[clamp(1.25rem,4vw,4.5rem)] py-6 sm:py-10;
-    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+    @apply relative z-10 flex w-full min-h-0 flex-1 flex-col items-center justify-center overflow-x-clip overflow-y-auto px-[clamp(1rem,3.5vw,3.5rem)] py-4 sm:py-6;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 
   .auth-portal-fit {
-    @apply flex w-full max-w-[82rem] shrink min-h-0 items-center justify-center;
+    @apply flex w-full max-w-[58rem] shrink min-h-0 items-center justify-center;
   }
 
   .auth-portal-card {

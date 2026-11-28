@@ -60,29 +60,20 @@ export default function HomePage() {
             </div>
           </Link>
 
-          <div className="flex items-center gap-6 lg:gap-10">
-            <nav
-              className="hidden items-center gap-7 text-[15px] font-medium text-on-surface-variant md:flex lg:gap-10 lg:text-base"
-              aria-label="Seções iniciais"
-            >
-              <a href="#universo" className="py-1.5 transition hover:text-on-surface">
-                O universo
-              </a>
-              <a href="#plataforma" className="py-1.5 transition hover:text-on-surface">
-                A plataforma
-              </a>
-              <a href="#jornada" className="py-1.5 transition hover:text-on-surface">
-                Como jogar
-              </a>
-            </nav>
-
-            <Link
-              to="/auth/login"
-              className="btn-secondary shrink-0 rounded-md px-4 py-2 text-xs sm:px-5 sm:py-2.5 sm:text-sm"
-            >
-              Entrar
-            </Link>
-          </div>
+          <nav
+            className="hidden items-center gap-7 text-[15px] font-medium text-on-surface-variant md:flex lg:gap-10 lg:text-base"
+            aria-label="Seções iniciais"
+          >
+            <a href="#universo" className="py-1.5 transition hover:text-on-surface">
+              O universo
+            </a>
+            <a href="#plataforma" className="py-1.5 transition hover:text-on-surface">
+              A plataforma
+            </a>
+            <a href="#jornada" className="py-1.5 transition hover:text-on-surface">
+              Como jogar
+            </a>
+          </nav>
         </div>
       </header>
 
@@ -144,29 +135,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div className={`${PAGE_CONTAINER} flex items-center gap-5 pt-12 text-center`}>
-        <span className="h-px flex-1 bg-outline-variant/25" aria-hidden />
-        <span className="font-label-sm text-xs tracking-[0.24em] text-outline uppercase">
-          Uma crônica em constante construção
-        </span>
-        <span className="h-px flex-1 bg-outline-variant/25" aria-hidden />
-      </div>
-
       <section id="plataforma" className={`${PAGE_CONTAINER} py-14 md:py-20`}>
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="font-label-sm text-xs font-semibold tracking-[0.2em] text-secondary uppercase">
-              Sua mesa, conectada
-            </p>
-            <h2 className="mt-2 font-serif text-3xl font-semibold text-on-surface sm:text-4xl">
-              Tudo o que a sua jornada precisa.
-            </h2>
-          </div>
-          <p className="max-w-sm text-sm leading-relaxed text-outline sm:text-right">
-            Menos informações dispersas.
-            <br />
-            Mais espaço para viver a história.
+        <div>
+          <p className="font-label-sm text-xs font-semibold tracking-[0.2em] text-secondary uppercase">
+            Sua mesa, conectada
           </p>
+          <h2 className="mt-2 font-serif text-3xl font-semibold text-on-surface sm:text-4xl">
+            Tudo o que a sua jornada precisa.
+          </h2>
         </div>
 
         <div className="mt-10 grid gap-6 md:grid-cols-3 lg:gap-8">

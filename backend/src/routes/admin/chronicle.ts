@@ -69,6 +69,7 @@ import {
   catalogImageFolder,
   catalogImageIsPrivate,
   deleteStoredMedia,
+  downloadStorageFolder,
   isSafePublicMediaUrl,
   storeCatalogDownloadFile,
   storeCatalogImage,
@@ -139,6 +140,7 @@ const entitySchema = z.object({
   archiveCategory: z.enum(['chronicles', 'relics', 'rituals']).optional(),
   shopCategory: z.enum(['gear', 'consumables', 'services']).optional(),
   downloadCategory: z.enum(['rules', 'sheets', 'handouts']).optional(),
+  clan: z.string().trim().max(80).optional(),
   bestiaryTier: z.enum(['known', 'classified', 'rumors']).optional(),
   classification: z.enum(['grimoire', 'amulet', 'relic', 'monster']).optional(),
   creatureType: z.string().max(120).optional(),
@@ -148,6 +150,9 @@ const entitySchema = z.object({
   imageUrl: z.string().max(1_500_000).nullable().optional(),
   hpMax: z.number().int().min(0).optional(),
   manaMax: z.number().int().min(0).optional(),
+  defense: z.number().int().min(0).optional(),
+  abilities: z.array(z.string().trim().min(1).max(160)).max(20).optional(),
+  lifeStatus: z.enum(['alive', 'dead']).optional(),
   location: z.string().max(200).optional(),
   attributeMods: z.array(attributeModSchema).max(3).optional(),
   relicAmuletType: z.string().max(120).optional(),
@@ -162,7 +167,7 @@ const entitySchema = z.object({
   priceSilver: z.number().int().min(0).optional(),
   priceCopper: z.number().int().min(0).optional(),
   fileName: z.string().max(255).optional(),
-  fileUrl: z.string().max(1_500_000).optional(),
+  fileUrl: z.string().max(3_000_000).optional(),
   creatureSize: z.string().max(80).optional(),
   creatureSpeed: z.string().max(80).optional(),
   creatureSenses: z.string().max(200).optional(),
@@ -229,7 +234,7 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
       : undefined
     const fileUrl =
       body.kind === 'download' && body.fileUrl
-        ? await storeCatalogDownloadFile(id, body.fileUrl, undefined)
+        ? await storeCatalogDownloadFile(id, body.fileUrl, undefined, downloadStorageFolder(body))
         : validateNonDownloadFileUrl(body.fileUrl)
     const narratorScope =
       req.user!.role === 'admin' ? (body.narratorScope ?? null) : req.user!.email.toLowerCase()
@@ -330,7 +335,7 @@ adminChronicleRouter.post('/entities/import', async (req, res, next) => {
         : undefined
       const fileUrl =
         row.kind === 'download' && row.fileUrl
-          ? await storeCatalogDownloadFile(id, row.fileUrl, undefined)
+          ? await storeCatalogDownloadFile(id, row.fileUrl, undefined, downloadStorageFolder(row))
           : validateNonDownloadFileUrl(row.fileUrl)
       const narratorScope =
         req.user!.role === 'admin' ? (row.narratorScope ?? null) : req.user!.email.toLowerCase()
@@ -384,8 +389,14 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
       }
     }
     if (body.fileUrl !== undefined) {
-      if ((body.kind ?? current.kind) === 'download') {
-        patch.fileUrl = await storeCatalogDownloadFile(current.id, body.fileUrl, current.fileUrl)
+      const nextKind = { ...current, ...restBody }
+      if (nextKind.kind === 'download') {
+        patch.fileUrl = await storeCatalogDownloadFile(
+          current.id,
+          body.fileUrl,
+          current.fileUrl,
+          downloadStorageFolder(nextKind),
+        )
       } else {
         patch.fileUrl = validateNonDownloadFileUrl(body.fileUrl)
       }

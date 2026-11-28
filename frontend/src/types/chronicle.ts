@@ -14,6 +14,7 @@ export type ChronicleEntity = {
   archiveCategory?: 'chronicles' | 'relics' | 'rituals'
   shopCategory?: 'gear' | 'consumables' | 'services'
   downloadCategory?: 'rules' | 'sheets' | 'handouts'
+  clan?: string
   bestiaryTier?: 'known' | 'classified' | 'rumors'
   /** Glossário: grimório | amuleto | relíquia | monstro */
   classification?: 'grimoire' | 'amulet' | 'relic' | 'monster'
@@ -24,6 +25,9 @@ export type ChronicleEntity = {
   imageUrl?: string
   hpMax?: number
   manaMax?: number
+  defense?: number
+  abilities?: string[]
+  lifeStatus?: 'alive' | 'dead'
   location?: string
   attributeMods?: AttributeMod[]
   relicAmuletType?: string
@@ -221,6 +225,7 @@ export type CreateEntityPayload = {
   archiveCategory?: ChronicleEntity['archiveCategory']
   shopCategory?: ChronicleEntity['shopCategory']
   downloadCategory?: ChronicleEntity['downloadCategory']
+  clan?: string
   bestiaryTier?: ChronicleEntity['bestiaryTier']
   classification?: ChronicleEntity['classification']
   creatureType?: string
@@ -230,6 +235,9 @@ export type CreateEntityPayload = {
   imageUrl?: string | null
   hpMax?: number
   manaMax?: number
+  defense?: number
+  abilities?: string[]
+  lifeStatus?: 'alive' | 'dead'
   location?: string
   attributeMods?: AttributeMod[]
   relicAmuletType?: string

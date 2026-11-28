@@ -1,9 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { THREAT_LEVELS } from '../../lib/glossaryCatalog'
 import { readDownloadFile, readProfileImageFile } from '../../lib/profileMedia'
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { ChronicleEntity, CreateEntityPayload, EntityKind } from '../../types/chronicle'
 import { api } from '../../services/api'
+
+function parseAbilitiesList(raw: string): string[] {
+  return raw
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 20)
+}
+
+function formatThreatLabel(threat?: ChronicleEntity['threatLevel']) {
+  return THREAT_LEVELS.find((t) => t.id === threat)?.label ?? 'Comum'
+}
 
 type Props = {
   kind: EntityKind
@@ -94,6 +107,12 @@ function AdminEntityPanelForm({
   const [desc, setDesc] = useState(initialEditItem?.description ?? '')
   const [hpMax, setHpMax] = useState<number | ''>(initialEditItem?.hpMax ?? '')
   const [manaMax, setManaMax] = useState<number | ''>(initialEditItem?.manaMax ?? '')
+  const [defense, setDefense] = useState<number | ''>(initialEditItem?.defense ?? '')
+  const [abilitiesText, setAbilitiesText] = useState((initialEditItem?.abilities ?? []).join('\n'))
+  const [threatLevel, setThreatLevel] = useState<NonNullable<ChronicleEntity['threatLevel']>>(
+    initialEditItem?.threatLevel ?? 'comum',
+  )
+  const [lifeStatus, setLifeStatus] = useState<'alive' | 'dead'>(initialEditItem?.lifeStatus ?? 'alive')
   const [location, setLocation] = useState(initialEditItem?.location ?? '')
   const [statsText, setStatsText] = useState(initialEditItem?.statsText ?? '')
   const [creatureType, setCreatureType] = useState(initialEditItem?.creatureType ?? creatureTypeOptions[0] ?? '')
@@ -125,6 +144,10 @@ function AdminEntityPanelForm({
     setDesc(item.description ?? '')
     setHpMax(item.hpMax ?? '')
     setManaMax(item.manaMax ?? '')
+    setDefense(item.defense ?? '')
+    setAbilitiesText((item.abilities ?? []).join('\n'))
+    setThreatLevel(item.threatLevel ?? 'comum')
+    setLifeStatus(item.lifeStatus ?? 'alive')
     setLocation(item.location ?? '')
     setStatsText(item.statsText ?? '')
     setCreatureType(item.creatureType ?? creatureTypeOptions[0] ?? '')
@@ -147,6 +170,10 @@ function AdminEntityPanelForm({
     setDesc('')
     setHpMax('')
     setManaMax('')
+    setDefense('')
+    setAbilitiesText('')
+    setThreatLevel('comum')
+    setLifeStatus('alive')
     setLocation('')
     setStatsText('')
     setFileName('')
@@ -163,7 +190,13 @@ function AdminEntityPanelForm({
       setDesc(saved.description ?? '')
       setHpMax(saved.hpMax ?? '')
       setManaMax(saved.manaMax ?? '')
+      setDefense(saved.defense ?? '')
+      setAbilitiesText((saved.abilities ?? []).join('\n'))
+      setThreatLevel(saved.threatLevel ?? 'comum')
+      setLifeStatus(saved.lifeStatus ?? 'alive')
       setLocation(saved.location ?? '')
+      if (saved.creatureType) setCreatureType(saved.creatureType)
+      if (saved.bestiaryTier) setBestiaryTier(saved.bestiaryTier)
       setImageUrl(saved.imageUrl)
       setNotice('Alterações salvas.')
       setError(null)
@@ -193,6 +226,10 @@ function AdminEntityPanelForm({
       setDesc('')
       setHpMax('')
       setManaMax('')
+      setDefense('')
+      setAbilitiesText('')
+      setThreatLevel('comum')
+      setLifeStatus('alive')
       setLocation('')
       setStatsText('')
       setFileName('')
@@ -257,10 +294,15 @@ function AdminEntityPanelForm({
     if (kind === 'npc' || kind === 'monster') {
       if (hpMax !== '') body.hpMax = hpMax
       if (manaMax !== '') body.manaMax = manaMax
+      if (defense !== '') body.defense = defense
+      body.abilities = parseAbilitiesList(abilitiesText)
+      body.threatLevel = threatLevel
+      body.lifeStatus = lifeStatus
       body.location = location.trim()
       const hp = hpMax === '' ? 0 : hpMax
       const mana = manaMax === '' ? 0 : manaMax
-      body.statsText = `HP: ${hp}\nMana: ${mana}`
+      const def = defense === '' ? 0 : defense
+      body.statsText = `HP: ${hp}\nMana: ${mana}\nDefesa: ${def}`
     }
     if (showPrices) {
       body.priceGold = priceGold
@@ -344,9 +386,9 @@ function AdminEntityPanelForm({
               value={downloadCategory}
               onChange={(e) => setDownloadCategory(e.target.value as 'rules' | 'sheets' | 'handouts')}
             >
-              <option value="rules">Regras & codex</option>
-              <option value="sheets">Fichas</option>
-              <option value="handouts">Handouts</option>
+              <option value="rules">Compêndio</option>
+              <option value="sheets">Fichas oficiais imprimíveis</option>
+              <option value="handouts">Acontecimentos Passados</option>
             </select>
           </label>
         ) : null}
@@ -391,34 +433,82 @@ function AdminEntityPanelForm({
       </div>
 
       {kind === 'npc' || kind === 'monster' ? (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Classificação
+              <select
+                className="input-feudal mt-1 pl-4 normal-case"
+                value={threatLevel}
+                onChange={(e) => setThreatLevel(e.target.value as NonNullable<ChronicleEntity['threatLevel']>)}
+              >
+                {THREAT_LEVELS.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Estado na crônica
+              <select
+                className="input-feudal mt-1 pl-4 normal-case"
+                value={lifeStatus}
+                onChange={(e) => setLifeStatus(e.target.value as 'alive' | 'dead')}
+              >
+                <option value="alive">Vivo · aguardando sessão</option>
+                <option value="dead">Morto</option>
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block text-xs uppercase text-on-surface-variant">
+              HP
+              <input
+                type="number"
+                min={0}
+                className="input-feudal mt-1 pl-4"
+                value={hpMax}
+                onChange={(e) => setHpMax(e.target.value === '' ? '' : Number(e.target.value))}
+              />
+            </label>
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Mana
+              <input
+                type="number"
+                min={0}
+                className="input-feudal mt-1 pl-4"
+                value={manaMax}
+                onChange={(e) => setManaMax(e.target.value === '' ? '' : Number(e.target.value))}
+              />
+            </label>
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Defesa
+              <input
+                type="number"
+                min={0}
+                className="input-feudal mt-1 pl-4"
+                value={defense}
+                onChange={(e) => setDefense(e.target.value === '' ? '' : Number(e.target.value))}
+              />
+            </label>
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Local
+              <input
+                className="input-feudal mt-1 pl-4"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Onde aparece"
+              />
+            </label>
+          </div>
           <label className="block text-xs uppercase text-on-surface-variant">
-            HP
-            <input
-              type="number"
-              min={0}
-              className="input-feudal mt-1 pl-4"
-              value={hpMax}
-              onChange={(e) => setHpMax(e.target.value === '' ? '' : Number(e.target.value))}
-            />
-          </label>
-          <label className="block text-xs uppercase text-on-surface-variant">
-            Mana
-            <input
-              type="number"
-              min={0}
-              className="input-feudal mt-1 pl-4"
-              value={manaMax}
-              onChange={(e) => setManaMax(e.target.value === '' ? '' : Number(e.target.value))}
-            />
-          </label>
-          <label className="block text-xs uppercase text-on-surface-variant">
-            Local
-            <input
-              className="input-feudal mt-1 pl-4"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Onde aparece"
+            Habilidades (uma por linha ou separadas por vírgula)
+            <textarea
+              className="input-feudal textarea-compact mt-1 pl-4 normal-case"
+              value={abilitiesText}
+              onChange={(e) => setAbilitiesText(e.target.value)}
+              placeholder="Ex.: Rapidez, Mordida vampírica, Intimidação"
             />
           </label>
         </div>
@@ -556,8 +646,8 @@ function AdminEntityPanelForm({
                     <p className="truncate font-serif text-sm text-on-surface">{item.name}</p>
                     <p className="truncate text-[10px] text-on-surface-variant">
                       {item.creatureType ? `${item.creatureType} · ` : ''}
-                      HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'}
-                      {item.location ? ` · ${item.location}` : ''} ·{' '}
+                      {formatThreatLabel(item.threatLevel)} · HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'} · Def{' '}
+                      {item.defense ?? '—'} · {item.lifeStatus === 'dead' ? 'Morto' : 'Vivo'} ·{' '}
                       {item.visibility === 'published' ? 'No glossário' : 'Rascunho'}
                     </p>
                   </div>
@@ -594,8 +684,8 @@ function AdminEntityPanelForm({
                   <div className="min-w-0">
                     <p className="truncate font-serif text-sm text-on-surface">{item.name}</p>
                     <p className="truncate text-[10px] text-on-surface-variant">
-                      {(item.threatLevel ?? 'comum').toString()} · HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'}
-                      {item.location ? ` · ${item.location}` : ''} ·{' '}
+                      {formatThreatLabel(item.threatLevel)} · HP {item.hpMax ?? '—'} · Mana {item.manaMax ?? '—'} · Def{' '}
+                      {item.defense ?? '—'} · {item.lifeStatus === 'dead' ? 'Morto' : 'Vivo'} ·{' '}
                       {item.bestiaryTier === 'known'
                         ? 'Conhecido'
                         : item.bestiaryTier === 'rumors'

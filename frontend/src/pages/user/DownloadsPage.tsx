@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../services/api'
-import type { SessionHandout } from '../../types/chronicle'
+import type { ChronicleEntity, SessionHandout } from '../../types/chronicle'
+
+const GENERAL_SHEET_GROUP = 'Geral / Outras linhagens'
 
 export default function DownloadsPage() {
   const [inspectAct, setInspectAct] = useState<{
@@ -32,20 +34,36 @@ export default function DownloadsPage() {
   })
 
   const actCards = handouts?.handouts ?? []
-  const sheetFiles = sheets?.files ?? []
-  const tomeFiles = [...(rules?.files ?? []), ...(handouts?.files ?? [])]
+  const handoutFiles = handouts?.files ?? []
+  const sheetFiles = useMemo(() => sheets?.files ?? [], [sheets?.files])
+  const compendiumFiles = rules?.files ?? []
+
+  const clanSheetGroups = useMemo(() => {
+    const groups = new Map<string, ChronicleEntity[]>()
+    for (const file of sheetFiles) {
+      const groupName = file.clan?.trim() || GENERAL_SHEET_GROUP
+      const list = groups.get(groupName) ?? []
+      list.push(file)
+      groups.set(groupName, list)
+    }
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === GENERAL_SHEET_GROUP) return 1
+      if (b === GENERAL_SHEET_GROUP) return -1
+      return a.localeCompare(b, 'pt-BR')
+    })
+  }, [sheetFiles])
 
   return (
-    <div className="space-y-5 pb-4">
+    <div className="space-y-6 pb-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de downloads</h1>
         <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
-          Histórico de atos, fichas imprimíveis e tratados da crônica publicados pelo narrador.
+          Acontecimentos passados, fichas oficiais imprimíveis por clã e compêndio da crônica publicados pelo narrador.
         </p>
       </header>
 
       <section className="space-y-3">
-        <h2 className="font-headline-sm text-lg text-on-surface">Histórico de atos da crônica</h2>
+        <h2 className="font-headline-sm text-lg text-on-surface">Acontecimentos Passados</h2>
         <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {actCards.map((h) => (
             <article key={h.id} className="mesa-panel flex h-full flex-col p-4">
@@ -74,10 +92,17 @@ export default function DownloadsPage() {
               </div>
             </article>
           ))}
-          {actCards.length === 0 ? (
-            <p className="text-sm text-on-surface-variant md:col-span-3">Nenhum ato publicado ainda.</p>
+          {actCards.length === 0 && handoutFiles.length === 0 ? (
+            <p className="text-sm text-on-surface-variant md:col-span-3">Nenhum acontecimento passado publicado ainda.</p>
           ) : null}
         </div>
+        {handoutFiles.length > 0 ? (
+          <ul className="space-y-2">
+            {handoutFiles.map((file) => (
+              <DownloadListRow key={file.id} file={file} icon="history_edu" buttonLabel="Baixar arquivo" />
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       {inspectAct ? (
@@ -151,77 +176,114 @@ export default function DownloadsPage() {
 
       <section className="space-y-4">
         <h2 className="font-headline-sm text-lg text-on-surface">Fichas oficiais imprimíveis</h2>
-        <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-          {sheetFiles.map((file) => (
-            <article key={file.id} className="mesa-panel flex h-full flex-col p-4">
-              <span className="material-symbols-outlined text-3xl text-primary">description</span>
-              <p className="mt-3 font-serif text-lg text-on-surface">{file.name}</p>
-              <p className="mt-2 flex-1 text-sm text-on-surface-variant">
-                {file.description || 'Modelo oficial da mesa Beladona.'}
-              </p>
-              {file.fileUrl ? (
-                <a href={file.fileUrl} download={file.fileName} className="btn-primary mt-4 text-xs">
-                  Baixar PDF ↑
-                </a>
-              ) : (
-                <button type="button" className="btn-primary mt-4 text-xs" disabled>
-                  Baixar PDF ↑
-                </button>
-              )}
-            </article>
-          ))}
-          {sheetFiles.length === 0 ? (
-            <>
-              {['Ficha canônica de vampiro', 'Ficha de inquisidor', 'Ficha de mortal'].map((title) => (
-                <article key={title} className="mesa-panel flex h-full flex-col p-4 opacity-80">
-                  <span className="material-symbols-outlined text-3xl text-primary">description</span>
-                  <p className="mt-3 font-serif text-lg text-on-surface">{title}</p>
-                  <p className="mt-2 flex-1 text-sm text-on-surface-variant">
-                    Aguardando publicação do narrador nesta central.
-                  </p>
-                  <button type="button" className="btn-primary mt-4 text-xs" disabled>
-                    Baixar PDF ↑
-                  </button>
-                </article>
-              ))}
-            </>
-          ) : null}
-        </div>
+        {clanSheetGroups.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">Nenhuma ficha oficial publicada pelo narrador ainda.</p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {clanSheetGroups.map(([clanName, files]) => (
+              <article key={clanName} className="mesa-panel flex flex-col p-4">
+                <header className="flex items-center justify-between gap-2 border-b border-outline-variant/30 pb-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="material-symbols-outlined text-xl text-primary" aria-hidden>
+                      folder_open
+                    </span>
+                    <h3 className="truncate font-serif text-lg text-on-surface">{clanName}</h3>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-secondary/35 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-secondary">
+                    {files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}
+                  </span>
+                </header>
+
+                <ul className="mt-2 divide-y divide-outline-variant/25">
+                  {files.map((file) => (
+                    <li key={file.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-1 last:pb-0">
+                      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                        <span className="material-symbols-outlined mt-0.5 text-lg text-secondary" aria-hidden>
+                          description
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-serif text-sm text-on-surface">{file.name}</p>
+                          <p className="truncate text-xs text-on-surface-variant">
+                            {file.description?.trim() || file.fileName || 'Ficha em PDF'}
+                          </p>
+                        </div>
+                      </div>
+                      {file.fileUrl ? (
+                        <a
+                          href={file.fileUrl}
+                          download={file.fileName ?? `${file.name}.pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-primary shrink-0 text-[10px]"
+                        >
+                          Baixar PDF ↑
+                        </a>
+                      ) : (
+                        <button type="button" className="btn-primary shrink-0 text-[10px]" disabled>
+                          Baixar PDF ↑
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="space-y-4">
-        <h2 className="font-headline-sm text-lg text-on-surface">Tratados e cartografia da crônica</h2>
+        <h2 className="font-headline-sm text-lg text-on-surface">Compêndio</h2>
         <ul className="space-y-2">
-          {tomeFiles.map((file) => (
-            <li
-              key={file.id}
-              className="mesa-panel flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-            >
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="material-symbols-outlined text-secondary">menu_book</span>
-                <div>
-                  <p className="font-serif text-on-surface">{file.name}</p>
-                  <p className="mt-1 text-xs text-on-surface-variant">
-                    {file.fileName ?? 'arquivo'} · {file.downloadCategory ?? 'tomo'}
-                  </p>
-                </div>
-              </div>
-              {file.fileUrl ? (
-                <a href={file.fileUrl} download={file.fileName} className="btn-primary text-[10px]">
-                  Baixar arquivo
-                </a>
-              ) : (
-                <button type="button" className="btn-primary text-[10px]" disabled>
-                  Baixar arquivo
-                </button>
-              )}
-            </li>
+          {compendiumFiles.map((file) => (
+            <DownloadListRow key={file.id} file={file} icon="menu_book" buttonLabel="Baixar arquivo" />
           ))}
-          {tomeFiles.length === 0 ? (
-            <li className="text-sm text-on-surface-variant">Nenhum tratado ou mapa publicado.</li>
+          {compendiumFiles.length === 0 ? (
+            <li className="text-sm text-on-surface-variant">Nenhum arquivo do compêndio publicado.</li>
           ) : null}
         </ul>
       </section>
     </div>
+  )
+}
+
+function DownloadListRow({
+  file,
+  icon,
+  buttonLabel,
+}: {
+  file: ChronicleEntity
+  icon: string
+  buttonLabel: string
+}) {
+  return (
+    <li className="mesa-panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="material-symbols-outlined text-secondary" aria-hidden>
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <p className="font-serif text-on-surface">{file.name}</p>
+          <p className="mt-1 text-xs text-on-surface-variant">
+            {file.description?.trim() || file.fileName || 'arquivo'}
+          </p>
+        </div>
+      </div>
+      {file.fileUrl ? (
+        <a
+          href={file.fileUrl}
+          download={file.fileName ?? file.name}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-primary text-[10px]"
+        >
+          {buttonLabel}
+        </a>
+      ) : (
+        <button type="button" className="btn-primary text-[10px]" disabled>
+          {buttonLabel}
+        </button>
+      )}
+    </li>
   )
 }

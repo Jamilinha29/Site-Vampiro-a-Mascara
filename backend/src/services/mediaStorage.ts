@@ -29,6 +29,25 @@ export function catalogImageIsPrivate(input: { kind?: string }) {
   return input.kind === 'download'
 }
 
+function toSafeSlug(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export function downloadStorageFolder(input: { downloadCategory?: string; clan?: string }): string | undefined {
+  if (input.downloadCategory === 'sheets') {
+    const clanSlug = input.clan ? toSafeSlug(input.clan) : ''
+    return `fichas/${clanSlug || 'geral'}`
+  }
+  if (input.downloadCategory === 'handouts') return 'acontecimentos'
+  if (input.downloadCategory === 'rules') return 'compendio'
+  return undefined
+}
+
 function matchesMagic(contentType: string, buffer: Buffer) {
   if (contentType === 'image/jpeg') return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
   if (contentType === 'image/png') return buffer.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
@@ -294,26 +313,29 @@ async function uploadPrivate(path: string, asset: ParsedAsset) {
   return `${PRIVATE_PREFIX}${PRIVATE_BUCKET}/${path}`
 }
 
-export async function readableImageUrl(url?: string | null) {
+export async function readableImageUrl(url?: string | null, download?: string | boolean) {
   if (!url) return url
   if (!url.startsWith(PRIVATE_PREFIX)) return url
   const parsed = parsePrivateObjectRef(url)
   if (!parsed) return undefined
   const sb = getSupabaseAdmin()
   if (!sb) return undefined
-  const { data, error } = await sb.storage.from(parsed.bucket).createSignedUrl(parsed.path, 10 * 60)
+  const options = download ? { download } : undefined
+  const { data, error } = await sb.storage.from(parsed.bucket).createSignedUrl(parsed.path, 10 * 60, options)
   if (error || !data?.signedUrl) return undefined
   return data.signedUrl
 }
 
-export async function withReadableImages<T extends { imageUrl?: string | null; fileUrl?: string | null }>(
-  rows: T[],
-): Promise<T[]> {
+export async function withReadableImages<
+  T extends { imageUrl?: string | null; fileUrl?: string | null; fileName?: string | null },
+>(rows: T[]): Promise<T[]> {
   return Promise.all(
     rows.map(async (row) => ({
       ...row,
       imageUrl: await readableImageUrl(row.imageUrl),
-      ...(row.fileUrl !== undefined ? { fileUrl: await readableImageUrl(row.fileUrl) } : {}),
+      ...(row.fileUrl !== undefined
+        ? { fileUrl: await readableImageUrl(row.fileUrl, row.fileName || true) }
+        : {}),
     })),
   )
 }
@@ -360,11 +382,12 @@ export async function storeCatalogImage(
   return uploadPublic(CATALOG_BUCKET, `${folder}/${entityId}-${randomUUID()}.${parsed.ext}`, parsed)
 }
 
-/** Grava arquivo de download no bucket privado `revelacoes`. */
+/** Grava arquivo de download no bucket privado `revelacoes`, organizado por pasta/clã. */
 export async function storeCatalogDownloadFile(
   entityId: string,
   value: string | undefined,
   existingUrl?: string,
+  folder?: string,
 ) {
   if (value == null) return value
   if (value.startsWith(PRIVATE_PREFIX)) {
@@ -380,5 +403,11 @@ export async function storeCatalogDownloadFile(
     return value
   }
   const parsed = inspectDownloadAsset(value)
-  return uploadPrivate(`downloads/${entityId}-${randomUUID()}.${parsed.ext}`, parsed)
+  const cleanFolder = folder
+    ?.split('/')
+    .map((part) => toSafeSlug(part))
+    .filter(Boolean)
+    .join('/')
+  const prefix = cleanFolder ? `downloads/${cleanFolder}` : 'downloads'
+  return uploadPrivate(`${prefix}/${entityId}-${randomUUID()}.${parsed.ext}`, parsed)
 }

@@ -32,6 +32,7 @@ export type ChronicleEntity = {
   archiveCategory?: ArchiveCategory
   shopCategory?: ShopCategory
   downloadCategory?: DownloadCategory
+  clan?: string
   bestiaryTier?: BestiaryTier
   classification?: 'grimoire' | 'amulet' | 'relic' | 'monster'
   creatureType?: string
@@ -41,6 +42,9 @@ export type ChronicleEntity = {
   imageUrl?: string
   hpMax?: number
   manaMax?: number
+  defense?: number
+  abilities?: string[]
+  lifeStatus?: 'alive' | 'dead'
   location?: string
   attributeMods?: AttributeMod[]
   relicAmuletType?: string
@@ -673,10 +677,13 @@ export function listPublishedForBestiary(tier: BestiaryTier, email?: string, ses
 
 export function listPublishedDownloads(category: DownloadCategory, email?: string, sessionId?: string, role?: string) {
   const contexts = resolveCatalogScopeForViewer(email, sessionId, role)
-  const files = scopedPublished(
-    listEntities({ visibility: 'published' }).filter((e) => e.kind === 'download' && e.downloadCategory === category),
-    contexts,
+  const published = listEntities({ visibility: 'published' }).filter(
+    (e) => e.kind === 'download' && e.downloadCategory === category,
   )
+  const files =
+    category === 'sheets' && !sessionId
+      ? forPlayers(published.filter((entity) => !entity.chronicleScope?.trim() || entityMatchesCatalogScope(entity, contexts)))
+      : scopedPublished(published, contexts)
   if (category === 'handouts') {
     const sessionDocs = [...handouts.values()]
       .filter((h) => h.publishedToPlayers && h.status === 'closed')
@@ -825,6 +832,9 @@ async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
     threatLevel: row.threatLevel,
     hpMax: row.hpMax,
     manaMax: row.manaMax,
+    defense: row.defense,
+    abilities: row.abilities,
+    lifeStatus: row.lifeStatus,
     location: row.location,
     classification,
     rarity: row.rarity,
@@ -1214,6 +1224,12 @@ export async function closeScheduledSession(sessionId: string, user: { email: st
   const handout = findHandoutByScheduledSession(sessionId)
   if (handout && handout.status !== 'closed') {
     await updateHandout(handout.id, { status: 'closed', closedAt: endedAt })
+    for (const slain of handout.monstersSlain ?? []) {
+      const target = getEntity(slain.entityId)
+      if (target && (target.kind === 'monster' || target.kind === 'npc') && target.lifeStatus !== 'dead') {
+        await updateEntity(target.id, { lifeStatus: 'dead' })
+      }
+    }
   }
   await pauseEffectsForSeats((row.seats ?? []).filter((seat) => !seat.leftAt))
   return { ok: true as const, session: next! }
@@ -1495,6 +1511,12 @@ export async function applySceneThreatDelta(
     const updated: SessionHandout = { ...handout, sceneThreats }
     handouts.set(handout.id, updated)
     await commitSessions()
+    if (next.hpCurrent === 0) {
+      const entity = getEntity(next.entityId)
+      if (entity && entity.lifeStatus !== 'dead') {
+        await updateEntity(entity.id, { lifeStatus: 'dead' })
+      }
+    }
     return { ok: true as const, handout: updated }
   })
 }

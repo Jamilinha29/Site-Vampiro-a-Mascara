@@ -61,6 +61,7 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
               {publishedNpcs.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.name}
+                  {n.lifeStatus === 'dead' ? ' (Morto)' : ''}
                 </option>
               ))}
             </select>

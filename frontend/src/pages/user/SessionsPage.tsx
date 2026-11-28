@@ -197,6 +197,59 @@ export default function SessionsPage() {
             Procurar
           </button>
         </form>
+        <form
+          className="flex flex-wrap items-end gap-2 border-b border-outline-variant/30 pb-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const code = privateCode.trim()
+            if (!code) return
+            void api.joinSessionByCode(code).then(
+              (found) => {
+                const timeReached = isScheduledTimeReached(found.scheduledAt, Date.now())
+                if (!found.hasConfirmedPresence) {
+                  setConfirmModal({
+                    sessionId: found.sessionId,
+                    title: found.title ?? 'Mesa privada',
+                    scheduledAt: found.scheduledAt,
+                    listing: found.listing ?? 'private',
+                    code,
+                  })
+                  return
+                }
+                if (found.status === 'open' && timeReached) {
+                  setPublicJoin(false)
+                  setAccessCode(code)
+                  setJoinSessionId(found.sessionId)
+                  setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
+                  return
+                }
+                if (!timeReached && found.scheduledAt) {
+                  push(
+                    `Participação já confirmada! A mesa abre ao vivo em ${formatScheduledDateTime(found.scheduledAt)}.`,
+                    'info',
+                  )
+                } else {
+                  push('Participação confirmada! Aguardando o narrador abrir a mesa ao vivo.', 'info')
+                }
+                void qc.invalidateQueries({ queryKey: playerQueryKeys.scheduledSessions })
+              },
+              (err: Error) => push(err.message, 'error'),
+            )
+          }}
+        >
+          <label className="text-xs uppercase text-on-surface-variant">
+            Mesa privada · código
+            <input
+              className="input-feudal mt-1 pl-4 uppercase tracking-widest"
+              value={privateCode}
+              onChange={(e) => setPrivateCode(e.target.value)}
+              placeholder="Código de sala"
+            />
+          </label>
+          <button type="submit" className="btn-secondary text-xs">
+            Achar sala
+          </button>
+        </form>
         <div className="grid gap-3 md:grid-cols-2 md:items-stretch">
           <div className="flex h-full flex-col rounded-lg border border-outline-variant/30 bg-surface-container-lowest/35 p-3.5">
             <p className="text-xs font-semibold uppercase text-secondary">Abertas ao público</p>
@@ -328,59 +381,6 @@ export default function SessionsPage() {
             </ul>
           </div>
         </div>
-        <form
-          className="flex flex-wrap items-end gap-2 border-t border-outline-variant/30 pt-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            const code = privateCode.trim()
-            if (!code) return
-            void api.joinSessionByCode(code).then(
-              (found) => {
-                const timeReached = isScheduledTimeReached(found.scheduledAt, Date.now())
-                if (!found.hasConfirmedPresence) {
-                  setConfirmModal({
-                    sessionId: found.sessionId,
-                    title: found.title ?? 'Mesa privada',
-                    scheduledAt: found.scheduledAt,
-                    listing: found.listing ?? 'private',
-                    code,
-                  })
-                  return
-                }
-                if (found.status === 'open' && timeReached) {
-                  setPublicJoin(false)
-                  setAccessCode(code)
-                  setJoinSessionId(found.sessionId)
-                  setCharacterId(characters.find((c) => c.isPrimary)?.id ?? characters[0]?.id ?? '')
-                  return
-                }
-                if (!timeReached && found.scheduledAt) {
-                  push(
-                    `Participação já confirmada! A mesa abre ao vivo em ${formatScheduledDateTime(found.scheduledAt)}.`,
-                    'info',
-                  )
-                } else {
-                  push('Participação confirmada! Aguardando o narrador abrir a mesa ao vivo.', 'info')
-                }
-                void qc.invalidateQueries({ queryKey: playerQueryKeys.scheduledSessions })
-              },
-              (err: Error) => push(err.message, 'error'),
-            )
-          }}
-        >
-          <label className="text-xs uppercase text-on-surface-variant">
-            Mesa privada · código
-            <input
-              className="input-feudal mt-1 pl-4 uppercase tracking-widest"
-              value={privateCode}
-              onChange={(e) => setPrivateCode(e.target.value)}
-              placeholder="Código de sala"
-            />
-          </label>
-          <button type="submit" className="btn-secondary text-xs">
-            Achar sala
-          </button>
-        </form>
       </section>
 
       {next && nextGate ? (
