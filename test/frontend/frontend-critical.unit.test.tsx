@@ -142,7 +142,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
               },
             ],
           }}
-          onChangeInventory={async () => {}}
+          onChangeInventory={async () => { }}
         />
       </MemoryRouter>,
     )
@@ -229,7 +229,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
               },
             ],
           }}
-          onChangeInventory={async () => {}}
+          onChangeInventory={async () => { }}
         />
       </MemoryRouter>,
     )
@@ -330,7 +330,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(screen.queryByText(/Menos informações dispersas/i)).toBeNull()
   })
 
-  it('AdminDownloadsPage and DownloadsPage use renamed sections and group multiple clan PDFs in list mode', async () => {
+  it('AdminDownloadsPage and DownloadsPage separate species sheets from clan book PDFs in list mode', async () => {
     vi.spyOn(api, 'adminListEntities').mockResolvedValue([])
     vi.spyOn(api, 'getCatalogClans').mockResolvedValue([
       { id: 'c-ravnos', name: 'Ravnos', slug: 'ravnos' },
@@ -357,12 +357,45 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
           handouts: [],
           files: [
             {
-              id: 's1',
+              id: 'sh-1',
               kind: 'download',
-              name: 'Ficha Ravnos Clássica',
-              description: 'Versão padrão',
+              name: 'Ficha Vampiro Oficial',
+              description: 'Modelo padrão',
               visibility: 'published',
               downloadCategory: 'sheets',
+              sheetType: 'Vampiro',
+              fileName: 'ficha-vampiro.pdf',
+              fileUrl: 'https://cdn.example.org/ficha-vampiro.pdf',
+              createdAt: '2026-11-27T00:00:00Z',
+              updatedAt: '2026-11-27T00:00:00Z',
+            },
+            {
+              id: 'sh-2',
+              kind: 'download',
+              name: 'Ficha Mortal Oficial',
+              description: 'Caçador e civil',
+              visibility: 'published',
+              downloadCategory: 'sheets',
+              sheetType: 'Mortal',
+              fileName: 'ficha-mortal.pdf',
+              fileUrl: 'https://cdn.example.org/ficha-mortal.pdf',
+              createdAt: '2026-11-27T00:00:00Z',
+              updatedAt: '2026-11-27T00:00:00Z',
+            },
+          ],
+        }
+      }
+      if (category === 'rules') {
+        return {
+          handouts: [],
+          files: [
+            {
+              id: 'b1',
+              kind: 'download',
+              name: 'Livro Ravnos I',
+              description: 'História do clã',
+              visibility: 'published',
+              downloadCategory: 'rules',
               clan: 'Ravnos',
               fileName: 'ravnos-1.pdf',
               fileUrl: 'https://cdn.example.org/ravnos-1.pdf',
@@ -370,12 +403,12 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
               updatedAt: '2026-11-27T00:00:00Z',
             },
             {
-              id: 's2',
+              id: 'b2',
               kind: 'download',
-              name: 'Ficha Ravnos Antiga',
-              description: 'Idade das Trevas',
+              name: 'Livro Ravnos II',
+              description: 'Tradições',
               visibility: 'published',
-              downloadCategory: 'sheets',
+              downloadCategory: 'rules',
               clan: 'Ravnos',
               fileName: 'ravnos-2.pdf',
               fileUrl: 'https://cdn.example.org/ravnos-2.pdf',
@@ -383,12 +416,12 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
               updatedAt: '2026-11-27T00:00:00Z',
             },
             {
-              id: 's3',
+              id: 'b3',
               kind: 'download',
-              name: 'Ficha Ravnos Disciplinas',
+              name: 'Livro Ravnos III',
               description: 'Quimerismo',
               visibility: 'published',
-              downloadCategory: 'sheets',
+              downloadCategory: 'rules',
               clan: 'Ravnos',
               fileName: 'ravnos-3.pdf',
               fileUrl: 'https://cdn.example.org/ravnos-3.pdf',
@@ -413,12 +446,21 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(screen.getByRole('heading', { name: 'Fichas oficiais imprimíveis' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Compêndio' })).toBeInTheDocument()
 
+    expect(await screen.findByText('Ficha Vampiro Oficial')).toBeInTheDocument()
+    const vampiroHeading = screen.getByRole('heading', { name: 'Vampiro' })
+    const vampiroBlock = vampiroHeading.closest('article')!
+    expect(within(vampiroBlock).getByText('Ficha Vampiro Oficial')).toBeInTheDocument()
+    expect(within(vampiroBlock).getByRole('link', { name: /Baixar PDF/i })).toBeInTheDocument()
+
+    expect(screen.getByRole('heading', { name: 'Mortal' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Outras espécies' })).toBeInTheDocument()
+
     const ravnosHeading = await screen.findByRole('heading', { name: 'Ravnos' })
     const ravnosBlock = ravnosHeading.closest('article')!
-    expect(within(ravnosBlock).getByText('3 arquivos')).toBeInTheDocument()
-    expect(within(ravnosBlock).getByText('Ficha Ravnos Clássica')).toBeInTheDocument()
-    expect(within(ravnosBlock).getByText('Ficha Ravnos Antiga')).toBeInTheDocument()
-    expect(within(ravnosBlock).getByText('Ficha Ravnos Disciplinas')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('3 livros')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('Livro Ravnos I')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('Livro Ravnos II')).toBeInTheDocument()
+    expect(within(ravnosBlock).getByText('Livro Ravnos III')).toBeInTheDocument()
     expect(within(ravnosBlock).getAllByRole('link', { name: /Baixar PDF/i })).toHaveLength(3)
   })
 

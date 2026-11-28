@@ -45,7 +45,7 @@ const CODEX_SECTIONS = [
     items: [
       'O Glossário reúne grimórios, amuletos, relíquias e o Bestiário publicados pelo narrador.',
       'Na Loja da sessão e no Ferreiro você adquire equipamentos e participa de leilões usando ouro, prata e bronze.',
-      'Em Arquivos ficam as fichas oficiais imprimíveis por clã, o Compêndio e os Acontecimentos Passados.',
+      'Em Arquivos ficam as fichas oficiais imprimíveis (Vampiro, Mortal e Outras espécies), os livros dos clãs no Compêndio e os Acontecimentos Passados.',
     ],
   },
 ] as const
@@ -80,9 +80,8 @@ export default function CodexHelpPage() {
           {CODEX_SECTIONS.map((sec, index) => (
             <section
               key={sec.title}
-              className={`card-surface space-y-3 p-5 ${
-                index === CODEX_SECTIONS.length - 1 ? 'md:col-span-2' : ''
-              }`}
+              className={`card-surface space-y-3 p-5 ${index === CODEX_SECTIONS.length - 1 ? 'md:col-span-2' : ''
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-secondary/40 bg-secondary/10 text-secondary">

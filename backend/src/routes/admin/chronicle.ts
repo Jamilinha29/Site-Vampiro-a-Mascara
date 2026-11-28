@@ -141,6 +141,7 @@ const entitySchema = z.object({
   shopCategory: z.enum(['gear', 'consumables', 'services']).optional(),
   downloadCategory: z.enum(['rules', 'sheets', 'handouts']).optional(),
   clan: z.string().trim().max(80).optional(),
+  sheetType: z.string().trim().max(80).optional(),
   bestiaryTier: z.enum(['known', 'classified', 'rumors']).optional(),
   classification: z.enum(['grimoire', 'amulet', 'relic', 'monster']).optional(),
   creatureType: z.string().max(120).optional(),

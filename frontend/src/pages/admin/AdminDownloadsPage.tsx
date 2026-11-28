@@ -11,6 +11,8 @@ const CATEGORIES = [
   { id: 'rules' as const, label: 'Compêndio' },
 ]
 
+const SHEET_SPECIES_OPTIONS = ['Vampiro', 'Mortal', 'Outras espécies'] as const
+
 const FALLBACK_CLANS = [
   'Banu Haqim',
   'Brujah',
@@ -28,7 +30,7 @@ const FALLBACK_CLANS = [
   'Ventrue',
 ]
 
-const GENERAL_SHEET_GROUP = 'Geral / Outras linhagens'
+const GENERAL_BOOK_GROUP = 'Geral / Outros livros'
 
 type PendingBatchFile = {
   name: string
@@ -43,8 +45,9 @@ function stripFileExtension(filename: string) {
 export default function AdminDownloadsPage() {
   const qc = useQueryClient()
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['id']>('sheets')
+  const [sheetType, setSheetType] = useState<string>(SHEET_SPECIES_OPTIONS[0])
   const [clan, setClan] = useState<string>('Banu Haqim')
-  const [clanFilter, setClanFilter] = useState<string>('all')
+  const [groupFilter, setGroupFilter] = useState<string>('all')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -66,31 +69,49 @@ export default function AdminDownloadsPage() {
 
   const clanOptions = useMemo(() => {
     const names = catalogClans.length > 0 ? catalogClans.map((c) => c.name) : FALLBACK_CLANS
-    return [...names, GENERAL_SHEET_GROUP]
+    return [...names, GENERAL_BOOK_GROUP]
   }, [catalogClans])
+
+  const supportsBatch = (category === 'sheets' || category === 'rules') && !editingId
+  const activeGroupLabel = category === 'sheets' ? sheetType : clan
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
       if ((i.downloadCategory ?? 'rules') !== category) return false
-      if (category === 'sheets' && clanFilter !== 'all') {
-        return (i.clan?.trim() || GENERAL_SHEET_GROUP) === clanFilter
+      if (groupFilter === 'all') return true
+      if (category === 'sheets') {
+        return (i.sheetType?.trim() || i.clan?.trim() || 'Outras espécies') === groupFilter
+      }
+      if (category === 'rules') {
+        return (i.clan?.trim() || GENERAL_BOOK_GROUP) === groupFilter
       }
       return true
     })
-  }, [items, category, clanFilter])
+  }, [items, category, groupFilter])
 
-  const groupedSheets = useMemo(() => {
-    if (category !== 'sheets') return []
+  const groupedItems = useMemo(() => {
+    if (category !== 'sheets' && category !== 'rules') return []
     const groups = new Map<string, ChronicleEntity[]>()
     for (const item of filtered) {
-      const groupName = item.clan?.trim() || GENERAL_SHEET_GROUP
+      const groupName =
+        category === 'sheets'
+          ? item.sheetType?.trim() || item.clan?.trim() || 'Outras espécies'
+          : item.clan?.trim() || GENERAL_BOOK_GROUP
       const current = groups.get(groupName) ?? []
       current.push(item)
       groups.set(groupName, current)
     }
     return [...groups.entries()].sort(([a], [b]) => {
-      if (a === GENERAL_SHEET_GROUP) return 1
-      if (b === GENERAL_SHEET_GROUP) return -1
+      if (category === 'sheets') {
+        const order = [...SHEET_SPECIES_OPTIONS] as string[]
+        const ia = order.indexOf(a)
+        const ib = order.indexOf(b)
+        if (ia >= 0 && ib >= 0) return ia - ib
+        if (ia >= 0) return -1
+        if (ib >= 0) return 1
+      }
+      if (a === GENERAL_BOOK_GROUP) return 1
+      if (b === GENERAL_BOOK_GROUP) return -1
       return a.localeCompare(b, 'pt-BR')
     })
   }, [category, filtered])
@@ -106,14 +127,19 @@ export default function AdminDownloadsPage() {
   }
 
   function load(item: ChronicleEntity) {
+    const nextCat = item.downloadCategory ?? 'rules'
     setEditingId(item.id)
     setName(item.name)
     setDescription(item.description ?? '')
     setFileName(item.fileName ?? '')
     setFileUrl(item.fileUrl)
     setPendingFiles([])
-    setCategory(item.downloadCategory ?? 'rules')
-    if (item.clan) setClan(item.clan)
+    setCategory(nextCat)
+    if (nextCat === 'sheets') {
+      setSheetType(item.sheetType?.trim() || item.clan?.trim() || SHEET_SPECIES_OPTIONS[0])
+    } else if (item.clan) {
+      setClan(item.clan)
+    }
     setError(null)
   }
 
@@ -179,7 +205,8 @@ export default function AdminDownloadsPage() {
         name: name.trim(),
         description,
         downloadCategory: category,
-        clan: category === 'sheets' ? clan : undefined,
+        sheetType: category === 'sheets' ? sheetType : undefined,
+        clan: category === 'rules' ? clan : undefined,
         fileName: fileName || undefined,
         fileUrl,
       }
@@ -187,13 +214,14 @@ export default function AdminDownloadsPage() {
       return
     }
 
-    if (category === 'sheets' && pendingFiles.length > 0) {
+    if (supportsBatch && pendingFiles.length > 0) {
       const payloads: CreateEntityPayload[] = pendingFiles.map((entry) => ({
         kind: 'download',
         name: entry.name.trim() || stripFileExtension(entry.fileName),
         description,
-        downloadCategory: 'sheets',
-        clan,
+        downloadCategory: category,
+        sheetType: category === 'sheets' ? sheetType : undefined,
+        clan: category === 'rules' ? clan : undefined,
         fileName: entry.fileName,
         fileUrl: entry.fileUrl,
       }))
@@ -207,7 +235,8 @@ export default function AdminDownloadsPage() {
       name: name.trim(),
       description,
       downloadCategory: category,
-      clan: category === 'sheets' ? clan : undefined,
+      sheetType: category === 'sheets' ? sheetType : undefined,
+      clan: category === 'rules' ? clan : undefined,
       fileName: fileName || undefined,
       fileUrl,
     }
@@ -217,7 +246,7 @@ export default function AdminDownloadsPage() {
   const busy = saveBatch.isPending || update.isPending
   const canSubmit = editingId
     ? Boolean(name.trim())
-    : category === 'sheets' && pendingFiles.length > 0
+    : supportsBatch && pendingFiles.length > 0
       ? true
       : Boolean(name.trim())
 
@@ -226,8 +255,8 @@ export default function AdminDownloadsPage() {
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de downloads</h1>
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
-          Cadastre, organize por clã e edite os arquivos que os jogadores veem e baixam. Os arquivos ficam salvos no
-          storage e sincronizam com a área do usuário.
+          Cadastre fichas oficiais por espécie (Vampiro, Mortal, Outras espécies) e livros de cada clã no Compêndio. Os
+          arquivos ficam salvos no storage e sincronizam com a área do usuário.
         </p>
       </header>
 
@@ -243,7 +272,7 @@ export default function AdminDownloadsPage() {
             }`}
             onClick={() => {
               setCategory(c.id)
-              setClanFilter('all')
+              setGroupFilter('all')
               reset()
             }}
           >
@@ -267,7 +296,24 @@ export default function AdminDownloadsPage() {
 
           {category === 'sheets' ? (
             <label className="block text-xs uppercase text-on-surface-variant">
-              Clã / Bloco de destino
+              Espécie / Tipo de ficha
+              <select
+                className="input-feudal mt-1 pl-4 normal-case"
+                value={sheetType}
+                onChange={(e) => setSheetType(e.target.value)}
+              >
+                {SHEET_SPECIES_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {category === 'rules' ? (
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Clã / Livro de destino
               <select
                 className="input-feudal mt-1 pl-4 normal-case"
                 value={clan}
@@ -282,7 +328,7 @@ export default function AdminDownloadsPage() {
             </label>
           ) : null}
 
-          {!(category === 'sheets' && pendingFiles.length > 0 && !editingId) ? (
+          {!(supportsBatch && pendingFiles.length > 0) ? (
             <label className="block text-xs uppercase text-on-surface-variant">
               Nome
               <input className="input-feudal mt-1 pl-4 normal-case" value={name} onChange={(e) => setName(e.target.value)} />
@@ -299,20 +345,22 @@ export default function AdminDownloadsPage() {
           </label>
 
           <label className="block text-xs uppercase text-on-surface-variant">
-            {category === 'sheets' && !editingId
-              ? 'Arquivos PDF do clã (até 2 MB cada · pode selecionar vários)'
+            {supportsBatch
+              ? category === 'rules'
+                ? 'Livros em PDF do clã (até 2 MB cada · pode selecionar vários)'
+                : 'Fichas em PDF da espécie (até 2 MB cada · pode selecionar várias)'
               : 'Arquivo (PDF até 2 MB ou imagem)'}
             <input
               type="file"
               accept="application/pdf,image/*"
-              multiple={category === 'sheets' && !editingId}
+              multiple={supportsBatch}
               className="mt-2 block text-sm"
               onChange={async (e) => {
                 const input = e.currentTarget
                 const files = Array.from(input.files ?? [])
                 if (files.length === 0) return
                 try {
-                  if (category === 'sheets' && !editingId && files.length > 1) {
+                  if (supportsBatch && files.length > 1) {
                     const loaded: PendingBatchFile[] = []
                     for (const file of files) {
                       const dataUrl = await readDownloadFile(file)
@@ -350,7 +398,7 @@ export default function AdminDownloadsPage() {
             <div className="space-y-2 rounded border border-outline-variant/40 bg-surface-container-lowest/40 p-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold uppercase text-secondary">
-                  {pendingFiles.length} arquivos selecionados para {clan}
+                  {pendingFiles.length} arquivos selecionados para {activeGroupLabel}
                 </p>
                 <button
                   type="button"
@@ -416,10 +464,24 @@ export default function AdminDownloadsPage() {
             <h2 className="font-label-sm text-xs text-secondary uppercase">Arquivos cadastrados</h2>
             {category === 'sheets' ? (
               <select
+                aria-label="Filtrar por espécie"
+                className="input-feudal w-auto max-w-[13rem] py-1 pl-3 text-xs normal-case"
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+              >
+                <option value="all">Todas as espécies</option>
+                {SHEET_SPECIES_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            ) : category === 'rules' ? (
+              <select
                 aria-label="Filtrar por clã"
                 className="input-feudal w-auto max-w-[13rem] py-1 pl-3 text-xs normal-case"
-                value={clanFilter}
-                onChange={(e) => setClanFilter(e.target.value)}
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
               >
                 <option value="all">Todos os clãs</option>
                 {clanOptions.map((opt) => (
@@ -434,14 +496,14 @@ export default function AdminDownloadsPage() {
           <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {filtered.length === 0 ? (
               <p className="text-sm text-on-surface-variant">Nenhum arquivo nesta pasta.</p>
-            ) : category === 'sheets' ? (
-              groupedSheets.map(([clanName, files]) => (
+            ) : category === 'sheets' || category === 'rules' ? (
+              groupedItems.map(([groupName, files]) => (
                 <div
-                  key={clanName}
+                  key={groupName}
                   className="rounded-lg border border-outline-variant/40 bg-surface-container-lowest/45 p-3"
                 >
                   <div className="flex items-center justify-between gap-2 border-b border-outline-variant/25 pb-2">
-                    <h3 className="font-serif text-base text-secondary">{clanName}</h3>
+                    <h3 className="font-serif text-base text-secondary">{groupName}</h3>
                     <span className="text-[10px] uppercase text-on-surface-variant">
                       {files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}
                     </span>

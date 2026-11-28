@@ -15,6 +15,7 @@ export type ChronicleEntity = {
   shopCategory?: 'gear' | 'consumables' | 'services'
   downloadCategory?: 'rules' | 'sheets' | 'handouts'
   clan?: string
+  sheetType?: string
   bestiaryTier?: 'known' | 'classified' | 'rumors'
   /** Glossário: grimório | amuleto | relíquia | monstro */
   classification?: 'grimoire' | 'amulet' | 'relic' | 'monster'
@@ -226,6 +227,7 @@ export type CreateEntityPayload = {
   shopCategory?: ChronicleEntity['shopCategory']
   downloadCategory?: ChronicleEntity['downloadCategory']
   clan?: string
+  sheetType?: string
   bestiaryTier?: ChronicleEntity['bestiaryTier']
   classification?: ChronicleEntity['classification']
   creatureType?: string

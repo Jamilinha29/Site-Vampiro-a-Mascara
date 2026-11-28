@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../../services/api'
 import type { ChronicleEntity, SessionHandout } from '../../types/chronicle'
 
-const GENERAL_SHEET_GROUP = 'Geral / Outras linhagens'
+const SHEET_SPECIES_OPTIONS = ['Vampiro', 'Mortal', 'Outras espécies'] as const
+const GENERAL_BOOK_GROUP = 'Geral / Outros livros'
 
 export default function DownloadsPage() {
   const [inspectAct, setInspectAct] = useState<{
@@ -36,29 +37,43 @@ export default function DownloadsPage() {
   const actCards = handouts?.handouts ?? []
   const handoutFiles = handouts?.files ?? []
   const sheetFiles = useMemo(() => sheets?.files ?? [], [sheets?.files])
-  const compendiumFiles = rules?.files ?? []
+  const compendiumFiles = useMemo(() => rules?.files ?? [], [rules?.files])
 
-  const clanSheetGroups = useMemo(() => {
-    const groups = new Map<string, ChronicleEntity[]>()
+  const sheetSpeciesGroups = useMemo(() => {
+    const groups = new Map<string, ChronicleEntity[]>(
+      SHEET_SPECIES_OPTIONS.map((species) => [species, []]),
+    )
     for (const file of sheetFiles) {
-      const groupName = file.clan?.trim() || GENERAL_SHEET_GROUP
+      const target = file.sheetType?.trim() || file.clan?.trim() || 'Outras espécies'
+      const list = groups.get(target) ?? []
+      list.push(file)
+      groups.set(target, list)
+    }
+    return [...groups.entries()]
+  }, [sheetFiles])
+
+  const compendiumClanGroups = useMemo(() => {
+    const groups = new Map<string, ChronicleEntity[]>()
+    for (const file of compendiumFiles) {
+      const groupName = file.clan?.trim() || GENERAL_BOOK_GROUP
       const list = groups.get(groupName) ?? []
       list.push(file)
       groups.set(groupName, list)
     }
     return [...groups.entries()].sort(([a], [b]) => {
-      if (a === GENERAL_SHEET_GROUP) return 1
-      if (b === GENERAL_SHEET_GROUP) return -1
+      if (a === GENERAL_BOOK_GROUP) return 1
+      if (b === GENERAL_BOOK_GROUP) return -1
       return a.localeCompare(b, 'pt-BR')
     })
-  }, [sheetFiles])
+  }, [compendiumFiles])
 
   return (
     <div className="space-y-6 pb-4">
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de downloads</h1>
         <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
-          Acontecimentos passados, fichas oficiais imprimíveis por clã e compêndio da crônica publicados pelo narrador.
+          Acontecimentos passados, fichas oficiais imprimíveis por espécie e livros dos clãs no Compêndio publicados
+          pelo narrador.
         </p>
       </header>
 
@@ -176,27 +191,88 @@ export default function DownloadsPage() {
 
       <section className="space-y-4">
         <h2 className="font-headline-sm text-lg text-on-surface">Fichas oficiais imprimíveis</h2>
-        {clanSheetGroups.length === 0 ? (
-          <p className="text-sm text-on-surface-variant">Nenhuma ficha oficial publicada pelo narrador ainda.</p>
+        <div className="grid auto-rows-fr gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          {sheetSpeciesGroups.map(([speciesName, files]) => (
+            <article key={speciesName} className="mesa-panel flex h-full flex-col p-4">
+              <header className="flex items-center justify-between gap-2 border-b border-outline-variant/30 pb-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="material-symbols-outlined text-2xl text-primary" aria-hidden>
+                    description
+                  </span>
+                  <h3 className="truncate font-serif text-lg text-on-surface">{speciesName}</h3>
+                </div>
+                <span className="shrink-0 rounded-full border border-secondary/35 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-secondary">
+                  {files.length} {files.length === 1 ? 'ficha' : 'fichas'}
+                </span>
+              </header>
+
+              {files.length === 0 ? (
+                <p className="mt-3 text-sm text-on-surface-variant">
+                  Aguardando publicação do narrador para esta espécie.
+                </p>
+              ) : (
+                <ul className="mt-2 divide-y divide-outline-variant/25">
+                  {files.map((file) => (
+                    <li
+                      key={file.id}
+                      className="flex flex-wrap items-center justify-between gap-2.5 py-2.5 first:pt-1 last:pb-0"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-serif text-sm text-on-surface">{file.name}</p>
+                        <p className="truncate text-xs text-on-surface-variant">
+                          {file.description?.trim() || file.fileName || 'Ficha em PDF'}
+                        </p>
+                      </div>
+                      {file.fileUrl ? (
+                        <a
+                          href={file.fileUrl}
+                          download={file.fileName ?? `${file.name}.pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-primary shrink-0 text-[10px]"
+                        >
+                          Baixar PDF ↑
+                        </a>
+                      ) : (
+                        <button type="button" className="btn-primary shrink-0 text-[10px]" disabled>
+                          Baixar PDF ↑
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="font-headline-sm text-lg text-on-surface">Compêndio</h2>
+        {compendiumClanGroups.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">Nenhum livro ou arquivo do compêndio publicado.</p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
-            {clanSheetGroups.map(([clanName, files]) => (
+            {compendiumClanGroups.map(([clanName, files]) => (
               <article key={clanName} className="mesa-panel flex flex-col p-4">
                 <header className="flex items-center justify-between gap-2 border-b border-outline-variant/30 pb-2.5">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="material-symbols-outlined text-xl text-primary" aria-hidden>
-                      folder_open
+                      menu_book
                     </span>
                     <h3 className="truncate font-serif text-lg text-on-surface">{clanName}</h3>
                   </div>
                   <span className="shrink-0 rounded-full border border-secondary/35 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-secondary">
-                    {files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}
+                    {files.length} {files.length === 1 ? 'livro' : 'livros'}
                   </span>
                 </header>
 
                 <ul className="mt-2 divide-y divide-outline-variant/25">
                   {files.map((file) => (
-                    <li key={file.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-1 last:pb-0">
+                    <li
+                      key={file.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-1 last:pb-0"
+                    >
                       <div className="flex min-w-0 flex-1 items-start gap-2.5">
                         <span className="material-symbols-outlined mt-0.5 text-lg text-secondary" aria-hidden>
                           description
@@ -204,7 +280,7 @@ export default function DownloadsPage() {
                         <div className="min-w-0">
                           <p className="truncate font-serif text-sm text-on-surface">{file.name}</p>
                           <p className="truncate text-xs text-on-surface-variant">
-                            {file.description?.trim() || file.fileName || 'Ficha em PDF'}
+                            {file.description?.trim() || file.fileName || 'Livro em PDF'}
                           </p>
                         </div>
                       </div>
@@ -230,18 +306,6 @@ export default function DownloadsPage() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="font-headline-sm text-lg text-on-surface">Compêndio</h2>
-        <ul className="space-y-2">
-          {compendiumFiles.map((file) => (
-            <DownloadListRow key={file.id} file={file} icon="menu_book" buttonLabel="Baixar arquivo" />
-          ))}
-          {compendiumFiles.length === 0 ? (
-            <li className="text-sm text-on-surface-variant">Nenhum arquivo do compêndio publicado.</li>
-          ) : null}
-        </ul>
       </section>
     </div>
   )

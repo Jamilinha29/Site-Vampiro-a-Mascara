@@ -33,6 +33,7 @@ export type ChronicleEntity = {
   shopCategory?: ShopCategory
   downloadCategory?: DownloadCategory
   clan?: string
+  sheetType?: string
   bestiaryTier?: BestiaryTier
   classification?: 'grimoire' | 'amulet' | 'relic' | 'monster'
   creatureType?: string
@@ -681,7 +682,7 @@ export function listPublishedDownloads(category: DownloadCategory, email?: strin
     (e) => e.kind === 'download' && e.downloadCategory === category,
   )
   const files =
-    category === 'sheets' && !sessionId
+    (category === 'sheets' || category === 'rules') && !sessionId
       ? forPlayers(published.filter((entity) => !entity.chronicleScope?.trim() || entityMatchesCatalogScope(entity, contexts)))
       : scopedPublished(published, contexts)
   if (category === 'handouts') {

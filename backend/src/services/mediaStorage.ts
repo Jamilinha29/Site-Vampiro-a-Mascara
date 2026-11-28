@@ -38,13 +38,20 @@ function toSafeSlug(value: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-export function downloadStorageFolder(input: { downloadCategory?: string; clan?: string }): string | undefined {
+export function downloadStorageFolder(input: {
+  downloadCategory?: string
+  clan?: string
+  sheetType?: string
+}): string | undefined {
   if (input.downloadCategory === 'sheets') {
-    const clanSlug = input.clan ? toSafeSlug(input.clan) : ''
-    return `fichas/${clanSlug || 'geral'}`
+    const typeSlug = input.sheetType ? toSafeSlug(input.sheetType) : input.clan ? toSafeSlug(input.clan) : ''
+    return `fichas/${typeSlug || 'geral'}`
   }
   if (input.downloadCategory === 'handouts') return 'acontecimentos'
-  if (input.downloadCategory === 'rules') return 'compendio'
+  if (input.downloadCategory === 'rules') {
+    const clanSlug = input.clan ? toSafeSlug(input.clan) : ''
+    return `compendio/${clanSlug || 'geral'}`
+  }
   return undefined
 }
 

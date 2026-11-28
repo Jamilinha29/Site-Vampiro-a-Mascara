@@ -382,8 +382,8 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
     expect(adminBackup.status).toBe(200)
   })
 
-  it('organizes published clan sheet downloads by clan and prevents players from uploading', async () => {
-    const adminToken = signDevToken('mestre@ci.local', 'Mestre', 'admin').accessToken
+  it('organizes published species sheets and clan books in Compêndio and prevents players from uploading', async () => {
+    const adminToken = signDevToken('mestre@ci.local', 'Mestre', 'narrator').accessToken
     const playerToken = signDevToken('jogador.fichas@ci.local', 'Jogador Fichas', 'player').accessToken
 
     const forbiddenUpload = await request(app)
@@ -391,12 +391,30 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
       .set('Authorization', `Bearer ${playerToken}`)
       .send({
         kind: 'download',
-        downloadCategory: 'sheets',
+        downloadCategory: 'rules',
         clan: 'Ravnos',
         name: 'Tentativa Jogador',
-        fileName: 'ficha.pdf',
+        fileName: 'livro.pdf',
       })
     expect(forbiddenUpload.status).toBe(403)
+
+    const sheetRes = await request(app)
+      .post('/api/v1/admin/chronicle/entities')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        kind: 'download',
+        downloadCategory: 'sheets',
+        sheetType: 'Vampiro',
+        name: 'Ficha Vampiro Oficial',
+        fileName: 'ficha-vampiro.pdf',
+        fileUrl: 'https://cdn.example.org/fichas/vampiro.pdf',
+      })
+    expect(sheetRes.status).toBe(201)
+    expect(sheetRes.body.sheetType).toBe('Vampiro')
+    await request(app)
+      .post(`/api/v1/admin/chronicle/entities/${sheetRes.body.id}/publish`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
 
     for (const idx of [1, 2, 3]) {
       const created = await request(app)
@@ -404,27 +422,34 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           kind: 'download',
-          downloadCategory: 'sheets',
+          downloadCategory: 'rules',
           clan: 'Ravnos',
-          name: `Ficha Ravnos ${idx}`,
+          name: `Livro Ravnos ${idx}`,
           fileName: `ravnos-${idx}.pdf`,
-          fileUrl: `https://cdn.example.org/fichas/ravnos-${idx}.pdf`,
+          fileUrl: `https://cdn.example.org/compendio/ravnos-${idx}.pdf`,
         })
       expect(created.status).toBe(201)
       expect(created.body.clan).toBe('Ravnos')
 
-      const pub = await request(app)
+      await request(app)
         .post(`/api/v1/admin/chronicle/entities/${created.body.id}/publish`)
         .set('Authorization', `Bearer ${adminToken}`)
-      expect(pub.status).toBe(200)
+        .expect(200)
     }
 
-    const playerList = await request(app)
+    const playerSheets = await request(app)
       .get('/api/v1/content/downloads?category=sheets')
       .set('Authorization', `Bearer ${playerToken}`)
-    expect(playerList.status).toBe(200)
-    expect(playerList.body.files).toHaveLength(3)
-    expect(playerList.body.files.every((f: { clan?: string }) => f.clan === 'Ravnos')).toBe(true)
+    expect(playerSheets.status).toBe(200)
+    expect(playerSheets.body.files).toHaveLength(1)
+    expect(playerSheets.body.files[0].sheetType).toBe('Vampiro')
+
+    const playerBooks = await request(app)
+      .get('/api/v1/content/downloads?category=rules')
+      .set('Authorization', `Bearer ${playerToken}`)
+    expect(playerBooks.status).toBe(200)
+    expect(playerBooks.body.files).toHaveLength(3)
+    expect(playerBooks.body.files.every((f: { clan?: string }) => f.clan === 'Ravnos')).toBe(true)
   })
 
   it('stores NPC and monster defense, abilities, classification, and updates lifeStatus to dead at 0 HP', async () => {

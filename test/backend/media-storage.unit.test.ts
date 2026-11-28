@@ -20,11 +20,14 @@ describe('inspectImage', () => {
     expect(path.includes('@')).toBe(false)
   })
 
-  it('accepts PDF download assets and maps clan sheets into clan storage folders', () => {
+  it('accepts PDF download assets and maps species sheets vs clan books into storage folders', () => {
     expect(inspectDownloadAsset(pdf).ext).toBe('pdf')
-    expect(downloadStorageFolder({ downloadCategory: 'sheets', clan: 'Ravnos' })).toBe('fichas/ravnos')
-    expect(downloadStorageFolder({ downloadCategory: 'sheets', clan: 'Banu Haqim' })).toBe('fichas/banu-haqim')
+    expect(downloadStorageFolder({ downloadCategory: 'sheets', sheetType: 'Vampiro' })).toBe('fichas/vampiro')
+    expect(downloadStorageFolder({ downloadCategory: 'sheets', sheetType: 'Outras espécies' })).toBe(
+      'fichas/outras-especies',
+    )
+    expect(downloadStorageFolder({ downloadCategory: 'rules', clan: 'Ravnos' })).toBe('compendio/ravnos')
+    expect(downloadStorageFolder({ downloadCategory: 'rules', clan: 'Banu Haqim' })).toBe('compendio/banu-haqim')
     expect(downloadStorageFolder({ downloadCategory: 'handouts' })).toBe('acontecimentos')
-    expect(downloadStorageFolder({ downloadCategory: 'rules' })).toBe('compendio')
   })
 })
