@@ -73,7 +73,9 @@ function EditableIdentityField({
         <p className="text-[10px] font-semibold tracking-wider text-on-surface-variant uppercase">{label}</p>
         <p className="mt-0.5 text-sm text-on-surface">{value || '—'}</p>
         <p className="mt-1 text-[10px] text-on-surface-variant">
-          {locked ? 'Edições esgotadas (máx. 2)' : `${remaining} edição(ões) restante(s)`}
+          {locked
+            ? 'Edições esgotadas · máx. 2'
+            : `${remaining} ${remaining === 1 ? 'edição restante' : 'edições restantes'}`}
         </p>
       </button>
     )
@@ -155,20 +157,20 @@ function IdentityGrid({ character, playerName, onPatchIdentity, saving }: Props)
         saving={saving}
       />
       <Field
-        label={`Subclasse I (nível ${SUBCLASS_CHOICE_LEVEL}+)`}
+        label={`Subclasse I · nível ${SUBCLASS_CHOICE_LEVEL}+`}
         value={
           character.subclass ??
           (character.level >= SUBCLASS_CHOICE_LEVEL
-            ? `Pendente (nível ${SUBCLASS_CHOICE_LEVEL}+)`
+            ? `Pendente · nível ${SUBCLASS_CHOICE_LEVEL}+`
             : `Disponível no nível ${SUBCLASS_CHOICE_LEVEL}`)
         }
       />
       <Field
-        label={`Subclasse II (nível ${SECOND_SUBCLASS_CHOICE_LEVEL}+)`}
+        label={`Subclasse II · nível ${SECOND_SUBCLASS_CHOICE_LEVEL}+`}
         value={
           character.secondarySubclass ??
           (character.level >= SECOND_SUBCLASS_CHOICE_LEVEL
-            ? `Pendente (nível ${SECOND_SUBCLASS_CHOICE_LEVEL}+)`
+            ? `Pendente · nível ${SECOND_SUBCLASS_CHOICE_LEVEL}+`
             : `Disponível no nível ${SECOND_SUBCLASS_CHOICE_LEVEL}`)
         }
       />
@@ -343,8 +345,8 @@ function BackgroundsAndResources(props: Props) {
   return (
     <SectionCard title="Antecedentes & recursos">
       <p className="mb-3 text-xs text-on-surface-variant">
-        Vantagens da vida do personagem: dinheiro e posses (Recursos), pessoas que ajudam (Aliados) e
-        rede de informações (Contatos). Não é reserva de mana.
+        Vantagens da vida do personagem: dinheiro e posses em Recursos, pessoas que ajudam em Aliados e rede de
+        informações em Contatos. Não é reserva de mana.
       </p>
       <ul className="space-y-2">
         {SHEET_BACKGROUNDS.map((b) => (

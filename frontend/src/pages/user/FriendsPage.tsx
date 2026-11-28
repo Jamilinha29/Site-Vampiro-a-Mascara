@@ -276,7 +276,7 @@ export default function FriendsPage() {
               <div>
                 <h2 className="font-headline-sm text-base text-on-surface">Buscar jogadores</h2>
                 <p className="text-xs text-on-surface-variant">
-                  Encontre jogadores pelo nome, @usuário ou Código ID numérico.
+                  Encontre outros jogadores e narradores da crônica para formar alianças.
                 </p>
               </div>
             </div>
@@ -307,7 +307,7 @@ export default function FriendsPage() {
                     setQuery(e.target.value)
                     setPage(1)
                   }}
-                  placeholder="Digite um nome, @usuário ou Código ID…"
+                  placeholder="Buscar jogador ou narrador…"
                 />
               </div>
               <button type="submit" className="btn-primary shrink-0 text-xs">
@@ -615,7 +615,7 @@ export default function FriendsPage() {
               onClick={() => setShowMyCode((v) => !v)}
             >
               <span className="material-symbols-outlined text-sm">qr_code_2</span>
-              {showMyCode ? 'Ocultar meu código (ID)' : 'Mostrar meu código (ID)'}
+              {showMyCode ? 'Ocultar meu código' : 'Mostrar meu código'}
             </button>
             {showMyCode ? (
               <div className="flex items-center justify-between gap-2 rounded border border-secondary/35 bg-surface-container-lowest/60 px-3 py-2 text-xs">
@@ -624,7 +624,7 @@ export default function FriendsPage() {
                   <button
                     type="button"
                     className="text-[11px] text-on-surface underline hover:text-secondary"
-                    onClick={() => void copyText(profile.publicId!, 'Código ID copiado.')}
+                    onClick={() => void copyText(profile.publicId!, 'Código copiado.')}
                   >
                     Copiar
                   </button>
@@ -639,8 +639,7 @@ export default function FriendsPage() {
               Dica
             </h2>
             <p className="text-xs leading-relaxed text-on-surface-variant">
-              Você pode convidar jogadores pelo nome, @usuário ou Código ID numérico. Amigos aparecem na busca de mesas,
-              inclusive nas privadas que pedem código de sala.
+              Conecte-se com aliados e narradores para acompanhar as mesas do seu grupo, inclusive as sessões privadas.
             </p>
           </section>
         </aside>

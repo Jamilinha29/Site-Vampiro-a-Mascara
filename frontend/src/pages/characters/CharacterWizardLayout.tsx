@@ -182,13 +182,13 @@ function WizardNav({ stepIndex }: { stepIndex: number }) {
   const missing: string[] = []
   if (!species) missing.push('escolha a espécie')
   if (!name.trim()) missing.push('informe o nome')
-  if (socialRank === 'Nobre' && !sire.trim()) missing.push('informe o senhor/sire (etapa 02)')
-  if (hpValue == null || hpValue < 1) missing.push('informe o HP rolado (etapa 04)')
+  if (socialRank === 'Nobre' && !sire.trim()) missing.push('informe o senhor ou sire na etapa 02')
+  if (hpValue == null || hpValue < 1) missing.push('informe o HP rolado na etapa 04')
   if (resources.showMana && (manaValue == null || manaValue < 1)) {
-    missing.push('informe a Mana rolada (etapa 04)')
+    missing.push('informe a Mana rolada na etapa 04')
   }
-  if (!characterClass) missing.push('escolha a classe (etapa 02)')
-  else if (caValue == null || caValue < 1) missing.push('informe a CA rolada (etapa 04)')
+  if (!characterClass) missing.push('escolha a classe na etapa 02')
+  else if (caValue == null || caValue < 1) missing.push('informe a CA rolada na etapa 04')
   if (!oathAccepted) missing.push('aceite as Seis Tradições')
 
   const displayedError = missing.length === 0 ? null : error

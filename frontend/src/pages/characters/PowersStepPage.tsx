@@ -31,7 +31,7 @@ export default function PowersStepPage() {
       <Section
         number="01"
         title="Habilidades Feudais"
-        hint={`Níveis 1–3: escolha ${band.Talentos} talentos, ${band.Perícias} perícias e ${band.Conhecimentos} conhecimento (1 ponto na criação; evolução até 4 pts). Níveis 4–5: +1 de cada. Níveis 6–10: +1 ou +2 de cada.`}
+        hint={`Níveis 1–3: escolha ${band.Talentos} talentos, ${band.Perícias} perícias e ${band.Conhecimentos} conhecimento — 1 ponto na criação; evolução até 4 pts. Níveis 4–5: +1 de cada. Níveis 6–10: +1 ou +2 de cada.`}
       >
         <div className="mb-4 flex flex-wrap gap-2 text-[11px]">
           {(

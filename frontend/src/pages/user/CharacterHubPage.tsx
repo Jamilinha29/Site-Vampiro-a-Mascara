@@ -205,7 +205,9 @@ export default function CharacterHubPage() {
                 {character.effects.map((effect) => (
                   <li key={effect.id}>
                     {effect.name}
-                    {effect.remainingTurns != null ? ` · ${effect.remainingTurns} turno(s)` : ''}
+                    {effect.remainingTurns != null
+                      ? ` · ${effect.remainingTurns} ${effect.remainingTurns === 1 ? 'turno' : 'turnos'}`
+                      : ''}
                     {effect.endsAt ? ` · até ${new Date(effect.endsAt).toLocaleTimeString('pt-BR')}` : ''}
                   </li>
                 ))}
@@ -358,7 +360,7 @@ export default function CharacterHubPage() {
             </div>
             {progression.level >= SUBCLASS_CHOICE_LEVEL ? (
               <label className="block text-xs uppercase text-on-surface-variant">
-                Subclasse I (nível {SUBCLASS_CHOICE_LEVEL}+){characterClass ? ` · ${characterClass}` : ''}
+                Subclasse I · nível {SUBCLASS_CHOICE_LEVEL}+{characterClass ? ` · ${characterClass}` : ''}
                 {characterClass && subclassOptions.length > 0 ? (
                   <select
                     className="input-feudal mt-1 pl-4 normal-case"
@@ -383,7 +385,7 @@ export default function CharacterHubPage() {
             ) : null}
             {progression.level >= SECOND_SUBCLASS_CHOICE_LEVEL ? (
               <label className="block text-xs uppercase text-on-surface-variant">
-                Subclasse II (nível {SECOND_SUBCLASS_CHOICE_LEVEL}+){characterClass ? ` · ${characterClass}` : ''}
+                Subclasse II · nível {SECOND_SUBCLASS_CHOICE_LEVEL}+{characterClass ? ` · ${characterClass}` : ''}
                 {characterClass && subclassOptions.length > 0 ? (
                   <select
                     className="input-feudal mt-1 pl-4 normal-case"

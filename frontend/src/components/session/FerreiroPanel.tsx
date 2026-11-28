@@ -168,7 +168,7 @@ export function FerreiroPanel({ sessionId, characterId, characterLevel, isLive =
                     : auction.winnerLabel
                       ? ` · ${auction.winnerLabel}`
                       : ' · encerrado'}
-                  {auction.leading ? ` · maior: ${auction.leading.amount} ${coinLabel[auction.leading.coin]} (${auction.leading.displayName})` : ''}
+                  {auction.leading ? ` · maior: ${auction.leading.amount} ${coinLabel[auction.leading.coin]} — ${auction.leading.displayName}` : ''}
                 </p>
                 {auction.status === 'open' ? (
                   <div className="mt-2 flex flex-wrap items-center gap-2">

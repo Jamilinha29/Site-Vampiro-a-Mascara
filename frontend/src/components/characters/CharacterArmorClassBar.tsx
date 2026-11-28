@@ -7,7 +7,7 @@ export function CharacterArmorClassBar({ character }: { character: ProfileCharac
   const ca = computeArmorClass(character, bonuses)
   return (
     <StatBar
-      label="Classe de armadura (CA)"
+      label="Classe de armadura · CA"
       current={ca.total}
       max={Math.max(ca.total, ca.base + Math.abs(ca.bonus), 20)}
       bonus={ca.bonus}

@@ -161,7 +161,7 @@ export default function DownloadsPage() {
                   {inspectAct.handout.monstersSlain?.length ? (
                     <ul className="mt-1 space-y-1 text-on-surface-variant">
                       {inspectAct.handout.monstersSlain.map((m, idx) => (
-                        <li key={`${m.entityId}-${idx}`}>• {m.name}{m.statsText ? ` (${m.statsText})` : ''}</li>
+                        <li key={`${m.entityId}-${idx}`}>• {m.name}{m.statsText ? ` · ${m.statsText}` : ''}</li>
                       ))}
                     </ul>
                   ) : (

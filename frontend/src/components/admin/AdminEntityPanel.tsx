@@ -109,6 +109,7 @@ function AdminEntityPanelForm({
   const [manaMax, setManaMax] = useState<number | ''>(initialEditItem?.manaMax ?? '')
   const [defense, setDefense] = useState<number | ''>(initialEditItem?.defense ?? '')
   const [abilitiesText, setAbilitiesText] = useState((initialEditItem?.abilities ?? []).join('\n'))
+  const [weaponsText, setWeaponsText] = useState((initialEditItem?.weapons ?? []).join('\n'))
   const [threatLevel, setThreatLevel] = useState<NonNullable<ChronicleEntity['threatLevel']>>(
     initialEditItem?.threatLevel ?? 'comum',
   )
@@ -146,6 +147,7 @@ function AdminEntityPanelForm({
     setManaMax(item.manaMax ?? '')
     setDefense(item.defense ?? '')
     setAbilitiesText((item.abilities ?? []).join('\n'))
+    setWeaponsText((item.weapons ?? []).join('\n'))
     setThreatLevel(item.threatLevel ?? 'comum')
     setLifeStatus(item.lifeStatus ?? 'alive')
     setLocation(item.location ?? '')
@@ -172,6 +174,7 @@ function AdminEntityPanelForm({
     setManaMax('')
     setDefense('')
     setAbilitiesText('')
+    setWeaponsText('')
     setThreatLevel('comum')
     setLifeStatus('alive')
     setLocation('')
@@ -192,6 +195,7 @@ function AdminEntityPanelForm({
       setManaMax(saved.manaMax ?? '')
       setDefense(saved.defense ?? '')
       setAbilitiesText((saved.abilities ?? []).join('\n'))
+      setWeaponsText((saved.weapons ?? []).join('\n'))
       setThreatLevel(saved.threatLevel ?? 'comum')
       setLifeStatus(saved.lifeStatus ?? 'alive')
       setLocation(saved.location ?? '')
@@ -228,6 +232,7 @@ function AdminEntityPanelForm({
       setManaMax('')
       setDefense('')
       setAbilitiesText('')
+      setWeaponsText('')
       setThreatLevel('comum')
       setLifeStatus('alive')
       setLocation('')
@@ -296,6 +301,7 @@ function AdminEntityPanelForm({
       if (manaMax !== '') body.manaMax = manaMax
       if (defense !== '') body.defense = defense
       body.abilities = parseAbilitiesList(abilitiesText)
+      body.weapons = parseAbilitiesList(weaponsText)
       body.threatLevel = threatLevel
       body.lifeStatus = lifeStatus
       body.location = location.trim()
@@ -400,7 +406,7 @@ function AdminEntityPanelForm({
               value={bestiaryTier}
               onChange={(e) => setBestiaryTier(e.target.value as 'known' | 'classified' | 'rumors')}
             >
-              <option value="known">Conhecido (jogadores)</option>
+              <option value="known">Conhecido pelos jogadores</option>
               <option value="classified">Classificado</option>
               <option value="rumors">Rumores</option>
             </select>
@@ -409,7 +415,7 @@ function AdminEntityPanelForm({
         {showPrices ? (
           <>
             <label className="block text-xs uppercase text-on-surface-variant">
-              Preço (ouro)
+              Preço em ouro
               <input
                 type="number"
                 min={0}
@@ -419,7 +425,7 @@ function AdminEntityPanelForm({
               />
             </label>
             <label className="block text-xs uppercase text-on-surface-variant">
-              Preço (prata)
+              Preço em prata
               <input
                 type="number"
                 min={0}
@@ -502,15 +508,26 @@ function AdminEntityPanelForm({
               />
             </label>
           </div>
-          <label className="block text-xs uppercase text-on-surface-variant">
-            Habilidades (uma por linha ou separadas por vírgula)
-            <textarea
-              className="input-feudal textarea-compact mt-1 pl-4 normal-case"
-              value={abilitiesText}
-              onChange={(e) => setAbilitiesText(e.target.value)}
-              placeholder="Ex.: Rapidez, Mordida vampírica, Intimidação"
-            />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Habilidades, uma por linha ou separadas por vírgula
+              <textarea
+                className="input-feudal textarea-compact mt-1 pl-4 normal-case"
+                value={abilitiesText}
+                onChange={(e) => setAbilitiesText(e.target.value)}
+                placeholder="Ex.: Rapidez, Mordida vampírica, Intimidação"
+              />
+            </label>
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Armas usadas, uma por linha ou separadas por vírgula
+              <textarea
+                className="input-feudal textarea-compact mt-1 pl-4 normal-case"
+                value={weaponsText}
+                onChange={(e) => setWeaponsText(e.target.value)}
+                placeholder="Ex.: Adaga enferrujada 1d4, Espada curta"
+              />
+            </label>
+          </div>
         </div>
       ) : null}
 
@@ -556,7 +573,7 @@ function AdminEntityPanelForm({
 
       {showFileUpload ? (
         <label className="block text-xs uppercase text-on-surface-variant">
-          Arquivo (PDF/imagem)
+          Arquivo em PDF ou imagem
           <input
             type="file"
             className="mt-2 block text-sm"

@@ -147,10 +147,10 @@ export default function AdminMesaPage() {
               Mesas confirmadas ao vivo
             </p>
             <h1 className="font-headline-lg mt-0.5 text-xl text-on-surface sm:text-2xl">
-              Selecionar mesa ao vivo ({liveMesas.length})
+              Selecionar mesa ao vivo · {liveMesas.length}
             </h1>
             <p className="mt-1 max-w-3xl text-xs text-on-surface-variant sm:text-sm">
-              Escolha a mesa que deseja conduzir, entrar como narrador secundário (se o narrador principal permitir) ou participar como jogador.
+              Escolha a mesa que deseja conduzir, entrar como narrador secundário quando autorizado ou participar como jogador.
             </p>
           </div>
           <Link to="/admin/sessions" className="btn-secondary text-xs">
@@ -187,7 +187,8 @@ export default function AdminMesaPage() {
                     {formatScheduledDateTime(m.scheduledAt)}
                   </p>
                   <p className="mt-1 text-xs text-on-surface-variant">
-                    {m.seatedCount} jogador(es) sentado(s) · {m.presenceCount} confirmado(s) ·{' '}
+                    {m.seatedCount} {m.seatedCount === 1 ? 'jogador sentado' : 'jogadores sentados'} · {m.presenceCount}{' '}
+                    {m.presenceCount === 1 ? 'confirmado' : 'confirmados'} ·{' '}
                     {m.allowCoNarrator ? 'Aceita narrador secundário' : 'Apenas narrador principal'}
                   </p>
                 </div>
@@ -217,7 +218,7 @@ export default function AdminMesaPage() {
 
                   {m.isSeated ? (
                     <Link to={`/user/sessions/${m.id}/table`} className="btn-secondary text-xs">
-                      Ir para mesa (jogador)
+                      Ir para mesa como jogador
                     </Link>
                   ) : !m.hasConfirmedPresence ? (
                     <button

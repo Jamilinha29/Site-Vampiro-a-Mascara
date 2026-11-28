@@ -255,7 +255,7 @@ export default function AdminDownloadsPage() {
       <header>
         <h1 className="font-headline-lg text-2xl text-on-surface">Central de downloads</h1>
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
-          Cadastre fichas oficiais por espécie (Vampiro, Mortal, Outras espécies) e livros de cada clã no Compêndio. Os
+          Cadastre fichas oficiais por espécie — Vampiro, Mortal e Outras espécies — e livros de cada clã no Compêndio. Os
           arquivos ficam salvos no storage e sincronizam com a área do usuário.
         </p>
       </header>
@@ -347,9 +347,9 @@ export default function AdminDownloadsPage() {
           <label className="block text-xs uppercase text-on-surface-variant">
             {supportsBatch
               ? category === 'rules'
-                ? 'Livros em PDF do clã (até 2 MB cada · pode selecionar vários)'
-                : 'Fichas em PDF da espécie (até 2 MB cada · pode selecionar várias)'
-              : 'Arquivo (PDF até 2 MB ou imagem)'}
+                ? 'Livros em PDF do clã — até 2 MB cada, seleção múltipla'
+                : 'Fichas em PDF da espécie — até 2 MB cada, seleção múltipla'
+              : 'Arquivo em PDF até 2 MB ou imagem'}
             <input
               type="file"
               accept="application/pdf,image/*"

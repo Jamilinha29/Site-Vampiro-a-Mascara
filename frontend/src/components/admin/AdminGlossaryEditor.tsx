@@ -406,7 +406,7 @@ export function AdminGlossaryEditor({ importSlot }: { importSlot?: ReactNode } =
             {shopCatalog.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
-                {item.shopCategory ? ` (${item.shopCategory})` : ''}
+                {item.shopCategory ? ` · ${item.shopCategory}` : ''}
               </option>
             ))}
           </select>

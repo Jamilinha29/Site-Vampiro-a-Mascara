@@ -36,7 +36,7 @@ export function AdminCharacterReviews() {
       <p className="text-sm text-on-surface-variant">
         {pending.length === 0
           ? 'Nenhuma ficha esperando decisão.'
-          : `${pending.length} ficha(s) ainda pedem uma decisão.`}
+          : `${pending.length} ${pending.length === 1 ? 'ficha ainda pede' : 'fichas ainda pedem'} uma decisão.`}
       </p>
       {isLoading ? <p className="mt-2 text-sm text-on-surface-variant">Carregando fichas…</p> : null}
       <ul className="mt-2 max-h-96 flex-1 space-y-3 overflow-y-auto">

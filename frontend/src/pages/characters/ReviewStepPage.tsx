@@ -48,7 +48,7 @@ export default function ReviewStepPage() {
             {store.otherSpeciesKind
               ? ` · ${OTHER_SPECIES_OPTIONS.find((o) => o.id === store.otherSpeciesKind)?.label ?? store.otherSpeciesKind}`
               : ''}
-            {store.otherSpeciesType ? ` (${store.otherSpeciesType})` : ''}
+            {store.otherSpeciesType ? ` · ${store.otherSpeciesType}` : ''}
             {store.clanName ? ` · Clã ${store.clanName}` : ''}
             {store.title ? ` · ${store.title}` : ''}
           </p>
@@ -163,18 +163,18 @@ export default function ReviewStepPage() {
             </div>
           </Panel>
 
-          <Panel title="Vitalidade (travada após criar)" className="flex-1">
+          <Panel title="Vitalidade · travada após criar" className="flex-1">
             <dl className="space-y-2 text-sm">
-              <Row label="HP" value={store.hpValue != null ? `${store.hpValue} (${store.hpDie})` : '—'} />
+              <Row label="HP" value={store.hpValue != null ? `${store.hpValue} · ${store.hpDie}` : '—'} />
               <Row
                 label="Mana"
-                value={store.manaValue != null ? `${store.manaValue} (${store.manaDie})` : '—'}
+                value={store.manaValue != null ? `${store.manaValue} · ${store.manaDie}` : '—'}
               />
               <Row
                 label="CA"
                 value={
                   store.caValue != null
-                    ? `${store.caValue} (${classArmorDie(store.characterClass) ?? '—'})`
+                    ? `${store.caValue} · ${classArmorDie(store.characterClass) ?? '—'}`
                     : '—'
                 }
               />
@@ -198,7 +198,7 @@ export default function ReviewStepPage() {
 
           <Panel title="Identidade & fé">
             <dl className="space-y-2 text-sm">
-              <Row label="Fé (orientação)" value={faithOrientationLabel(store.faithOrientation)} />
+              <Row label="Orientação da fé" value={faithOrientationLabel(store.faithOrientation)} />
               <Row label="Caminho" value={faithPathLabel(store.faithPath)} />
               <Row label="Catedral" value={store.cathedralName} />
               <Row label="Condição social" value={store.socialRank} />

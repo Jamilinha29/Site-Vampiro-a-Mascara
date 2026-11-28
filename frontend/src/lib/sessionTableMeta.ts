@@ -8,7 +8,7 @@ export type SessionTableMetaFormOptions = {
 export const SESSION_TABLE_ROWS: { key: keyof SessionTableMeta; label: string }[] = [
   { key: 'campaignName', label: 'Campanha / RPG' },
   { key: 'sessionLabel', label: 'Sessão' },
-  { key: 'arcTitle', label: 'Missão (arco)' },
+  { key: 'arcTitle', label: 'Missão · arco' },
   { key: 'playerGroup', label: 'Grupo' },
 ]
 

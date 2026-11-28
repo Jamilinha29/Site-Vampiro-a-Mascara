@@ -18,7 +18,7 @@ export function AdminLineChart({ series }: { series: Point[] }) {
 
   return (
     <div className={adminChartShellClass}>
-      <p className="text-sm font-semibold tracking-tight text-on-surface">Atividade (8 semanas)</p>
+      <p className="text-sm font-semibold tracking-tight text-on-surface">Atividade · 8 semanas</p>
       <svg className="mt-2 w-full flex-1" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Gráfico de sessões por semana">
         <title>Sessões por semana</title>
         {[0, 0.5, 1].map((t) => {

@@ -227,7 +227,7 @@ export function CreatedSkillsPanel({ skills, onChange, busy, onUse, compact }: P
                 <div className="flex flex-wrap gap-1.5">
                   {onUse ? (
                     <button type="button" className="btn-primary text-[9px]" onClick={() => onUse(skill)}>
-                      Usar{(skill.manaCost ?? 0) > 0 ? ` (−${skill.manaCost} mana)` : ''}
+                      Usar{(skill.manaCost ?? 0) > 0 ? ` · −${skill.manaCost} mana` : ''}
                     </button>
                   ) : null}
                   <button type="button" className="btn-secondary text-[9px]" disabled={busy} onClick={() => startEdit(skill)}>

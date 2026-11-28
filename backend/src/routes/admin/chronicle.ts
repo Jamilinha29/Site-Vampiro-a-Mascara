@@ -109,10 +109,35 @@ function canManageEntity(entity: { narratorScope?: string | null }, user: { emai
   return entity.narratorScope.trim().toLowerCase() === user.email.trim().toLowerCase()
 }
 
-function canEditEntity(entity: { narratorScope?: string | null }, user: { email: string; role: string }) {
+function canEditEntity(
+  entity: { narratorScope?: string | null; ownerEmail?: string | null },
+  user: { email: string; role: string },
+) {
   if (user.role === 'admin') return true
-  if (!entity.narratorScope) return false
-  return entity.narratorScope.trim().toLowerCase() === user.email.trim().toLowerCase()
+  if (entity.narratorScope) {
+    return entity.narratorScope.trim().toLowerCase() === user.email.trim().toLowerCase()
+  }
+  if (entity.ownerEmail) {
+    return entity.ownerEmail.trim().toLowerCase() === user.email.trim().toLowerCase()
+  }
+  return false
+}
+
+function resolveNarratorScopeForWrite(
+  user: { email: string; role: string },
+  kind: string,
+  requested: string | null | undefined,
+): string | null {
+  const normalized = requested?.trim().toLowerCase() || null
+  if (user.role === 'admin') return normalized
+  if (normalized && normalized !== user.email.trim().toLowerCase()) {
+    throw new ValidationError('Sem permissão para vincular este item a outro mestre.')
+  }
+  if (requested === null) return null
+  if (requested === undefined && kind !== 'equipment' && kind !== 'consumable') {
+    return user.email.trim().toLowerCase()
+  }
+  return normalized
 }
 
 function validateNonDownloadFileUrl(url?: string) {
@@ -156,6 +181,7 @@ const entitySchema = z.object({
   manaMax: z.number().int().min(0).optional(),
   defense: z.number().int().min(0).optional(),
   abilities: z.array(z.string().trim().min(1).max(160)).max(20).optional(),
+  weapons: z.array(z.string().trim().min(1).max(160)).max(20).optional(),
   lifeStatus: z.enum(['alive', 'dead']).optional(),
   location: z.string().max(200).optional(),
   attributeMods: z.array(attributeModSchema).max(3).optional(),
@@ -240,14 +266,14 @@ adminChronicleRouter.post('/entities', async (req, res, next) => {
       body.kind === 'download' && body.fileUrl
         ? await storeCatalogDownloadFile(id, body.fileUrl, undefined, downloadStorageFolder(body))
         : validateNonDownloadFileUrl(body.fileUrl)
-    const narratorScope =
-      req.user!.role === 'admin' ? (body.narratorScope ?? null) : req.user!.email.toLowerCase()
+    const narratorScope = resolveNarratorScopeForWrite(req.user!, body.kind, body.narratorScope)
     const created = await createEntity({
       ...body,
       id,
       imageUrl,
       fileUrl,
       narratorScope,
+      ownerEmail: req.user!.email.toLowerCase(),
       visibility: 'draft',
     })
     res.status(201).json((await withReadableImages([created]))[0])
@@ -342,9 +368,18 @@ adminChronicleRouter.post('/entities/import', async (req, res, next) => {
         row.kind === 'download' && row.fileUrl
           ? await storeCatalogDownloadFile(id, row.fileUrl, undefined, downloadStorageFolder(row))
           : validateNonDownloadFileUrl(row.fileUrl)
-      const narratorScope =
-        req.user!.role === 'admin' ? (row.narratorScope ?? null) : req.user!.email.toLowerCase()
-      created.push(await createEntity({ ...row, id, imageUrl, fileUrl, narratorScope, visibility: 'draft' }))
+      const narratorScope = resolveNarratorScopeForWrite(req.user!, row.kind, row.narratorScope)
+      created.push(
+        await createEntity({
+          ...row,
+          id,
+          imageUrl,
+          fileUrl,
+          narratorScope,
+          ownerEmail: req.user!.email.toLowerCase(),
+          visibility: 'draft',
+        }),
+      )
     }
     res.status(201).json({ imported: created.length, skipped, items: created })
   } catch (e) {
@@ -376,8 +411,8 @@ adminChronicleRouter.patch('/entities/:id', async (req, res, next) => {
     }
     const { imageUrl: rawImageUrl, ...restBody } = body
     const patch: Partial<Omit<typeof current, 'id' | 'createdAt'>> = { ...restBody }
-    if (req.user!.role !== 'admin') {
-      delete patch.narratorScope
+    if (body.narratorScope !== undefined) {
+      patch.narratorScope = resolveNarratorScopeForWrite(req.user!, current.kind, body.narratorScope)
     }
     if (rawImageUrl !== undefined) {
       if (rawImageUrl === null || rawImageUrl === '') {
@@ -1494,6 +1529,35 @@ adminChronicleRouter.get('/sessions/:sessionId/operations', (req, res, next) => 
   } catch (e) {
     next(e)
   }
+})
+
+adminChronicleRouter.get('/masters', (req, res) => {
+  const byEmail = new Map<string, { email: string; displayName: string; role: 'narrator' | 'admin' }>()
+  if (req.user!.role === 'admin') {
+    for (const p of listProfiles()) {
+      if (p.role === 'narrator' || p.role === 'admin') {
+        const key = p.email.trim().toLowerCase()
+        byEmail.set(key, {
+          email: key,
+          displayName: p.displayName || key,
+          role: p.role,
+        })
+      }
+    }
+  }
+  const me = req.user!
+  const myKey = me.email.trim().toLowerCase()
+  if ((me.role === 'narrator' || me.role === 'admin') && !byEmail.has(myKey)) {
+    byEmail.set(myKey, {
+      email: myKey,
+      displayName: me.displayName || myKey,
+      role: me.role,
+    })
+  }
+  const rows = [...byEmail.values()].sort((a, b) =>
+    a.displayName.localeCompare(b.displayName, 'pt-BR', { sensitivity: 'base' }),
+  )
+  res.json(rows)
 })
 
 adminChronicleRouter.get('/registered-players', (req, res) => {

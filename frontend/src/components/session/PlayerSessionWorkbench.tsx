@@ -232,7 +232,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         return
       }
       if (manaPool.current < cost) {
-        push(`Mana insuficiente (${manaPool.current}/${manaPool.max}). Precisa de ${cost}.`, 'error')
+        push(`Mana insuficiente · ${manaPool.current}/${manaPool.max}. Precisa de ${cost}.`, 'error')
         return
       }
       setVitalsBusy(true)
@@ -251,7 +251,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
     }
     const mod = skill.attributeMod >= 0 ? `+${skill.attributeMod}` : `${skill.attributeMod}`
     const manaBit = cost > 0 ? ` · −${cost} mana` : ''
-    const line = `${character.name} usou ${skill.name} (${skill.die} · ${skill.attribute} ${mod}${manaBit})`
+    const line = `${character.name} usou ${skill.name} · ${skill.die} · ${skill.attribute} ${mod}${manaBit}`
     await recordAction('skill', line)
     push(line, 'success')
   }
@@ -301,7 +301,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
       mods.mana > 0 ? mods.mana : /mana|energia|glamour/i.test(`${item.name} ${item.description ?? ''}`) ? 10 : 0
 
     if (!healHp && !restoreMana) {
-      push('Este item não recupera vida nem mana (defina statsLabel, ex.: +10 mana).', 'error')
+      push('Este item não recupera vida nem mana — defina statsLabel, ex.: +10 mana.', 'error')
       return
     }
 
@@ -324,7 +324,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
         healHp ? `+${healHp} vida` : null,
         restoreMana ? `+${restoreMana} mana` : null,
       ].filter(Boolean)
-      const msg = `Usou ${item.name} (${bits.join(', ')})`
+      const msg = `Usou ${item.name} · ${bits.join(', ')}`
       await recordAction('potion', msg)
       push(msg, 'success')
     } catch (e) {
@@ -432,7 +432,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
             <div className={`space-y-3 ${dead ? 'opacity-60' : ''}`}>
               {dead ? (
                 <p className="rounded border border-primary/50 bg-primary/15 px-3 py-2 text-xs text-primary">
-                  Morto nesta sessão (vitalidade 0). Ficha inutilizável até a próxima sessão.
+                  Morto nesta sessão com vitalidade 0. Ficha inutilizável até a próxima sessão.
                 </p>
               ) : null}
               <div className="flex gap-4">
@@ -475,7 +475,7 @@ export function PlayerSessionWorkbench({ sessionId }: Props) {
                     <StatBar label="Força de vontade" current={will.current} max={will.max} variant="will" />
                   ) : null}
                   <StatBar
-                    label="Classe de armadura (CA)"
+                    label="Classe de armadura · CA"
                     current={ca.total}
                     max={Math.max(ca.total, ca.base + Math.abs(ca.bonus), 20)}
                     bonus={ca.bonus}

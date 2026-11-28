@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { readProfileImageFile } from '../../lib/profileMedia'
 import {
   ATTR_KEYS,
@@ -9,7 +9,7 @@ import {
   RELIC_AMULET_TYPES,
   SERVICE_TYPES,
 } from '../../lib/glossaryCatalog'
-import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
+import { adminQueryKeys, invalidatePlayerPublishedContent } from '../../lib/queryKeys'
 import type { AttributeMod, CreateEntityPayload, EntityKind } from '../../types/chronicle'
 import { api } from '../../services/api'
 import { useReferenceNames } from '../../hooks/useReferenceNames'
@@ -51,6 +51,54 @@ export function AdminShopEditor() {
     queryKey: ['admin-shop-levels'],
     queryFn: () => api.adminShopLevels(),
   })
+  const { data: scheduledSessions = [] } = useQuery({
+    queryKey: adminQueryKeys.scheduledSessions,
+    queryFn: () => api.adminListScheduledSessions(),
+  })
+  const { data: masters = [] } = useQuery({
+    queryKey: ['admin-masters'],
+    queryFn: () => api.adminListMasters(),
+  })
+
+  const chronicleOptions = useMemo(() => {
+    const byName = new Map<string, { value: string; active: boolean; scheduled: boolean }>()
+    for (const s of scheduledSessions) {
+      if (s.status === 'closed') continue
+      const nameValue = s.chronicleName?.trim() || s.title.trim()
+      if (!nameValue) continue
+      const existing = byName.get(nameValue)
+      byName.set(nameValue, {
+        value: nameValue,
+        active: Boolean(existing?.active || s.status === 'open'),
+        scheduled: Boolean(existing?.scheduled || s.status === 'scheduled'),
+      })
+    }
+    const saved = chronicleScope.trim()
+    if (saved && !byName.has(saved)) {
+      byName.set(saved, { value: saved, active: false, scheduled: false })
+    }
+    return [...byName.values()]
+      .sort((a, b) => Number(b.active) - Number(a.active) || a.value.localeCompare(b.value, 'pt-BR', { sensitivity: 'base' }))
+      .map((entry) => ({
+        value: entry.value,
+        label: entry.active ? `${entry.value} · mesa ativa` : entry.scheduled ? `${entry.value} · agendada` : entry.value,
+      }))
+  }, [scheduledSessions, chronicleScope])
+
+  const masterOptions = useMemo(() => {
+    const byEmail = new Map<string, { email: string; label: string }>()
+    for (const m of masters) {
+      const key = m.email.trim().toLowerCase()
+      if (!key) continue
+      const roleLabel = m.role === 'admin' ? 'Admin' : 'Narrador'
+      byEmail.set(key, { email: key, label: `${m.displayName} · ${roleLabel}` })
+    }
+    const saved = narratorScope.trim().toLowerCase()
+    if (saved && !byEmail.has(saved)) {
+      byEmail.set(saved, { email: saved, label: saved })
+    }
+    return [...byEmail.values()]
+  }, [masters, narratorScope])
 
   function resetForm() {
     setEditingId(null)
@@ -332,26 +380,42 @@ export function AdminShopEditor() {
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-xs uppercase text-on-surface-variant">
-            Escopo da crônica (vazio = global)
-            <input
-              className="input-feudal mt-1 pl-4 normal-case"
-              value={chronicleScope}
-              onChange={(e) => setChronicleScope(e.target.value)}
-              placeholder="Ex.: Queda de Beladona"
-            />
-          </label>
-          <label className="block text-xs uppercase text-on-surface-variant">
-            Narrador dono (e-mail)
-            <input
-              className="input-feudal mt-1 pl-4 normal-case"
-              type="email"
-              value={narratorScope}
-              onChange={(e) => setNarratorScope(e.target.value)}
-              placeholder="narrador@mesa.local"
-            />
-          </label>
+        <div className="space-y-1.5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Nome da Crônica
+              <select
+                className="input-feudal mt-1 pl-4 normal-case"
+                value={chronicleScope}
+                onChange={(e) => setChronicleScope(e.target.value)}
+              >
+                <option value="">Mercado global · sem crônica específica</option>
+                {chronicleOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs uppercase text-on-surface-variant">
+              Mestres
+              <select
+                className="input-feudal mt-1 pl-4 normal-case"
+                value={narratorScope}
+                onChange={(e) => setNarratorScope(e.target.value)}
+              >
+                <option value="">Mercado global · sem mestre específico</option>
+                {masterOptions.map((opt) => (
+                  <option key={opt.email} value={opt.email}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="text-[11px] text-on-surface-variant">
+            Obs.: estes dois campos funcionam apenas para exibir o item na mesa ativa; no mercado global ele não aparece para o usuário.
+          </p>
         </div>
 
         <label className="block text-xs uppercase text-on-surface-variant">
@@ -387,7 +451,7 @@ export function AdminShopEditor() {
         {(tab === 'gear' || tab === 'relic') && (
           <div>
             <p className="text-xs uppercase text-on-surface-variant">
-              Atributos {tab === 'relic' ? '(força, velocidade, dano, maldições, mana)' : '(opcional)'} — máx.{' '}
+              Atributos {tab === 'relic' ? 'de força, velocidade, dano, maldições e mana' : 'opcionais'} — máx.{' '}
               {MAX_ATTRIBUTE_MODS}
             </p>
             <ul className="mt-2 space-y-2">

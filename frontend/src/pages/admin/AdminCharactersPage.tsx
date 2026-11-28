@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { CreatureCombatSheetModal } from '../../components/admin/CreatureCombatSheetModal'
 import { StatBar } from '../../components/domain/StatBar'
 import { THREAT_LEVELS } from '../../lib/glossaryCatalog'
 import { invalidatePlayerPublishedContent } from '../../lib/queryKeys'
@@ -46,12 +47,14 @@ function CharacterCard({
   busy,
   onToggleLife,
   onPublish,
+  onOpenSheet,
 }: {
   item: ChronicleEntity
   inActiveSession: boolean
   busy: boolean
   onToggleLife: () => void
   onPublish: () => void
+  onOpenSheet: () => void
 }) {
   const isDead = item.lifeStatus === 'dead'
   const draft = item.visibility !== 'published'
@@ -59,7 +62,6 @@ function CharacterCard({
   const mana = item.manaMax ?? 0
   const defense = resolveDefense(item)
   const classification = resolveClassification(item)
-  const abilities = resolveAbilities(item)
 
   return (
     <article
@@ -115,27 +117,6 @@ function CharacterCard({
         <StatBar label="Defesa" current={defense} max={Math.max(defense, 20)} variant="defense" />
       </div>
 
-      <div className="mt-3">
-        <p className="font-label-sm text-[10px] tracking-wider text-on-surface-variant uppercase">Habilidades</p>
-        {abilities.length > 0 ? (
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {abilities.slice(0, 6).map((ability) => (
-              <span
-                key={ability}
-                className="rounded border border-outline-variant/40 bg-surface-container-lowest/70 px-2 py-0.5 text-[11px] text-on-surface"
-              >
-                {ability}
-              </span>
-            ))}
-            {abilities.length > 6 ? (
-              <span className="text-[11px] text-on-surface-variant">+{abilities.length - 6}</span>
-            ) : null}
-          </div>
-        ) : (
-          <p className="mt-1 text-[11px] text-on-surface-variant">Nenhuma habilidade registrada.</p>
-        )}
-      </div>
-
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button type="button" className="btn-secondary text-[10px]" disabled={busy} onClick={onToggleLife}>
           {isDead ? 'Marcar vivo' : 'Marcar morto'}
@@ -145,6 +126,9 @@ function CharacterCard({
             Publicar
           </button>
         ) : null}
+        <button type="button" className="btn-secondary text-[10px]" onClick={onOpenSheet}>
+          Ficha de dados
+        </button>
         <Link to={`/admin/characters/new?kind=${item.kind}&id=${item.id}`} className="btn-primary ml-auto text-[10px]">
           Editar
         </Link>
@@ -157,6 +141,7 @@ export default function AdminCharactersPage() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<FilterId>('all')
   const [page, setPage] = useState(1)
+  const [inspectEntity, setInspectEntity] = useState<ChronicleEntity | null>(null)
   const qc = useQueryClient()
   const { push } = useToast()
 
@@ -255,10 +240,10 @@ export default function AdminCharactersPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-headline-lg text-2xl tracking-wide text-on-surface uppercase">
-            Monstros &amp; NPCs ({counts.all})
+            Monstros &amp; NPCs · {counts.all}
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
-            Cadastros do mestre com vida, mana, defesa, habilidades, classificação e estado na crônica.
+            Cadastros do mestre com vida, mana, defesa, classificação, estado na crônica e ficha flutuante de dados.
           </p>
         </div>
         <Link to="/admin/characters/new" className="btn-primary text-xs">
@@ -282,7 +267,7 @@ export default function AdminCharactersPage() {
                 setPage(1)
               }}
             >
-              {f.label} ({f.count})
+              {f.label} · {f.count}
             </button>
           ))}
         </div>
@@ -315,9 +300,11 @@ export default function AdminCharactersPage() {
               toggleLife.mutate({ id: item.id, lifeStatus: item.lifeStatus === 'dead' ? 'alive' : 'dead' })
             }
             onPublish={() => publish.mutate(item.id)}
+            onOpenSheet={() => setInspectEntity(item)}
           />
         ))}
       </div>
+      <CreatureCombatSheetModal entity={inspectEntity} onClose={() => setInspectEntity(null)} />
       {!loading && all.length === 0 ? (
         <p className="text-sm text-on-surface-variant">Nenhum personagem cadastrado neste filtro.</p>
       ) : null}

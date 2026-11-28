@@ -7,7 +7,7 @@ export function ViewportPageShell({ children, className = '' }: { children: Reac
       className={`flex min-h-svh min-h-dvh w-full min-w-0 flex-col overflow-x-clip bg-surface-container-lowest ${className}`}
     >
       <main className="safe-pb safe-pt flex min-h-0 w-full min-w-0 flex-1 flex-col items-center overflow-x-clip overflow-y-auto px-[clamp(1.25rem,4vw,4.5rem)] py-6">
-        <div className="my-auto flex w-full min-w-0 flex-col items-center">{children}</div>
+        <div className="my-auto flex min-h-full w-full min-w-0 flex-1 flex-col items-center justify-center">{children}</div>
       </main>
     </div>
   )

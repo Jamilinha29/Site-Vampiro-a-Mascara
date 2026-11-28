@@ -150,7 +150,7 @@ export default function AdminReferencePage() {
     onSuccess: async (result) => {
       setPreview(null)
       setMessage(
-        `${result.added} novo(s), ${result.updated} descrição(ões) atualizada(s), ${result.skipped} duplicata(s) ignorada(s). O que já estava salvo continua.`,
+        `${result.added} ${result.added === 1 ? 'novo' : 'novos'}, ${result.updated} ${result.updated === 1 ? 'descrição atualizada' : 'descrições atualizadas'}, ${result.skipped} ${result.skipped === 1 ? 'duplicata ignorada' : 'duplicatas ignoradas'}. O que já estava salvo continua.`,
       )
       await invalidateReferenceQueries()
     },
@@ -217,7 +217,7 @@ export default function AdminReferencePage() {
         <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
           Crie um item ou importe a planilha, revise e só então salve. O que for salvo fica na API mesmo se o
           Supabase pausar. CSV: nome, descrição
-          {meta.extra === 'faith' ? ', caminho (luz ou trevas, obrigatório)' : ''}
+          {meta.extra === 'faith' ? ', caminho luz ou trevas obrigatório' : ''}
           {meta.extra === 'class' ? ', class_name' : ''}.
         </p>
       </header>

@@ -67,7 +67,7 @@ export function SessionTableMetaForm({
       placeholder: 'Ex: Sessão 1',
       readOnly: options?.sessionLabelReadOnly ?? true,
     },
-    { key: 'arcTitle', label: 'Missão (arco)', placeholder: 'Ex: As Cinzas de São Vítor' },
+    { key: 'arcTitle', label: 'Missão · arco', placeholder: 'Ex: As Cinzas de São Vítor' },
     { key: 'playerGroup', label: 'Grupo', placeholder: 'Ex: 3–5 jogadores' },
   ]
 

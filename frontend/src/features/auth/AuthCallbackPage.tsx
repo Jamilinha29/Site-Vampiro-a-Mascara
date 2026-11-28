@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getSupabaseBrowser } from '../../lib/supabaseBrowser'
 import { api } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
+import { AuthAmbient, AuthHeader } from './AuthChrome'
 
 const pkceExchangeCache = new Map<string, Promise<{ error: Error | null }>>()
 
@@ -118,28 +119,29 @@ export function AuthCallbackPage() {
   }, [navigate, params, setSession])
 
   return (
-    <main className="min-h-screen bg-[#0c0a0d] text-[#f3eadc] flex items-center justify-center p-6">
-      <div className="max-w-md w-full rounded-2xl border border-[#3a2830] bg-[#161116] p-8 text-center space-y-4">
-        <p className="text-xs uppercase tracking-[0.25em] text-[#c89b54]">Crônicas de Beladona</p>
-        <h1 className="text-xl font-semibold">
-          {error ? 'Não foi possível abrir o portal' : 'Validando seu selo…'}
-        </h1>
-        {error ? (
-          <>
-            <p className="text-sm text-[#e09f9f]">{error}</p>
-            <div className="pt-2">
-              <Link
-                to="/auth/login"
-                className="inline-flex items-center justify-center rounded-lg border border-[#c89b54]/60 px-4 py-2 text-sm text-[#f3eadc] hover:bg-[#c89b54]/15"
-              >
-                Voltar ao login
-              </Link>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-[#b9a79d]">Conectando sua sessão ao acervo da crônica.</p>
-        )}
-      </div>
-    </main>
+    <div className="auth-portal-shell relative flex w-full min-w-0 flex-col overflow-hidden bg-surface-container-lowest text-on-surface">
+      <AuthAmbient />
+      <AuthHeader />
+      <main className="safe-pb relative z-10 flex min-h-0 w-full flex-1 items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-4 rounded-xl border border-outline-variant bg-surface-container-low/95 p-8 text-center shadow-2xl backdrop-blur-md">
+          <p className="font-label-sm text-xs tracking-[0.25em] text-secondary uppercase">Crônicas de Beladona</p>
+          <h1 className="font-serif text-xl font-semibold text-on-surface">
+            {error ? 'Não foi possível abrir o portal' : 'Validando seu selo…'}
+          </h1>
+          {error ? (
+            <>
+              <p className="text-sm text-primary">{error}</p>
+              <div className="pt-2">
+                <Link to="/auth/login" className="btn-secondary inline-flex px-4 py-2 text-sm">
+                  Voltar ao login
+                </Link>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-on-surface-variant">Conectando sua sessão ao acervo da crônica.</p>
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

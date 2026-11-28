@@ -401,7 +401,7 @@ function PurchasePanel({
           <p className="text-xs font-semibold tracking-wider text-secondary uppercase">Compra</p>
           <p className="mt-2">
             Entra no personagem sentado na mesa aberta
-            {primaryName ? ` (${primaryName} é o ativo nesta conta)` : ''}.
+            {primaryName ? ` — ${primaryName} é o ativo nesta conta` : ''}.
           </p>
           <p className="mt-1">
             Saldo: {walletSilver} prata · {walletGold} ouro

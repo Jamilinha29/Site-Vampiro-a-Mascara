@@ -663,6 +663,10 @@ export const api = {
     }),
   adminListScheduledSessions: () =>
     request<import('../types/chronicle').ScheduledSession[]>('/api/v1/admin/chronicle/scheduled-sessions'),
+  adminListMasters: () =>
+    request<Array<{ email: string; displayName: string; role: 'narrator' | 'admin' }>>(
+      '/api/v1/admin/chronicle/masters',
+    ),
   adminListLiveMesas: () =>
     request<import('../types/chronicle').LiveMesaSummary[]>('/api/v1/admin/chronicle/live-mesas'),
   adminJoinCoNarrator: (sessionId: string, accessCode = '') =>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -26,10 +26,12 @@ import DownloadsPage from '../../frontend/src/pages/user/DownloadsPage'
 import AdminDownloadsPage from '../../frontend/src/pages/admin/AdminDownloadsPage'
 import AdminCharactersPage from '../../frontend/src/pages/admin/AdminCharactersPage'
 import AdminCharactersNewPage from '../../frontend/src/pages/admin/AdminCharactersNewPage'
+import { AdminShopEditor } from '../../frontend/src/components/admin/AdminShopEditor'
 import SessionsPage from '../../frontend/src/pages/user/SessionsPage'
 import RecoverPage from '../../frontend/src/features/auth/RecoverPage'
 import CodexHelpPage from '../../frontend/src/pages/public/CodexHelpPage'
 import AdminReferencePage from '../../frontend/src/pages/admin/AdminReferencePage'
+import AdminSessionsPage from '../../frontend/src/pages/admin/AdminSessionsPage'
 
 describe('frontend auth storage, progression, API error contract & modals (T21-T33)', () => {
   beforeEach(() => {
@@ -330,12 +332,19 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(headerBanner).toBeInTheDocument()
     expect(within(headerBanner).getByRole('link', { name: /Entrar na crônica/i })).toHaveAttribute('href', '/auth/login')
     const desktopNav = within(headerBanner).getByRole('navigation', { name: 'Seções iniciais' })
-    expect(within(desktopNav).getByRole('link', { name: 'Lore' })).toHaveAttribute('href', '#universo')
+    const loreLink = within(desktopNav).getByRole('link', { name: 'Lore' })
+    expect(loreLink).toHaveAttribute('href', '#universo')
+    expect(loreLink.className).not.toContain('bg-surface-container-low/65')
     expect(within(desktopNav).getByRole('link', { name: 'Mesa' })).toHaveAttribute('href', '#plataforma')
     expect(within(desktopNav).getByRole('link', { name: 'Ritual' })).toHaveAttribute('href', '#jornada')
     expect(screen.queryByText('Criar minha conta')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Suporte de acesso' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Central de contato' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Conclave & Mesas' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Central de contato' })).toBeNull()
+    expect(screen.queryByText('Projeto oficial')).toBeNull()
+    expect(screen.queryByText('Mesa Segura')).toBeNull()
+    expect(screen.queryByText(/@handle/i)).toBeNull()
+    expect(screen.queryByText(/Código ID/i)).toBeNull()
     expect(screen.queryByText(/Uma crônica em constante construção/i)).toBeNull()
     expect(screen.queryByText(/Menos informações dispersas/i)).toBeNull()
 
@@ -346,9 +355,16 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
         <CodexHelpPage />
       </MemoryRouter>,
     )
+    const codexHeader = screen.getByRole('banner')
+    expect(within(codexHeader).getByRole('link', { name: 'Voltar para a página inicial' })).toHaveAttribute('href', '/')
+    expect(within(codexHeader).queryByText('Página inicial')).toBeNull()
+    expect(within(codexHeader).queryByText('Suporte e contatos')).toBeNull()
+    expect(within(codexHeader).queryByText('Entrar na crônica')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Códice de Beladona' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '4. Moedas, Mercado e Ferreiro' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '6. Alianças, conquistas e suporte' })).toBeInTheDocument()
+    expect(screen.queryByText(/@handle/i)).toBeNull()
+    expect(screen.queryByText(/Código ID/i)).toBeNull()
   })
 
   it('AdminDownloadsPage and DownloadsPage separate species sheets from clan book PDFs in list mode', async () => {
@@ -523,7 +539,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(publicIdx).toBeGreaterThan(privateIdx)
   })
 
-  it('AdminCharactersPage renders user-character-style cards with stats, abilities, classification and alive/dead status, and AdminCharactersNewPage has image + edit inputs', async () => {
+  it('AdminCharactersPage moves abilities and weapons into a floating dice/combat sheet modal and AdminCharactersNewPage includes weapons input', async () => {
     vi.spyOn(api, 'adminListHandouts').mockResolvedValue([])
     vi.spyOn(api, 'adminListEntities').mockImplementation(async (kind) => {
       if (kind === 'npc') {
@@ -541,6 +557,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
             manaMax: 30,
             defense: 15,
             abilities: ['Dominação', 'Presença'],
+            weapons: ['Adaga Prateada'],
             createdAt: '2026-11-28T00:00:00Z',
             updatedAt: '2026-11-28T00:00:00Z',
           },
@@ -561,6 +578,8 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
             manaMax: 10,
             defense: 14,
             abilities: ['Mordida Sombria'],
+            weapons: ['Presas Sombrias'],
+            primaryAttackName: 'Investida',
             createdAt: '2026-11-28T00:00:00Z',
             updatedAt: '2026-11-28T00:00:00Z',
           },
@@ -582,14 +601,33 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(await screen.findByText('Lady Carmilla')).toBeInTheDocument()
     expect(screen.getByText('Vivo · aguardando sessão')).toBeInTheDocument()
     expect(screen.getByText(/Classificação: Perigoso/i)).toBeInTheDocument()
-    expect(screen.getByText('Dominação')).toBeInTheDocument()
-    expect(screen.getByText('Presença')).toBeInTheDocument()
     expect(screen.getAllByText('Defesa').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('Dominação')).not.toBeInTheDocument()
+    expect(screen.queryByText('Presença')).not.toBeInTheDocument()
+    expect(screen.queryByText('Mordida Sombria')).not.toBeInTheDocument()
+    expect(screen.queryByText('Nenhuma habilidade registrada.')).not.toBeInTheDocument()
 
     expect(screen.getByText('Cão Sombrio')).toBeInTheDocument()
     expect(screen.getByText('Morto')).toBeInTheDocument()
     expect(screen.getByText(/Classificação: Letal/i)).toBeInTheDocument()
-    expect(screen.getByText('Mordida Sombria')).toBeInTheDocument()
+
+    const sheetButtons = screen.getAllByRole('button', { name: 'Ficha de dados' })
+    expect(sheetButtons).toHaveLength(2)
+
+    fireEvent.click(sheetButtons[0])
+    const npcDialog = screen.getByRole('dialog', { name: /Lady Carmilla/i })
+    expect(within(npcDialog).getByText('Dominação')).toBeInTheDocument()
+    expect(within(npcDialog).getByText('Presença')).toBeInTheDocument()
+    expect(within(npcDialog).getByText('Adaga Prateada')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ficha de dados' })[1])
+    const monDialog = screen.getByRole('dialog', { name: /Cão Sombrio/i })
+    expect(within(monDialog).getByText('Mordida Sombria')).toBeInTheDocument()
+    expect(within(monDialog).getByText('Presas Sombrias')).toBeInTheDocument()
+    expect(within(monDialog).getByText('Investida')).toBeInTheDocument()
 
     cleanup()
 
@@ -605,6 +643,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     expect(screen.getAllByText('Estado na crônica').length).toBe(2)
     expect(screen.getAllByText('Defesa').length).toBe(2)
     expect(screen.getAllByText(/Habilidades/i).length).toBe(2)
+    expect(screen.getAllByText(/Armas usadas/i).length).toBe(2)
     expect(screen.getAllByText(/Foto \/ ilustração/i).length).toBe(2)
   })
 
@@ -624,6 +663,7 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     )
 
     expect(screen.getByRole('heading', { name: 'Recuperação de senha' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /As Crônicas de Beladona/i })).toHaveAttribute('href', '/')
     expect(
       screen.getByText('Informe seu e-mail para receber o link de redefinição de senha.'),
     ).toBeInTheDocument()
@@ -721,5 +761,103 @@ describe('frontend auth storage, progression, API error contract & modals (T21-T
     fireEvent.click(screen.getByRole('button', { name: 'Excluir' }))
     expect(await screen.findByText('Item excluído.')).toBeInTheDocument()
     expect(deleteSpy).toHaveBeenCalledWith('magic', 'magic-1')
+  })
+
+  it('AdminSessionsPage places active and closed session blocks side by side', async () => {
+    vi.spyOn(api, 'adminListScheduledSessions').mockResolvedValue([])
+    vi.spyOn(api, 'adminListHandouts').mockResolvedValue([])
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ToastProvider>
+            <AdminSessionsPage />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const activeHeading = await screen.findByRole('heading', { name: 'Mesas em andamento' })
+    const closedHeading = screen.getByRole('heading', { name: 'Mesas encerradas' })
+    const gridContainer = activeHeading.closest('section')?.parentElement
+    expect(gridContainer).toBe(closedHeading.closest('section')?.parentElement)
+    expect(gridContainer?.className).toContain('lg:grid-cols-2')
+  })
+
+  it('AdminShopEditor renders Nome da Crônica and Mestres as select lists and submits selected table scopes', async () => {
+    vi.spyOn(api, 'adminListEntities').mockResolvedValue([])
+    vi.spyOn(api, 'adminShopLevels').mockResolvedValue({})
+    vi.spyOn(api, 'adminListReference').mockResolvedValue([])
+    vi.spyOn(api, 'adminListScheduledSessions').mockResolvedValue([
+      {
+        id: 'sess-1',
+        title: 'Mesa Ativa',
+        chronicleName: 'Queda de Beladona',
+        scheduledAt: '2026-11-29T20:00:00.000Z',
+        accessCode: 'ABC123',
+        status: 'open',
+        activeDurationMs: 0,
+        presence: [],
+        seats: [],
+        createdAt: '2026-11-28T00:00:00.000Z',
+      },
+    ])
+    vi.spyOn(api, 'adminListMasters').mockResolvedValue([
+      { email: 'valerius@corte.local', displayName: 'Mestre Valerius', role: 'narrator' },
+    ])
+    const createSpy = vi.spyOn(api, 'adminCreateEntity').mockResolvedValue({
+      id: 'item-1',
+      kind: 'equipment',
+      name: 'Espada Lunar',
+      description: '',
+      visibility: 'draft',
+      createdAt: '2026-11-28T00:00:00.000Z',
+      updatedAt: '2026-11-28T00:00:00.000Z',
+    })
+    vi.spyOn(api, 'adminSetShopLevel').mockResolvedValue({ entityId: 'item-1', requiredLevel: 1 })
+    vi.spyOn(api, 'adminPublishEntity').mockResolvedValue({
+      id: 'item-1',
+      kind: 'equipment',
+      name: 'Espada Lunar',
+      description: '',
+      visibility: 'published',
+      createdAt: '2026-11-28T00:00:00.000Z',
+      updatedAt: '2026-11-28T00:00:00.000Z',
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ToastProvider>
+            <AdminShopEditor />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const chronicleSelect = screen.getByLabelText('Nome da Crônica') as HTMLSelectElement
+    const masterSelect = screen.getByLabelText('Mestres') as HTMLSelectElement
+    expect(chronicleSelect.tagName).toBe('SELECT')
+    expect(masterSelect.tagName).toBe('SELECT')
+
+    expect(await screen.findByRole('option', { name: 'Queda de Beladona · mesa ativa' })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: 'Mestre Valerius · Narrador' })).toBeInTheDocument()
+    expect(screen.getByText(/apenas para exibir o item na mesa ativa; no mercado global ele não aparece/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'Espada Lunar' } })
+    fireEvent.change(chronicleSelect, { target: { value: 'Queda de Beladona' } })
+    fireEvent.change(masterSelect, { target: { value: 'valerius@corte.local' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e publicar' }))
+
+    await waitFor(() => expect(screen.getByLabelText('Nome')).toHaveValue(''))
+    expect(chronicleSelect).toHaveValue('')
+    expect(masterSelect).toHaveValue('')
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Espada Lunar',
+        chronicleScope: 'Queda de Beladona',
+        narratorScope: 'valerius@corte.local',
+      }),
+    )
   })
 })

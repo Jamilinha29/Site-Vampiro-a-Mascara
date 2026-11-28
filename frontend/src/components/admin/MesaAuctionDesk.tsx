@@ -117,7 +117,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
           />
         </label>
         <label className="text-xs uppercase text-on-surface-variant">
-          NPC (opcional)
+          NPC opcional
           <input
             className="input-feudal mt-1 w-full py-2 pl-3 text-sm normal-case"
             value={npcName}
@@ -174,7 +174,7 @@ export function MesaAuctionDesk({ sessionId, live }: Props) {
               {auction.bids.filter((b) => !b.withdrawn).map((b) => (
                 <li key={b.id}>
                   {b.displayName}
-                  {b.npc ? ' (NPC)' : ''}: {b.amount} {coinLabel[b.coin]}
+                  {b.npc ? ' · NPC' : ''}: {b.amount} {coinLabel[b.coin]}
                 </li>
               ))}
             </ul>

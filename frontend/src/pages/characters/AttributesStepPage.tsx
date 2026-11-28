@@ -178,7 +178,7 @@ function VitalField({
           )}
         </label>
         <label className="block text-[10px] uppercase text-on-surface-variant">
-          Valor rolado (1–{max})
+          Valor rolado · 1 a {max}
           <input
             type="number"
             min={1}

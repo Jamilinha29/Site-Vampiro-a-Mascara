@@ -41,7 +41,7 @@ export function formatAmbienceChip(a: ChronicleAmbience) {
 
 /** Mapas/tokens não são hospedados aqui — o narrador usa call ou VTT externo. */
 export const EXTERNAL_MAP_NOTICE =
-  'Mapa e posicionamento ficam na sessão online do narrador (call, VTT ou link que ele enviar). Aqui você acompanha clima narrativo, teatro da mente, ficha e ameaças.'
+  'Mapa e posicionamento ficam na sessão online do narrador pelo link que ele enviar. Aqui você acompanha clima narrativo, teatro da mente, ficha e ameaças.'
 
 export const EXTERNAL_MAP_NOTICE_ADMIN =
   'Local e mapa não são exibidos neste site. Defina o cenário na sessão online; use “Ambiente” só como rótulo narrativo para os jogadores.'

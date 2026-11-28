@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { SceneNpc, SessionHandout } from '../../types/chronicle'
+import type { ChronicleEntity, SceneNpc, SessionHandout } from '../../types/chronicle'
 import { api } from '../../services/api'
 import { adminQueryKeys } from '../../lib/queryKeys'
+import { CreatureCombatSheetModal } from './CreatureCombatSheetModal'
 
 type Props = {
   sessionId: string
@@ -14,6 +15,7 @@ type Props = {
 export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' }: Props) {
   const qc = useQueryClient()
   const [pickId, setPickId] = useState('')
+  const [inspectEntity, setInspectEntity] = useState<ChronicleEntity | null>(null)
 
   const { data: entities = [] } = useQuery({
     queryKey: adminQueryKeys.entities('npc'),
@@ -43,7 +45,7 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
 
   return (
     <div className={`space-y-4 ${layout === 'embedded' ? 'border-t border-outline-variant/30 pt-4' : ''}`}>
-      <h3 className="font-label-sm text-xs text-secondary uppercase">NPCs em cena (missões)</h3>
+      <h3 className="font-label-sm text-xs text-secondary uppercase">NPCs em cena</h3>
       <p className="text-xs text-on-surface-variant">
         Escolha personagens do acervo publicados — visíveis aos jogadores para interações e objetivos do ato.
       </p>
@@ -61,7 +63,7 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
               {publishedNpcs.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.name}
-                  {n.lifeStatus === 'dead' ? ' (Morto)' : ''}
+                  {n.lifeStatus === 'dead' ? ' · Morto' : ''}
                 </option>
               ))}
             </select>
@@ -84,28 +86,43 @@ export function MesaSceneNpcsPanel({ sessionId, live, npcs, layout = 'embedded' 
         <p className="text-sm text-on-surface-variant">Nenhum NPC ativo na cena.</p>
       ) : (
         <ul className="space-y-3">
-          {npcs.map((n) => (
-            <li key={n.id} className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="font-serif text-base text-on-surface">{n.name}</p>
-                {live ? (
-                  <button
-                    type="button"
-                    className="text-xs text-on-surface-variant hover:text-primary"
-                    disabled={removeNpc.isPending}
-                    onClick={() => removeNpc.mutate(n.id)}
-                  >
-                    Remover
-                  </button>
+          {npcs.map((n) => {
+            const fullEntity = entities.find((e) => e.id === n.entityId) ?? null
+            return (
+              <li key={n.id} className="rounded border border-outline-variant/40 bg-surface-container-lowest/40 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="font-serif text-base text-on-surface">{n.name}</p>
+                  <div className="flex items-center gap-2">
+                    {fullEntity ? (
+                      <button
+                        type="button"
+                        className="btn-secondary text-[10px]"
+                        onClick={() => setInspectEntity(fullEntity)}
+                      >
+                        Ficha de dados
+                      </button>
+                    ) : null}
+                    {live ? (
+                      <button
+                        type="button"
+                        className="text-xs text-on-surface-variant hover:text-primary"
+                        disabled={removeNpc.isPending}
+                        onClick={() => removeNpc.mutate(n.id)}
+                      >
+                        Remover
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {n.description ? (
+                  <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">{n.description}</p>
                 ) : null}
-              </div>
-              {n.description ? (
-                <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">{n.description}</p>
-              ) : null}
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
       )}
+      <CreatureCombatSheetModal entity={inspectEntity} onClose={() => setInspectEntity(null)} />
     </div>
   )
 }

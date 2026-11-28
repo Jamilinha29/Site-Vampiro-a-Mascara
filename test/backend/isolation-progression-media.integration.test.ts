@@ -524,4 +524,126 @@ describe('isolation, privacy, media security & progression 0-10/5/7 (T11-T17)', 
     const updatedMonster = listRes.body.find((m: { id: string }) => m.id === monRes.body.id)
     expect(updatedMonster?.lifeStatus).toBe('dead')
   })
+
+  it('exposes /masters list and isolates scoped shop items from global Mercado to matching active table only', async () => {
+    const narA = 'mestre.a@ci.local'
+    const narB = 'mestre.b@ci.local'
+    const adminEmail = 'admin.shop@ci.local'
+    const playerEmail = 'jogador.shop@ci.local'
+
+    await ensureProfile(narA, 'Mestre Alpha', 'narrator')
+    await ensureProfile(narB, 'Mestre Beta', 'narrator')
+    await ensureProfile(adminEmail, 'Admin Loja', 'admin')
+    await ensureProfile(playerEmail, 'Comprador Mesa', 'player')
+
+    const ch = await upsertCharacter(playerEmail, {
+      name: 'Caçador',
+      species: 'Vampiro',
+      level: 3,
+      isPrimary: true,
+      hp: { current: 20, max: 20 },
+    })
+
+    const tokenAdmin = signDevToken(adminEmail, 'Admin Loja', 'admin').accessToken
+    const tokenNarA = signDevToken(narA, 'Mestre Alpha', 'narrator').accessToken
+    const tokenPlayer = signDevToken(playerEmail, 'Comprador Mesa', 'player').accessToken
+
+    const forbiddenMasters = await request(app)
+      .get('/api/v1/admin/chronicle/masters')
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+    expect(forbiddenMasters.status).toBe(403)
+
+    const adminMasters = await request(app)
+      .get('/api/v1/admin/chronicle/masters')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+    expect(adminMasters.status).toBe(200)
+    expect(adminMasters.body.map((m: { email: string }) => m.email)).toEqual(
+      expect.arrayContaining([narA, narB, adminEmail]),
+    )
+
+    // Item global criado por narrador comum (sem chronicleScope nem narratorScope) aparece no Mercado global
+    const globalItem = await request(app)
+      .post('/api/v1/admin/chronicle/entities')
+      .set('Authorization', `Bearer ${tokenNarA}`)
+      .send({
+        kind: 'equipment',
+        shopCategory: 'gear',
+        name: 'Botas Globais',
+        description: 'Uso livre',
+        chronicleScope: null,
+        narratorScope: null,
+      })
+    expect(globalItem.status).toBe(201)
+    await request(app)
+      .post(`/api/v1/admin/chronicle/entities/${globalItem.body.id}/publish`)
+      .set('Authorization', `Bearer ${tokenNarA}`)
+      .expect(200)
+
+    // Item restrito por Nome da Crônica + Mestres só deve aparecer na mesa ativa correspondente
+    const tableItem = await request(app)
+      .post('/api/v1/admin/chronicle/entities')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({
+        kind: 'equipment',
+        shopCategory: 'gear',
+        name: 'Relíquia da Mesa Ativa',
+        description: 'Exclusiva da mesa',
+        chronicleScope: 'Noite Carmesim',
+        narratorScope: narA,
+      })
+    expect(tableItem.status).toBe(201)
+    await request(app)
+      .post(`/api/v1/admin/chronicle/entities/${tableItem.body.id}/publish`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .expect(200)
+
+    const sessA = await createScheduledSession({
+      title: 'Sessão 1',
+      chronicleName: 'Noite Carmesim',
+      scheduledAt: '2026-11-29T20:00:00.000Z',
+      narratorEmail: narA,
+    })
+    await updateScheduledSession(sessA.id, {
+      status: 'scheduled',
+      seats: [
+        {
+          email: playerEmail,
+          displayName: 'Comprador Mesa',
+          characterId: ch.id,
+          characterName: ch.name,
+          joinedAt: '2026-11-29T20:00:00.000Z',
+        },
+      ],
+    })
+
+    // Enquanto mesa ainda está agendada (não ativa), nem Mercado nem Ferreiro mostram o item restrito
+    const marketWhileScheduled = await request(app)
+      .get('/api/v1/content/shop?category=gear')
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+    expect(marketWhileScheduled.status).toBe(200)
+    expect(marketWhileScheduled.body.map((i: { name: string }) => i.name)).toContain('Botas Globais')
+    expect(marketWhileScheduled.body.map((i: { name: string }) => i.name)).not.toContain('Relíquia da Mesa Ativa')
+
+    const ferreiroScheduled = await request(app)
+      .get(`/api/v1/court/sessions/${sessA.id}/ferreiro`)
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+    expect(ferreiroScheduled.status).toBe(200)
+    expect(ferreiroScheduled.body.commerce.map((i: { name: string }) => i.name)).not.toContain('Relíquia da Mesa Ativa')
+
+    // Ao abrir a mesa (status = 'open'), Ferreiro mostra global + item restrito; Mercado continua ocultando o item restrito
+    await updateScheduledSession(sessA.id, { status: 'open' })
+
+    const marketWhileOpen = await request(app)
+      .get('/api/v1/content/shop?category=gear')
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+    expect(marketWhileOpen.body.map((i: { name: string }) => i.name)).toContain('Botas Globais')
+    expect(marketWhileOpen.body.map((i: { name: string }) => i.name)).not.toContain('Relíquia da Mesa Ativa')
+
+    const ferreiroOpen = await request(app)
+      .get(`/api/v1/court/sessions/${sessA.id}/ferreiro`)
+      .set('Authorization', `Bearer ${tokenPlayer}`)
+    expect(ferreiroOpen.body.commerce.map((i: { name: string }) => i.name)).toEqual(
+      expect.arrayContaining(['Botas Globais', 'Relíquia da Mesa Ativa']),
+    )
+  })
 })

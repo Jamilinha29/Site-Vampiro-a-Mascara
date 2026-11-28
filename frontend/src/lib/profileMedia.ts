@@ -89,7 +89,7 @@ async function adaptRasterImage(file: File, preset: ProfileImagePreset): Promise
     scale *= 0.75
   }
 
-  throw new Error('Imagem muito grande mesmo após compressão (máx. ~900 KB).')
+  throw new Error('Imagem muito grande mesmo após compressão — máx. ~900 KB.')
 }
 
 export async function readProfileImageFile(
@@ -97,7 +97,7 @@ export async function readProfileImageFile(
   options?: { preset?: ProfileImagePreset },
 ): Promise<string> {
   if (file.size > PROFILE_IMAGE_INPUT_MAX_BYTES) {
-    throw new Error('Arquivo muito grande (máx. 20 MB).')
+    throw new Error('Arquivo muito grande — máx. 20 MB.')
   }
 
   const isResizableRaster =
@@ -105,7 +105,7 @@ export async function readProfileImageFile(
 
   if (!isResizableRaster) {
     if (file.size > PROFILE_IMAGE_MAX_BYTES) {
-      throw new Error('Arquivo muito grande (máx. ~900 KB).')
+      throw new Error('Arquivo muito grande — máx. ~900 KB.')
     }
     return readFileAsDataUrl(file)
   }
@@ -117,7 +117,7 @@ export async function readProfileImageFile(
     if (file.size <= PROFILE_IMAGE_MAX_BYTES) {
       return readFileAsDataUrl(file)
     }
-    throw err instanceof Error ? err : new Error('Imagem muito grande (máx. ~900 KB).')
+    throw err instanceof Error ? err : new Error('Imagem muito grande — máx. ~900 KB.')
   }
 }
 
@@ -125,12 +125,12 @@ export async function readDownloadFile(file: File): Promise<string> {
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
   if (isPdf) {
     if (file.size > DOWNLOAD_PDF_MAX_BYTES) {
-      throw new Error('PDF muito grande (máx. 2 MB).')
+      throw new Error('PDF muito grande — máx. 2 MB.')
     }
     return readFileAsDataUrl(file)
   }
   if (file.type.startsWith('image/')) {
     return readProfileImageFile(file)
   }
-  throw new Error('Formato não suportado. Envie um arquivo PDF ou imagem (PNG, JPG, WebP, GIF).')
+  throw new Error('Formato não suportado. Envie um arquivo PDF ou imagem PNG, JPG, WebP ou GIF.')
 }

@@ -129,12 +129,12 @@ export default function PlayerCharactersPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-headline-lg text-2xl tracking-wide text-on-surface uppercase">
-            Meus personagens ({counts.all})
+            Meus personagens · {counts.all}
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">
             Escolha o personagem ativo da mesa.
             {needPickHome
-              ? ` Com mais de 10 fichas, selecione até 3 para aparecerem no Início (${homeCount}/3).`
+              ? ` Com mais de 10 fichas, selecione até 3 para aparecerem no Início — ${homeCount}/3.`
               : ' Com 10 ou menos, todos aparecem automaticamente no Início.'}
           </p>
         </div>
@@ -155,7 +155,7 @@ export default function PlayerCharactersPage() {
             }`}
             onClick={() => setFilter(f.id)}
           >
-            {f.label} ({f.count})
+            {f.label} · {f.count}
           </button>
         ))}
       </div>

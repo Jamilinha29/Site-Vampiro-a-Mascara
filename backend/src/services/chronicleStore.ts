@@ -45,6 +45,7 @@ export type ChronicleEntity = {
   manaMax?: number
   defense?: number
   abilities?: string[]
+  weapons?: string[]
   lifeStatus?: 'alive' | 'dead'
   location?: string
   attributeMods?: AttributeMod[]
@@ -73,6 +74,7 @@ export type ChronicleEntity = {
   narratorNotes?: string
   chronicleScope?: string | null
   narratorScope?: string | null
+  ownerEmail?: string | null
   creatureStats?: { for: number; des: number; vig: number; int: number; sab: number; car: number }
   passiveTraits?: string[]
   createdAt: string
@@ -599,7 +601,7 @@ export type CatalogScopeContext = {
 function forPlayers(rows: ChronicleEntity[]) {
   return rows
     .filter((e) => e.visibility === 'published')
-    .map(({ narratorNotes: _notes, sceneTrigger: _trigger, ...rest }) => rest)
+    .map(({ narratorNotes: _notes, sceneTrigger: _trigger, ownerEmail: _owner, ...rest }) => rest)
 }
 
 export function entityMatchesCatalogScope(entity: ChronicleEntity, contexts: CatalogScopeContext[]) {
@@ -674,13 +676,16 @@ export function listPublishedForArchive(category: ArchiveCategory, email?: strin
 }
 
 export function listPublishedForShop(category: ShopCategory, email?: string, sessionId?: string, role?: string) {
-  const contexts = resolveCatalogScopeForViewer(email, sessionId, role)
-  return scopedPublished(
-    listEntities().filter(
-      (e) => (e.kind === 'equipment' || e.kind === 'consumable') && e.shopCategory === category,
-    ),
-    contexts,
+  const items = listEntities().filter(
+    (e) => (e.kind === 'equipment' || e.kind === 'consumable') && e.shopCategory === category,
   )
+  // Crônica / Mestre restringem o item apenas à mesa ativa; no Mercado global (sem sessão) não exibem itens restritos.
+  if (!sessionId) {
+    return forPlayers(items.filter((e) => !e.chronicleScope?.trim() && !e.narratorScope?.trim()))
+  }
+  const session = getScheduledSession(sessionId)
+  const contexts = session?.status === 'open' ? resolveCatalogScopeForViewer(email, sessionId, role) : []
+  return scopedPublished(items, contexts)
 }
 
 export function listPublishedForBestiary(tier: BestiaryTier, email?: string, sessionId?: string, role?: string) {
@@ -850,6 +855,7 @@ async function glossaryMirrorForNpcOrMonster(row: ChronicleEntity) {
     manaMax: row.manaMax,
     defense: row.defense,
     abilities: row.abilities,
+    weapons: row.weapons,
     lifeStatus: row.lifeStatus,
     location: row.location,
     classification,

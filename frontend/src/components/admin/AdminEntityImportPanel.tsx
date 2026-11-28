@@ -63,7 +63,7 @@ export function AdminEntityImportPanel() {
       }
       const imported = 'imported' in result ? result.imported : 0
       const skipped = 'skipped' in result ? result.skipped : 0
-      push(`Importados ${imported} itens (${skipped} ignorados por duplicata).`, 'success')
+      push(`Importados ${imported} itens · ${skipped} ignorados por duplicata.`, 'success')
       void qc.invalidateQueries({ queryKey: ['admin-entities'] })
       setPreview(null)
       setRaw('')
@@ -74,14 +74,14 @@ export function AdminEntityImportPanel() {
   return (
     <section className="admin-form-panel admin-form-panel--compact flex h-full flex-col" aria-labelledby="import-heading">
       <h2 id="import-heading" className="text-xs uppercase tracking-wide text-secondary">
-        Importar catálogo (JSON)
+        Importar catálogo JSON
       </h2>
       <p className="text-sm text-on-surface-variant">
         Cole um array de objetos ou faça upload. O mapeamento renomeia chaves da planilha para o schema da API. Tudo entra
         como rascunho até publicar.
       </p>
       <label className="block text-xs text-on-surface-variant">
-        Mapeamento de colunas (JSON)
+        Mapeamento de colunas JSON
         <textarea
           className="input-feudal mt-1 min-h-28 w-full pl-3 font-mono text-xs"
           value={mapText}
@@ -119,7 +119,7 @@ export function AdminEntityImportPanel() {
               {preview.rejections.slice(0, 8).map((row) => (
                 <li key={`${row.line}-${row.message}`}>
                   Linha {row.line}
-                  {row.name ? ` (${row.name})` : ''}: {row.message}
+                  {row.name ? ` · ${row.name}` : ''}: {row.message}
                 </li>
               ))}
             </ul>

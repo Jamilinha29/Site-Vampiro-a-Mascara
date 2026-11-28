@@ -141,7 +141,7 @@ export default function ArchetypeStepPage() {
             </label>
             <label className="block">
               <span className="text-[10px] font-semibold tracking-wider text-on-surface-variant uppercase">
-                Relação com o Senhor (Sire)
+                Relação com o Senhor · Sire
               </span>
               <input
                 className="input-feudal mt-1 pl-4 normal-case"

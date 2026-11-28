@@ -28,6 +28,7 @@ export type ChronicleEntity = {
   manaMax?: number
   defense?: number
   abilities?: string[]
+  weapons?: string[]
   lifeStatus?: 'alive' | 'dead'
   location?: string
   attributeMods?: AttributeMod[]
@@ -239,6 +240,7 @@ export type CreateEntityPayload = {
   manaMax?: number
   defense?: number
   abilities?: string[]
+  weapons?: string[]
   lifeStatus?: 'alive' | 'dead'
   location?: string
   attributeMods?: AttributeMod[]

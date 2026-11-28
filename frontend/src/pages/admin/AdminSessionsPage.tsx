@@ -171,6 +171,12 @@ export default function AdminSessionsPage() {
   }
 
   const sortedHandouts = [...handouts].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const activeSessions = [...scheduled]
+    .filter((s) => s.status !== 'closed')
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+  const closedSessions = [...scheduled]
+    .filter((s) => s.status === 'closed')
+    .sort((a, b) => (b.endedAt ?? b.scheduledAt).localeCompare(a.endedAt ?? a.scheduledAt))
 
   return (
     <div className="space-y-4 pb-4">
@@ -225,13 +231,11 @@ export default function AdminSessionsPage() {
         ) : null}
       </section>
 
-      <section className="mesa-panel p-3.5 sm:p-4">
-        <h2 className="font-headline-sm text-base sm:text-lg">Mesas em andamento</h2>
-        <ul className="mt-3 grid gap-2.5 text-sm md:grid-cols-2">
-          {[...scheduled]
-            .filter((s) => s.status !== 'closed')
-            .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
-            .map((s) => (
+      <div className="grid auto-rows-fr gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="mesa-panel flex h-full flex-col p-4 sm:p-5">
+          <h2 className="font-headline-sm text-base sm:text-lg">Mesas em andamento</h2>
+          <ul className="mt-3 space-y-3 text-sm">
+            {activeSessions.map((s) => (
               <li
                 key={s.id}
                 className="flex flex-col justify-between rounded border border-outline-variant/40 px-3 py-2.5"
@@ -244,9 +248,7 @@ export default function AdminSessionsPage() {
                         ? isScheduledTimeReached(s.scheduledAt)
                           ? 'Ao vivo'
                           : 'Liberada · aguarda horário'
-                        : s.status === 'closed'
-                          ? 'Encerrada'
-                          : 'Agendada'}{' '}
+                        : 'Agendada'}{' '}
                       · {formatScheduledDateTime(s.scheduledAt)}
                     </p>
                     <p className="mt-1 text-xs text-secondary">
@@ -282,7 +284,7 @@ export default function AdminSessionsPage() {
                     >
                       {(s.listing ?? 'private') === 'public' ? 'Tornar privada' : 'Tornar pública'}
                     </button>
-                    {s.status !== 'open' && s.status !== 'closed' ? (
+                    {s.status !== 'open' ? (
                       <button
                         type="button"
                         className="btn-primary text-xs"
@@ -318,21 +320,19 @@ export default function AdminSessionsPage() {
                 </div>
               </li>
             ))}
-          {scheduled.filter((s) => s.status !== 'closed').length === 0 ? (
-            <li className="text-on-surface-variant">Nenhuma mesa em andamento — use Criar outra mesa acima.</li>
-          ) : null}
-        </ul>
-      </section>
+            {activeSessions.length === 0 ? (
+              <li className="text-on-surface-variant">Nenhuma mesa em andamento — use Criar outra mesa acima.</li>
+            ) : null}
+          </ul>
+        </section>
 
-      <section className="mesa-panel p-5">
-        <h2 className="font-headline-sm text-lg">Mesas encerradas</h2>
-        <p className="mt-1 text-sm text-on-surface-variant">
-          Uma mesa encerrada não continua. Para jogar de novo nela, remarque uma nova sessão.
-        </p>
-        <ul className="mt-4 space-y-3 text-sm">
-          {scheduled
-            .filter((s) => s.status === 'closed')
-            .map((s) => (
+        <section className="mesa-panel flex h-full flex-col p-4 sm:p-5">
+          <h2 className="font-headline-sm text-base sm:text-lg">Mesas encerradas</h2>
+          <p className="mt-1 text-xs text-on-surface-variant sm:text-sm">
+            Uma mesa encerrada não continua. Para jogar de novo nela, remarque uma nova sessão.
+          </p>
+          <ul className="mt-3 space-y-3 text-sm">
+            {closedSessions.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-outline-variant/40 px-3 py-3">
                 <div>
                   <p className="font-serif text-on-surface">{mesaDisplayName(s)}</p>
@@ -361,11 +361,12 @@ export default function AdminSessionsPage() {
                 </div>
               </li>
             ))}
-          {scheduled.filter((s) => s.status === 'closed').length === 0 ? (
-            <li className="text-on-surface-variant">Nenhuma mesa encerrada.</li>
-          ) : null}
-        </ul>
-      </section>
+            {closedSessions.length === 0 ? (
+              <li className="text-on-surface-variant">Nenhuma mesa encerrada.</li>
+            ) : null}
+          </ul>
+        </section>
+      </div>
 
       <section className="mesa-panel p-5">
         <h2 className="font-headline-sm text-lg">Resumos dos atos</h2>

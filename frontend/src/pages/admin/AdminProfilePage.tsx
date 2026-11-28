@@ -206,8 +206,8 @@ export default function AdminProfilePage() {
         {[
           { label: 'Mesas registradas', value: mesasTotal },
           { label: 'Mesas ao vivo', value: mesasOpen },
-          { label: 'Horas (mês)', value: activity?.month.hoursActive ?? '—' },
-          { label: 'Atos encerrados (mês)', value: activity?.month.actsClosed ?? '—' },
+          { label: 'Horas no mês', value: activity?.month.hoursActive ?? '—' },
+          { label: 'Atos encerrados no mês', value: activity?.month.actsClosed ?? '—' },
         ].map((m) => (
           <div key={m.label} className="card-surface flex h-full flex-col justify-center p-4 text-center">
             <p className="text-[0.65rem] uppercase text-on-surface-variant">{m.label}</p>

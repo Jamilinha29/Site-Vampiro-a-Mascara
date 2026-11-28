@@ -119,16 +119,16 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/60 bg-surface-container-lowest/70 px-2.5 py-0.5 font-mono text-[11px] text-on-surface transition hover:border-secondary/60"
-                  title="Clique para copiar seu Código ID de amigo"
+                  title="Clique para copiar seu identificador de aliado"
                   onClick={() => {
                     const code = profile.publicId!
                     void navigator.clipboard?.writeText(code).then(
-                      () => push('Código ID copiado para a área de transferência.', 'success'),
-                      () => push(`Seu Código ID: ${code}`, 'info'),
+                      () => push('Identificador copiado para a área de transferência.', 'success'),
+                      () => push(`Seu identificador: ${code}`, 'info'),
                     )
                   }}
                 >
-                  <span className="font-sans text-[10px] text-secondary uppercase">ID:</span>
+                  <span className="font-sans text-[10px] text-secondary uppercase">Aliado:</span>
                   <span>{profile.publicId}</span>
                 </button>
               ) : null}
@@ -170,7 +170,7 @@ export default function ProfilePage() {
               <dd className="break-all text-xs text-on-surface">{profile.email}</dd>
             </div>
             <div>
-              <dt className="text-[0.65rem] text-on-surface-variant uppercase">Código ID (amigos)</dt>
+              <dt className="text-[0.65rem] text-on-surface-variant uppercase">Identificador de aliado</dt>
               <dd className="font-mono text-xs text-secondary">{profile.publicId || '—'}</dd>
             </div>
           </dl>

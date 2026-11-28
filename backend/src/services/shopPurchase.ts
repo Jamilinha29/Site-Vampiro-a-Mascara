@@ -1,5 +1,11 @@
 import { runExclusive } from './campaignDocuments.js'
-import { ensureHandoutForScheduledSession, getEntity, listScheduledSessions } from './chronicleStore.js'
+import {
+  ensureHandoutForScheduledSession,
+  entityMatchesCatalogScope,
+  getEntity,
+  listScheduledSessions,
+  resolveCatalogScopeForViewer,
+} from './chronicleStore.js'
 import {
   applyDebitInMemory,
   commitCourtState,
@@ -93,6 +99,11 @@ async function executeAtomicBuy(input: {
   const entity = getEntity(input.entityId)
   if (!entity || entity.visibility !== 'published' || (entity.kind !== 'equipment' && entity.kind !== 'consumable')) {
     return fail(404, 'ITEM_UNAVAILABLE', 'Item indisponível')
+  }
+
+  const contexts = resolveCatalogScopeForViewer(email, seat.sessionId)
+  if (!entityMatchesCatalogScope(entity, contexts)) {
+    return fail(403, 'ITEM_WRONG_TABLE', 'Este item só está disponível na mesa ativa correspondente.')
   }
 
   const required = shopLevelOf(entity)

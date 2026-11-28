@@ -147,7 +147,7 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="font-headline-lg text-2xl text-on-surface">Amigos e jogadores</h1>
           <p className="mt-0.5 text-sm text-on-surface-variant">
-            Gerencie suas amizades com jogadores e narradores, envie convites por nome ou Código ID numérico e acompanhe solicitações.
+            Gerencie suas amizades com jogadores e narradores, envie convites e acompanhe solicitações.
           </p>
         </div>
       </header>
@@ -227,7 +227,7 @@ export default function AdminUsersPage() {
               <div>
                 <h2 className="font-headline-sm text-base text-on-surface">Buscar jogadores</h2>
                 <p className="text-xs text-on-surface-variant">
-                  Encontre jogadores pelo nome, @usuário ou Código ID numérico para gerenciar ou convidar.
+                  Encontre jogadores para gerenciar ou convidar para suas mesas.
                 </p>
               </div>
             </div>
@@ -252,7 +252,7 @@ export default function AdminUsersPage() {
                     setQuery(e.target.value)
                     setPage(1)
                   }}
-                  placeholder="Digite um nome, @usuário ou Código ID…"
+                  placeholder="Buscar jogador ou narrador…"
                 />
               </div>
               <button type="submit" className="btn-primary shrink-0 text-xs">
@@ -538,7 +538,7 @@ export default function AdminUsersPage() {
               onClick={() => setShowMyCode((v) => !v)}
             >
               <span className="material-symbols-outlined text-sm">qr_code_2</span>
-              {showMyCode ? 'Ocultar meu código (ID)' : 'Mostrar meu código (ID)'}
+              {showMyCode ? 'Ocultar meu código' : 'Mostrar meu código'}
             </button>
             {showMyCode ? (
               <div className="flex items-center justify-between gap-2 rounded border border-secondary/35 bg-surface-container-lowest/60 px-3 py-2 text-xs">
@@ -547,7 +547,7 @@ export default function AdminUsersPage() {
                   <button
                     type="button"
                     className="text-[11px] text-on-surface underline hover:text-secondary"
-                    onClick={() => void copyText(profile.publicId!, 'Código ID copiado.')}
+                    onClick={() => void copyText(profile.publicId!, 'Código copiado.')}
                   >
                     Copiar
                   </button>

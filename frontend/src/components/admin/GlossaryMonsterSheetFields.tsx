@@ -50,7 +50,7 @@ export function GlossaryMonsterSheetFields({
 
   return (
     <div className="space-y-4 rounded border border-secondary/30 bg-surface-container-lowest/30 p-4">
-      <p className="font-label-sm text-xs text-secondary uppercase">Ficha tática (bestiário)</p>
+      <p className="font-label-sm text-xs text-secondary uppercase">Ficha tática · bestiário</p>
 
       <div className="grid gap-3 md:grid-cols-3">
         <label className="block text-xs uppercase text-on-surface-variant">
@@ -80,7 +80,7 @@ export function GlossaryMonsterSheetFields({
       </div>
 
       <div>
-        <p className="text-xs uppercase text-on-surface-variant">Atributos (1–10)</p>
+        <p className="text-xs uppercase text-on-surface-variant">Atributos · 1 a 10</p>
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
           {STAT_KEYS.map(({ key, label }) => (
             <label key={key} className="text-center text-[10px] uppercase text-on-surface-variant">
@@ -103,7 +103,7 @@ export function GlossaryMonsterSheetFields({
       </div>
 
       <label className="block text-xs uppercase text-on-surface-variant">
-        Defesa / armadura (texto na ficha)
+        Defesa e armadura na ficha
         <input
           className="input-feudal mt-1 pl-4 normal-case"
           value={defenseNote ?? ''}
@@ -114,7 +114,7 @@ export function GlossaryMonsterSheetFields({
 
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-xs uppercase text-on-surface-variant">
-          Ataque principal (nome)
+          Nome do ataque principal
           <input
             className="input-feudal mt-1 pl-4 normal-case"
             value={primaryAttackName ?? ''}
@@ -122,7 +122,7 @@ export function GlossaryMonsterSheetFields({
           />
         </label>
         <label className="block text-xs uppercase text-on-surface-variant">
-          Ataque secundário (nome)
+          Nome do ataque secundário
           <input
             className="input-feudal mt-1 pl-4 normal-case"
             value={secondaryAttackName ?? ''}
@@ -155,7 +155,7 @@ export function GlossaryMonsterSheetFields({
         />
       </label>
       <label className="block text-xs uppercase text-on-surface-variant">
-        Traços passivos (um por linha)
+        Traços passivos, um por linha
         <textarea
           className="input-feudal textarea-compact mt-1 pl-4 normal-case"
           value={passiveText}

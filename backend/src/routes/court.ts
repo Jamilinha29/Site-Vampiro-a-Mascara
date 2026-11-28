@@ -193,10 +193,11 @@ courtRouter.get('/session-board', (req, res) => {
 
 courtRouter.get('/sessions/:sessionId/ferreiro', async (req, res, next) => {
   try {
-    requireSessionParticipant(req.params.sessionId, req.user!)
+    const session = requireSessionParticipant(req.params.sessionId, req.user!)
     const characterId = typeof req.query.characterId === 'string' ? req.query.characterId : undefined
     const level = playerLevel(req.user!.email, characterId)
-    const contexts = resolveCatalogScopeForViewer(req.user!.email, req.params.sessionId)
+    const contexts =
+      session.status === 'open' ? resolveCatalogScopeForViewer(req.user!.email, req.params.sessionId) : []
     const goods = listEntities({ visibility: 'published' }).filter(
       (e) =>
         (e.kind === 'equipment' || e.kind === 'consumable') &&

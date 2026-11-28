@@ -205,7 +205,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
     onSuccess: () => {
       const amount = Math.min(250, Math.max(1, Math.round(grantXp)))
       xpOpRef.current = null
-      logAudit(`Concedido +${amount} XP para ${grantParticipant} (aplicado na ficha)`)
+      logAudit(`Concedido +${amount} XP para ${grantParticipant} — aplicado na ficha`)
       void qc.invalidateQueries({ queryKey: adminQueryKeys.mesaHandout(session.id) })
     },
     onError: (err: Error) => {
@@ -430,7 +430,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
       <section className="mesa-panel p-3.5 sm:p-4">
         <h2 className="font-label-sm text-xs text-secondary uppercase">Governança da crônica</h2>
         <p className="mt-1 text-xs text-on-surface-variant">{EXTERNAL_MAP_NOTICE_ADMIN}</p>
-        <p className="mt-1 text-xs text-on-surface-variant">Clima e tom — refletidos na sala dos jogadores (sem mapa embutido).</p>
+        <p className="mt-1 text-xs text-on-surface-variant">Clima e tom refletidos na sala dos jogadores.</p>
         <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           {(Object.keys(CHRONICLE_AMBIENCE_OPTIONS) as Array<keyof ChronicleAmbience>).map((field) => (
             <label key={field} className="text-[0.65rem] uppercase text-on-surface-variant">
@@ -538,7 +538,7 @@ export function AdminMesaWorkbench({ session, actNumber, liveCount = 0 }: Props)
         <section className="mesa-panel flex h-full flex-col p-4">
           <h2 className="font-label-sm text-xs text-secondary uppercase">Concessão rápida</h2>
           <p className="mt-2 text-xs text-on-surface-variant">
-            XP de +1 a +250 — só o narrador concede; aplica direto na ficha (jogador não altera).
+            XP de +1 a +250 — só o narrador concede; aplica direto na ficha e o jogador não altera.
           </p>
           <label className="mt-3 block text-xs uppercase text-on-surface-variant">
             Jogador na mesa

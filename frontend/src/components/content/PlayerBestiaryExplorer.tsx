@@ -346,7 +346,7 @@ export function BestiaryDetail({
               </div>
               <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-on-surface-variant">
                 {entity.narratorNotes?.trim() ||
-                  'Imunidades, regeneração, fase 2 e drops — preencha em Glossário (ADM) no campo notas secretas.'}
+                  'Imunidades, regeneração, fase 2 e drops — preencha em Glossário no campo notas secretas.'}
               </p>
             </div>
           ) : null}

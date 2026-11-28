@@ -75,7 +75,7 @@ function CampaignRulesCard({
           />
         </label>
         <label className="text-xs text-on-surface-variant">
-          Subclasse I (nível)
+          Subclasse I · nível
           <input
             className="input-feudal mt-1 w-full pl-3"
             type="number"
@@ -86,7 +86,7 @@ function CampaignRulesCard({
           />
         </label>
         <label className="text-xs text-on-surface-variant">
-          Subclasse II (nível)
+          Subclasse II · nível
           <input
             className="input-feudal mt-1 w-full pl-3"
             type="number"
@@ -97,7 +97,7 @@ function CampaignRulesCard({
           />
         </label>
         <label className="text-xs text-on-surface-variant">
-          XP inicial (novas fichas)
+          XP inicial de novas fichas
           <input
             className="input-feudal mt-1 w-full pl-3"
             type="number"
@@ -108,7 +108,7 @@ function CampaignRulesCard({
           />
         </label>
         <label className="text-xs text-on-surface-variant sm:col-span-2">
-          Teto de bronze (loja)
+          Teto de bronze da loja
           <input
             className="input-feudal mt-1 w-full pl-3"
             type="number"
@@ -284,7 +284,7 @@ export default function AdminCampaignPage() {
               ))}
             </select>
             <input className="input-feudal pl-3" placeholder="Id do NPC" value={entityId} onChange={(event) => setEntityId(event.target.value)} />
-            <input className="input-feudal pl-3 sm:col-span-2" placeholder="E-mail do jogador (opcional)" value={audienceEmail} onChange={(event) => setAudienceEmail(event.target.value)} />
+            <input className="input-feudal pl-3 sm:col-span-2" placeholder="E-mail do jogador — opcional" value={audienceEmail} onChange={(event) => setAudienceEmail(event.target.value)} />
             <textarea
               className="input-feudal min-h-20 w-full flex-1 pl-3 sm:col-span-2"
               placeholder="O que essa mesa descobriu"
@@ -317,7 +317,12 @@ export default function AdminCampaignPage() {
               onClick={() =>
                 void api
                   .adminAdvanceTurn(sessionId)
-                  .then((result) => push(`Turno avançado. ${result.changed} efeito(s) contado(s).`, 'success'))
+                  .then((result) =>
+                    push(
+                      `Turno avançado. ${result.changed} ${result.changed === 1 ? 'efeito contado' : 'efeitos contados'}.`,
+                      'success',
+                    ),
+                  )
                   .catch((error: Error) => push(error.message || 'Erro ao avançar turno.', 'error'))
               }
             >

@@ -69,7 +69,7 @@ export function RadarChart({ axes, empty }: Props) {
             textAnchor="middle"
             dominantBaseline="middle"
           >
-            {empty ? a.label : `${a.label} (${a.value}%)`}
+            {empty ? a.label : `${a.label} · ${a.value}%`}
           </text>
         )
       })}
