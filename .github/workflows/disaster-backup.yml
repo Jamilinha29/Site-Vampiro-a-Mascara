@@ -12,7 +12,7 @@ jobs:
   encrypted-export:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check required backup secrets
         id: gate
@@ -28,7 +28,7 @@ jobs:
             echo "Secrets de backup externo ainda não configurados — passo ignorado."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.gate.outputs.ready == 'true'
         with:
           node-version: 22
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload non-sensitive backup manifest only (never expose DB dump in public repo artifacts)
         if: steps.gate.outputs.ready == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: beladona-backup-manifest
           path: ${{ runner.temp }}/beladona-backups/latest-manifest.json
