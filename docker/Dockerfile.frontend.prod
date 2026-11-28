@@ -13,7 +13,7 @@ ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN case "$VITE_SUPABASE_ANON_KEY" in sb_secret_*) echo "ERRO: sb_secret_ nao pode ir no bundle Vite" >&2; exit 1 ;; esac
 RUN npm run build -w frontend
 
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 EXPOSE 8080
